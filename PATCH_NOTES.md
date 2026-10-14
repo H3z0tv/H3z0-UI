@@ -1,5 +1,16 @@
 # H3z0 UI - Patch Notes
 
+## 0.22.8 - Cooldown Viewer taint fix
+- Fixed the Lua error `CooldownViewer.lua:939: attempted to index a table that cannot be accessed while tainted
+  (execution tainted by 'H3z0UI')` (seen on target change / `InteractUnit`, many times in a row).
+- Cause: the cooldown manager layout (modules/cooldowns/cdm_viewer.lua) called `Show()`, `Hide()` and `SetSize()` on
+  Blizzard's Cooldown Viewer item frames. Those calls synchronously run Blizzard's own OnShow/OnHide/OnSizeChanged
+  scripts in tainted execution, which poisoned Blizzard's cooldown cache.
+- Fix: Blizzard's item frames are no longer shown/hidden by H3z0 UI. Icons beyond the row capacity are made invisible
+  (alpha 0) instead of hidden, and icon/viewer sizes are only written when they actually change.
+  Custom CDM icons (H3z0 UI's own frames) are unaffected.
+- Do a `/reload` after updating. If the error still shows up, send the new stack trace.
+
 ## 0.22.7 - Minimap button uses the H3z0 logo
 - Fixed: the H3z0 UI minimap button showed a squashed, unreadable white blob. It was using the wide wordmark texture
   (`H3z0UI.tga`, 256x32), which gets stretched into the round button.

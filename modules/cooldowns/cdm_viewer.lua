@@ -251,6 +251,18 @@ end
 ---------------------------------------------------------------------------
 -- HELPER: Apply icon styling
 ---------------------------------------------------------------------------
+-- 0.22.8 TAINT FIX: Show()/Hide()/SetSize() called from addon code synchronously run Blizzard's own
+-- OnShow/OnHide/OnSizeChanged scripts on the Cooldown Viewer item frames in TAINTED execution. That produced
+-- "attempted to index a table that cannot be accessed while tainted (execution tainted by 'H3z0UI')" in
+-- CooldownViewer.lua (CheckCacheCooldownValuesFromSpellCooldown). So Blizzard's item frames are no longer
+-- Show()n/Hide()n by us (overflow icons are made invisible with alpha instead) and sizes are only written
+-- when they really change.
+local function SetSizeIfChanged(frame, w, h)
+    local cw, ch = frame:GetSize()
+    if cw and ch and math.abs(cw - w) < 0.01 and math.abs(ch - h) < 0.01 then return end
+    frame:SetSize(w, h)
+end
+
 local function SkinIcon(icon, size, aspectRatioCrop, zoom, borderSize, borderColorTable)
     if not icon then return end
 
@@ -273,7 +285,7 @@ local function SkinIcon(icon, size, aspectRatioCrop, zoom, borderSize, borderCol
     end
 
     -- Set icon frame size
-    icon:SetSize(width, height)
+    SetSizeIfChanged(icon, width, height)
 
     -- Border (BACKGROUND texture approach)
     borderSize = borderSize or 0
@@ -679,7 +691,7 @@ local function LayoutViewer(viewerName, trackerKey)
         local icon = allIcons[i]
         iconsToLayout[i] = icon
         icon._ncdmHidden = nil
-        icon:Show()
+        if icon._isCustomCDMIcon then icon:Show() end  -- our own frames only; never Show() Blizzard's
     end
     
     -- Hide overflow
@@ -687,7 +699,11 @@ local function LayoutViewer(viewerName, trackerKey)
         local icon = allIcons[i]
         if icon then
             icon._ncdmHidden = true
-            icon:Hide()
+            if icon._isCustomCDMIcon then
+                icon:Hide()
+            else
+                icon:SetAlpha(0)  -- invisible, but Blizzard keeps owning the shown state (no tainted OnHide)
+            end
             icon:ClearAllPoints()
         end
     end
@@ -903,7 +919,7 @@ local function LayoutViewer(viewerName, trackerKey)
             end
             icon:ClearAllPoints()
             icon:SetPoint("CENTER", viewer, "CENTER", x, y)
-            icon:Show()
+            if icon._isCustomCDMIcon then icon:Show() end
 
             -- Apply row opacity
             local opacity = rowConfig.opacity or 1.0
@@ -940,7 +956,7 @@ local function LayoutViewer(viewerName, trackerKey)
     if maxRowWidth > 0 and totalHeight > 0 then
         viewer.__cdmLayoutSuppressed = (viewer.__cdmLayoutSuppressed or 0) + 1
         pcall(function()
-            viewer:SetSize(maxRowWidth, totalHeight)
+            SetSizeIfChanged(viewer, maxRowWidth, totalHeight)
         end)
         viewer.__cdmLayoutSuppressed = viewer.__cdmLayoutSuppressed - 1
         if viewer.__cdmLayoutSuppressed <= 0 then

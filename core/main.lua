@@ -4066,7 +4066,7 @@ function H3z0UICore:CreateMinimapButton()
     -- Create DataBroker object
     local dataObj = LDB:NewDataObject(ADDON_NAME, {
         type = "launcher",
-        icon = "Interface\\AddOns\\H3z0UI\\assets\\H3z0UI.tga",
+        icon = "Interface\\AddOns\\H3z0UI\\assets\\minimap_icon",
         label = "H3z0 UI",
         OnClick = function(clickedframe, button)
             if button == "LeftButton" then

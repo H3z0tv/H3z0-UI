@@ -1,5 +1,13 @@
 # H3z0 UI - Patch Notes
 
+## 0.22.7 - Minimap button uses the H3z0 logo
+- Fixed: the H3z0 UI minimap button showed a squashed, unreadable white blob. It was using the wide wordmark texture
+  (`H3z0UI.tga`, 256x32), which gets stretched into the round button.
+- The minimap button now uses the H3z0 logo (green skull) via a new square, tightly cropped texture
+  `assets/minimap_icon.tga` (128x128), so it stays crisp and centred inside the button ring.
+- No settings changes; the tooltip, left/right-click behaviour and the "Hide H3z0 UI Minimap Icon" option work as before.
+- Version bumped to 0.22.7 (TOC + README).
+
 ## 0.22.6 - Setup Wizard
 - New first-start **Setup Wizard** (modules/qol/setupwizard.lua). Three steps: (1) PC or Steam Deck / Handheld (+ handheld UI scale:
   Compact 0.85, Pixel-perfect, Comfortable 1.15), (2) nameplate addon: none / Plater / Platynator / BetterBlizzPlates,

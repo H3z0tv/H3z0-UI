@@ -2,7 +2,7 @@
 
 H3z0 UI is a World of Warcraft: Midnight UI customization addon (unit frames, cooldown manager, action bars, castbars, minimap, chat, skinning and more).
 
-**Version:** 0.22.8
+**Version:** 0.22.12
 
 ### Installation
 

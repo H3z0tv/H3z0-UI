@@ -1,5 +1,28 @@
 # H3z0 UI - Patch Notes
 
+## 0.22.12 - Consumable check aura fix
+- Fixed `GetAuraDataByIndex(): Auras cannot be accessed when secret while tainted by 'H3z0UI'` (consumablecheck.lua).
+- Player buff scans are now wrapped so a blocked aura read can never throw an error.
+- The post-combat consumable refresh no longer runs when the Consumable Check is switched off.
+
+## 0.22.11 - Cooldown swipe secret-value fix
+- Fixed `swipe.lua:42: attempt to compare a secret number value (execution tainted by 'H3z0UI')`.
+- The swipe hook compared `auraInstanceID > 0`, but that ID can be a secret value. It is now checked with `issecretvalue` first (a secret ID counts as an active aura).
+
+## 0.22.10 - Tracked Bars taint fix
+- Fixed `CooldownViewer.lua:1862: attempted to index a table that cannot be accessed while tainted (execution tainted by 'H3z0UI')`.
+- H3z0 UI no longer writes properties (`isHorizontal`, `layoutFramesGoingRight/Up`, internal flags) onto Blizzard's Tracked Bars frame, and no longer resizes it (`SetSize`) from addon code. Those writes tainted the frame's aura table.
+- Polling timers/flags for the Tracked Buffs/Bars viewers now live in the addon's own locals.
+- Note: bars are still skinned and positioned by H3z0 UI; the viewer frame itself is left to Blizzard.
+
+## 0.22.9 - LibOpenRaid secret-value fix
+- Fixed the Lua error `LibOpenRaid.lua:3599: attempt to perform boolean test on local 'bUnitIsThePlayer' (a secret boolean
+  value, while execution tainted by 'H3z0UI')` (thousands of repeats, e.g. on `UNIT_SPELLCAST_SUCCEEDED` for `targettarget`).
+- Cause: the bundled LibOpenRaid cooldown tracker ran `UnitIsUnit(unitId, "player")` for every unit's spell cast and then
+  tested the result. In Midnight that result is a secret boolean for non-group units, and tainted code may not test it.
+- Fix: the tracker now ignores any unit that is not the player, pet or a party/raid member, and skips secret values
+  instead of testing them. Group cooldown tracking is unchanged. LibOpenRaid internal version bumped 173 -> 174.
+
 ## 0.22.8 - Cooldown Viewer taint fix
 - Fixed the Lua error `CooldownViewer.lua:939: attempted to index a table that cannot be accessed while tainted
   (execution tainted by 'H3z0UI')` (seen on target change / `InteractUnit`, many times in a row).

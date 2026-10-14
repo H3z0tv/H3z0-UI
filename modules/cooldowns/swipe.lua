@@ -39,7 +39,17 @@ local function HookSetCooldown(icon)
 
         local settings = GetSettings()
         local showSwipe
-        local auraActive = parentIcon.auraInstanceID and parentIcon.auraInstanceID > 0
+        -- auraInstanceID can be a "secret" number on Midnight; comparing it (> 0) errors out.
+        -- A secret value means Blizzard has set an aura on this icon, so treat it as active.
+        local auraID = parentIcon.auraInstanceID
+        local auraActive
+        if auraID == nil then
+            auraActive = false
+        elseif issecretvalue and issecretvalue(auraID) then
+            auraActive = true
+        else
+            auraActive = type(auraID) == "number" and auraID > 0
+        end
 
         -- Swipe logic
         -- Priority 1: Buff duration (auraInstanceID > 0)

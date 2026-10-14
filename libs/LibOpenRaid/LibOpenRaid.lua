@@ -59,7 +59,7 @@ end
 
 local major = "LibOpenRaid-1.0"
 
-local CONST_LIB_VERSION = 173
+local CONST_LIB_VERSION = 174
 
 if (LIB_OPEN_RAID_MAX_VERSION) then
     if (CONST_LIB_VERSION <= LIB_OPEN_RAID_MAX_VERSION) then
@@ -3594,8 +3594,22 @@ local createLocalCooldownTracker = function()
         if (event == "UNIT_SPELLCAST_SUCCEEDED") then
             local unitId, castGUID, spellId = ...
 
+            --H3z0UI 0.22.9: Midnight secret values. Only group members can be tracked anyway, so ignore every other
+            --unit token (targettarget, nameplateN, boss...) before touching anything, and never run a boolean test
+            --on a secret result (UnitIsUnit can return a secret boolean for such units).
+            local isSecret = _G.issecretvalue
+            if (type(unitId) ~= "string" or (isSecret and (isSecret(unitId) or isSecret(spellId)))) then
+                return
+            end
+            if (not (unitId == "player" or unitId == "pet" or unitId:find("^party") or unitId:find("^raid"))) then
+                return
+            end
+
             --don't track spells casted by the player
             local bUnitIsThePlayer = UnitIsUnit(unitId, "player")
+            if (isSecret and isSecret(bUnitIsThePlayer)) then
+                return
+            end
             if (not bUnitIsThePlayer) then
                 --get the caster name and check if it's a unit in the group
                 --use pcall to handle secret values from nameplate units in Midnight

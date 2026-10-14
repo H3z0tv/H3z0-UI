@@ -207,13 +207,21 @@ local function FormatTimeRemaining(seconds)
     end
 end
 
+-- Midnight: reading player auras while "tainted" can throw "Auras cannot be accessed when secret while
+-- tainted". Wrap the call so it can never produce a Lua error; if blocked, the scan simply finds nothing.
+local function SafeGetPlayerAura(index)
+    local ok, auraData = pcall(C_UnitAuras.GetAuraDataByIndex, "player", index, "HELPFUL")
+    if ok then return auraData end
+    return nil
+end
+
 local function ScanPlayerBuffs()
     local result = {
         hasFood = false, hasFlask = false, hasRune = false,
         foodData = nil, flaskData = nil, runeData = nil,
     }
     for i = 1, 40 do
-        local auraData = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
+        local auraData = SafeGetPlayerAura(i)
         if not auraData then break end
         local spellId = auraData.spellId
         local icon = auraData.icon
@@ -388,7 +396,7 @@ local function UpdateConsumables()
 
     -- Scan player buffs
     for i = 1, 40 do
-        local auraData = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
+        local auraData = SafeGetPlayerAura(i)
         if not auraData then break end
         local spellId = auraData.spellId
         local expires = auraData.expirationTime
@@ -1017,7 +1025,10 @@ combatFrame:SetScript("OnEvent", function(self, event)
             end
         end
     elseif event == "PLAYER_REGEN_ENABLED" then
-        UpdateConsumables()
+        local st = GetSettings()
+        if st and st.consumableCheckEnabled ~= false then
+            UpdateConsumables()
+        end
     end
 end)
 

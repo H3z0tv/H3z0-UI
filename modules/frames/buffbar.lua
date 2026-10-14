@@ -1152,20 +1152,10 @@ LayoutBuffBars = function()
     local orientation = stylingEnabled and settings.orientation or "horizontal"
     local isVertical = (orientation == "vertical")
 
-    -- CRITICAL: Tell Blizzard's GridLayoutFrameMixin which layout direction to use
-    -- When isHorizontal=true, Blizzard positions bars up/down (Y-axis)
-    -- When isHorizontal=false, Blizzard positions bars left/right (X-axis)
-    -- This prevents Blizzard's Layout() from overriding H3z0UI's positioning with wrong axis
-    -- FEAT-007: Remove combat lockdown check - setting frame properties is safe during combat
-    BuffBarCooldownViewer.isHorizontal = not isVertical
-    -- Also update direction flags to match H3z0UI's growth direction
-    if isVertical then
-        BuffBarCooldownViewer.layoutFramesGoingRight = growFromBottom  -- growUp becomes growRight
-        BuffBarCooldownViewer.layoutFramesGoingUp = false
-    else
-        BuffBarCooldownViewer.layoutFramesGoingRight = true
-        BuffBarCooldownViewer.layoutFramesGoingUp = growFromBottom
-    end
+    -- NOTE (taint fix): we no longer write isHorizontal / layoutFramesGoingRight / layoutFramesGoingUp
+    -- onto Blizzard's BuffBarCooldownViewer. Writing to that frame's table from addon code tainted it and
+    -- caused "attempted to index a table that cannot be accessed while tainted" in CooldownViewer.lua.
+    -- Our bar positioning below (SetPoint on each bar) already overrides Blizzard's layout.
 
     -- For vertical bars, swap dimensions (height setting becomes width)
     local effectiveBarWidth, effectiveBarHeight
@@ -1292,33 +1282,8 @@ LayoutBuffBars = function()
 
     -- Update container dimensions to prevent Blizzard's Layout() from resizing and causing drift
     -- Both vertical and horizontal set ONE dimension fixed, letting bars overflow the other dimension
-    -- This prevents CENTER-anchor drift because container size never changes with bar count
-    if isVertical then
-        SuppressLayout()
-
-        -- Only set HEIGHT, leave width alone so bars overflow horizontally
-        local currentWidth = BuffBarCooldownViewer:GetWidth()
-        BuffBarCooldownViewer:SetSize(currentWidth, H3z0UICore:PixelRound(effectiveBarHeight))
-
-        -- Ensure isHorizontal flag stays correct for subsequent Layout() calls
-        BuffBarCooldownViewer.isHorizontal = false
-
-        UnsuppressLayout()
-    else
-        -- HORIZONTAL BARS: Fix BOTH dimensions to single bar size
-        -- Unlike vertical (which only fixes HEIGHT), horizontal needs both because
-        -- bars anchor to BOTTOM/TOP edges - if HEIGHT changes, those edges move
-        SuppressLayout()
-
-        -- Set both dimensions to single bar size - bars overflow, edges stay fixed
-        BuffBarCooldownViewer:SetSize(H3z0UICore:PixelRound(effectiveBarWidth), H3z0UICore:PixelRound(effectiveBarHeight))
-
-        -- Ensure Blizzard's Layout() uses correct flags
-        BuffBarCooldownViewer.isHorizontal = true
-        BuffBarCooldownViewer.layoutFramesGoingUp = growFromBottom
-
-        UnsuppressLayout()
-    end
+    -- NOTE (taint fix): viewer:SetSize() removed. Resizing Blizzard's viewer from addon code fires its
+    -- OnSizeChanged handler in tainted execution, which tainted the aura table of the Tracked Bars viewer.
 
     isBarLayoutRunning = false
 end
@@ -1417,39 +1382,24 @@ end
 ---------------------------------------------------------------------------
 
 local initialized = false
+local iconOnUpdateHooked, barOnUpdateHooked = false, false
+local iconAuraHook, iconRescanPending
 
 local function Initialize()
     if initialized then return end
     initialized = true
 
-    -- CRITICAL: Set isHorizontal IMMEDIATELY at login, before combat can start
-    -- This prevents Blizzard's Layout() from using wrong axis if first buff appears during combat
-    if BuffBarCooldownViewer and not InCombatLockdown() then
-        local settings = GetTrackedBarSettings()
-        local isVertical = (settings.orientation == "vertical")
-        local growFromBottom = (settings.growUp ~= false)
-
-        BuffBarCooldownViewer.isHorizontal = not isVertical
-        if isVertical then
-            BuffBarCooldownViewer.layoutFramesGoingRight = growFromBottom
-            BuffBarCooldownViewer.layoutFramesGoingUp = false
-        else
-            BuffBarCooldownViewer.layoutFramesGoingRight = true
-            BuffBarCooldownViewer.layoutFramesGoingUp = growFromBottom
-        end
-    end
-
     -- Force populate buff icons first (teaches the viewer what spells to show)
     ForcePopulateBuffIcons()
 
     -- OnUpdate polling at 0.05s (20 FPS) - works alongside UNIT_AURA event detection
-    if BuffIconCooldownViewer and not BuffIconCooldownViewer.__h3z0uiOnUpdateHooked then
-        BuffIconCooldownViewer.__h3z0uiOnUpdateHooked = true
-        BuffIconCooldownViewer.__h3z0uiElapsed = 0
+    if BuffIconCooldownViewer and not iconOnUpdateHooked then
+        iconOnUpdateHooked = true
+        local iconElapsed = 0
         BuffIconCooldownViewer:HookScript("OnUpdate", function(self, elapsed)
-            self.__h3z0uiElapsed = (self.__h3z0uiElapsed or 0) + elapsed
-            if self.__h3z0uiElapsed > 0.05 then  -- 20 FPS polling - hash prevents over-layout
-                self.__h3z0uiElapsed = 0
+            iconElapsed = iconElapsed + elapsed
+            if iconElapsed > 0.05 then  -- 20 FPS polling - hash prevents over-layout
+                iconElapsed = 0
                 if self:IsShown() then
                     CheckIconChanges()
                 end
@@ -1457,13 +1407,13 @@ local function Initialize()
         end)
     end
 
-    if BuffBarCooldownViewer and not BuffBarCooldownViewer.__h3z0uiOnUpdateHooked then
-        BuffBarCooldownViewer.__h3z0uiOnUpdateHooked = true
-        BuffBarCooldownViewer.__h3z0uiElapsed = 0
+    if BuffBarCooldownViewer and not barOnUpdateHooked then
+        barOnUpdateHooked = true
+        local barElapsed = 0  -- kept local: never write state onto Blizzard's frame table
         BuffBarCooldownViewer:HookScript("OnUpdate", function(self, elapsed)
-            self.__h3z0uiElapsed = (self.__h3z0uiElapsed or 0) + elapsed
-            if self.__h3z0uiElapsed > 0.05 then  -- 20 FPS for bars
-                self.__h3z0uiElapsed = 0
+            barElapsed = barElapsed + elapsed
+            if barElapsed > 0.05 then  -- 20 FPS for bars
+                barElapsed = 0
                 if self:IsShown() then
                     CheckBarChanges()
                 end
@@ -1507,39 +1457,21 @@ local function Initialize()
         end)
     end
 
-    -- FEAT-007: Hook RefreshLayout to correct isHorizontal after Blizzard sets it
-    -- Blizzard's RefreshLayout() sets isHorizontal based on IsHorizontal() (always true for BuffBar)
-    -- then calls Layout(). We hook RefreshLayout to fix isHorizontal right before Layout() runs.
-    -- Using hooksecurefunc is safer than replacing methods - avoids breaking Blizzard's code paths.
-    if BuffBarCooldownViewer and BuffBarCooldownViewer.RefreshLayout then
-        hooksecurefunc(BuffBarCooldownViewer, "RefreshLayout", function(self)
-            local settings = GetTrackedBarSettings()
-            if settings.enabled and settings.orientation == "vertical" then
-                -- Blizzard just set isHorizontal=true, we need to fix it
-                -- But RefreshLayout already called Layout(), so we just ensure
-                -- the flag is correct for any subsequent Layout() calls
-                self.isHorizontal = false
-                self.layoutFramesGoingRight = settings.growUp ~= false  -- growUp becomes growRight
-                self.layoutFramesGoingUp = false
-            end
-        end)
-    end
-
     ---------------------------------------------------------------------------
     -- EVENT-BASED UPDATES: UNIT_AURA hook for immediate buff change detection
     -- (Replaces polling as primary detection - polling becomes fallback only)
     ---------------------------------------------------------------------------
 
-    if BuffIconCooldownViewer and not BuffIconCooldownViewer.__h3z0uiAuraHook then
-        BuffIconCooldownViewer.__h3z0uiAuraHook = CreateFrame("Frame")
-        BuffIconCooldownViewer.__h3z0uiAuraHook:RegisterEvent("UNIT_AURA")
-        BuffIconCooldownViewer.__h3z0uiAuraHook:SetScript("OnEvent", function(_, event, unit)
+    if BuffIconCooldownViewer and not iconAuraHook then
+        iconAuraHook = CreateFrame("Frame")
+        iconAuraHook:RegisterEvent("UNIT_AURA")
+        iconAuraHook:SetScript("OnEvent", function(_, event, unit)
             if unit == "player" and BuffIconCooldownViewer:IsShown() then
                 -- Debounce: only queue one rescan per 0.1s window
-                if not BuffIconCooldownViewer.__h3z0uiRescanPending then
-                    BuffIconCooldownViewer.__h3z0uiRescanPending = true
+                if not iconRescanPending then
+                    iconRescanPending = true
                     C_Timer.After(0.1, function()
-                        BuffIconCooldownViewer.__h3z0uiRescanPending = nil
+                        iconRescanPending = nil
                         -- Re-check visibility after timer (viewer may have hidden)
                         if BuffIconCooldownViewer:IsShown() then
                             if isIconLayoutRunning then return end

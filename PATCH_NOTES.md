@@ -1,5 +1,8 @@
 # H3z0 UI - Patch Notes
 
+## 0.22.13 - Housing button
+- Added a Housing button (own house icon) to the Bottom Bar's Menu Icons, next to the Great Vault. Click opens the Housing Dashboard.
+
 ## 0.22.12 - Consumable check aura fix
 - Fixed `GetAuraDataByIndex(): Auras cannot be accessed when secret while tainted by 'H3z0UI'` (consumablecheck.lua).
 - Player buff scans are now wrapped so a blocked aura read can never throw an error.

@@ -107,6 +107,18 @@ local function SlotDetail(rowKey, level)
     return "Tier " .. level
 end
 
+local function OpenHousing()
+    if InCombatLockdown() then return end
+    if C_AddOns and C_AddOns.LoadAddOn then pcall(C_AddOns.LoadAddOn, "Blizzard_HousingDashboard") end
+    if HousingFramesUtil and HousingFramesUtil.ToggleHousingDashboard then
+        pcall(HousingFramesUtil.ToggleHousingDashboard)
+    elseif ToggleHousingDashboard then
+        pcall(ToggleHousingDashboard)
+    elseif HousingMicroButton and HousingMicroButton.Click then
+        pcall(HousingMicroButton.Click, HousingMicroButton)
+    end
+end
+
 local function OpenVault()
     if InCombatLockdown() then return end
     if C_AddOns and C_AddOns.LoadAddOn then pcall(C_AddOns.LoadAddOn, "Blizzard_WeeklyRewards") end
@@ -215,6 +227,7 @@ local MICRO = {
       click = function() ToggleEncounterJournal() end },
     { name = "Collections", custom = "collections", file = "Interface\\Icons\\Ability_Mount_RidingHorse", atlas = "UI-HUD-MicroMenu-Collections-Up", letter = "P",
       click = function() ToggleCollectionsJournal() end },
+    { name = "Housing", custom = "housing", letter = "H", click = function() OpenHousing() end },
     { name = "Great Vault", custom = "vault", counter = "vault", letter = "V", click = function() OpenVault() end },
 }
 
@@ -228,7 +241,7 @@ end
 Datatexts:Register("micromenu", {
     displayName = "Menu Icons",
     category = "System",
-    description = "A row of icon buttons for the game menu, character, talents, achievements, quests, guild, social, group finder, adventure guide and collections",
+    description = "A row of icon buttons for the game menu, character, talents, achievements, quests, guild, social, group finder, adventure guide, collections, housing and the Great Vault",
 
     OnEnable = function(slotFrame, settings)
         local frame = CreateFrame("Frame", nil, slotFrame)

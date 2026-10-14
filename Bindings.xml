@@ -1,0 +1,7 @@
+<Bindings>
+  <Binding name="H3z0UI_TOGGLE_OPTIONS" category="H3z0UI">
+    if H3z0UI and H3z0UI.GUI then
+      H3z0UI.GUI:Toggle()
+    end
+  </Binding>
+</Bindings>

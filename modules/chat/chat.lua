@@ -65,7 +65,7 @@ local function StripDefaultTextures(chatFrame)
     if not frameName then return end
 
     for _, textureName in ipairs(CHAT_FRAME_TEXTURES) do
-        local texture = _G[frameName .. textureName]
+        local texture = _G[frameName .. textureName] or chatFrame[textureName]
         if texture and texture.SetTexture then
             texture:SetTexture(0)
             texture:SetAlpha(0)
@@ -990,9 +990,10 @@ local function SkinChatFrame(chatFrame)
     -- Mark as skinned
     skinnedFrames[chatFrame] = true
 
-    -- Apply glass effect
+    -- Always remove Blizzard's own chat background; the glass backdrop (if enabled) replaces it.
+    -- With "Chat Background Texture" off this gives the clean, fully transparent chat.
+    StripDefaultTextures(chatFrame)
     if settings.glass and settings.glass.enabled then
-        StripDefaultTextures(chatFrame)
         CreateGlassBackdrop(chatFrame)
     end
 
@@ -1039,7 +1040,24 @@ end
 ---------------------------------------------------------------------------
 -- Hook new chat window creation
 ---------------------------------------------------------------------------
+local function RestripAll()
+    local settings = GetSettings()
+    if not settings or not settings.enabled then return end
+    for chatFrame in pairs(skinnedFrames) do
+        StripDefaultTextures(chatFrame)
+    end
+end
+
 local function HookNewChatWindows()
+    -- Blizzard re-applies the background alpha on login, on fade in/out and when the opacity changes.
+    -- Strip again right after so the background does not come back until you click something.
+    for _, fnName in ipairs({"FCF_SetWindowAlpha", "FCF_FadeInChatFrame", "FCF_FadeOutChatFrame", "FCF_SetChatWindowFontSize", "FCF_DockUpdate"}) do
+        if _G[fnName] then
+            hooksecurefunc(fnName, function()
+                C_Timer.After(0, RestripAll)
+            end)
+        end
+    end
     -- Hook temporary windows (whispers, etc.)
     hooksecurefunc("FCF_OpenTemporaryWindow", function(...)
         C_Timer.After(0.1, function()
@@ -1137,6 +1155,7 @@ local function RefreshAll()
 
     -- Re-apply all styling if enabled
     if settings and settings.enabled then
+        RestripAll()
         SkinAllChatFrames()
         StyleAllChatTabs()
     end
@@ -1164,6 +1183,10 @@ eventFrame:SetScript("OnEvent", function(self, event)
 
             -- Hook for new chat windows
             HookNewChatWindows()
+
+            -- Blizzard finishes loading chat settings a bit later; strip/skin again
+            C_Timer.After(2, function() RestripAll() end)
+            C_Timer.After(5, function() RestripAll() end)
         end)
     end
 end)

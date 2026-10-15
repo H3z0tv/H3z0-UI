@@ -13,6 +13,7 @@
     <Script file="qol/bottombar.lua"/>
     <Script file="qol/handheld.lua"/>
     <Script file="qol/nameplates.lua"/>
+    <Script file="qol/partyframes.lua"/>
     <Script file="qol/setup.lua"/>
     <Script file="character/character.lua"/>
     <Script file="qol/skyriding.lua"/>

@@ -1,5 +1,26 @@
 # H3z0 UI - Patch Notes
 
+## 0.22.18 - Chat background after reload
+- Fixed the chat showing Blizzard's background again after /reload (until a button was clicked). With the glass background off, Blizzard's own chat background was never removed at login; it is now always stripped, and stripped again after Blizzard re-applies it (login, fade in/out, opacity changes).
+
+## 0.22.17 - H3z0 UI Party Frames
+- New own party frames: round portrait with class-colored ring (white when targeted), level badge, role icon, leader crown, class-colored name, health bar with abbreviated value, power bar and an aura row (debuffs red-bordered, stacks and swipes).
+- Secure unit buttons: click targets, right click opens the menu, works in combat. Members fade when out of range.
+- Settings in General & QoL > Party Frames (scale, spacing, grow up, sizes, colors, elements, auras, show yourself, hide Blizzard party frames). Shift+drag a frame to move the list, `/h3z0party test` previews, `/h3z0party reset` resets the position.
+- The Raid Control tab now sits on top of these party frames.
+
+## 0.22.16 - Raid Control moved to a party tab
+- Raid Control is now a small crown + arrow tab at the top-left of your party frames, shown only while you are in a 5-man party (hidden in raids and when solo). Click it to open the skinned panel (Ready Check, Role Check, Pull Timer, Cancel Pull, Convert to Raid).
+- Shift+drag the tab to move it; `/h3z0rc reset` puts it back. `/h3z0rc` still toggles the panel.
+- Removed the Raid Control button from the Bottom Bar Menu Icons.
+
+## 0.22.15 - Raid Control panel (works in party)
+- New movable Raid Control panel: Ready Check, Role Check, Pull Timer (custom seconds), Cancel Pull and Convert to Raid/Party. Works in a 5-man party, where Blizzard's own panel is not available.
+- Open it with the new crown "Raid Control" button in the Bottom Bar Menu Icons, or with /h3z0rc (or /raidcontrol). Drag it to move; the position and pull seconds are remembered.
+
+## 0.22.14 - Chat style presets
+- General & QoL > Chat: new "Chat Style" buttons at the top. "Clean (no background)" gives a transparent chat with outlined text and blue [HH:MM] timestamps; "Glass (default)" restores the dark see-through panel.
+
 ## 0.22.13 - Housing button
 - Added a Housing button (own house icon) to the Bottom Bar's Menu Icons, next to the Great Vault. Click opens the Housing Dashboard.
 

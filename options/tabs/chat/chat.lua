@@ -46,6 +46,53 @@ local function BuildChatTab(tabContent)
         enableInfo:SetJustifyH("LEFT")
         y = y - 20
 
+        -- SECTION: Chat Style (presets)
+        local styleHeader = GUI:CreateSectionHeader(tabContent, "Chat Style")
+        styleHeader:SetPoint("TOPLEFT", PADDING, y)
+        y = y - styleHeader.gap
+
+        local function ApplyChatPreset(kind)
+            chat.glass = chat.glass or {}
+            chat.editBox = chat.editBox or {}
+            chat.timestamps = chat.timestamps or {}
+            chat.font = chat.font or {}
+            if kind == "clean" then
+                -- Transparent chat, outlined text, blue [HH:MM] timestamps
+                chat.glass.enabled = false
+                chat.editBox.enabled = false
+                chat.font.forceOutline = true
+                chat.timestamps.enabled = true
+                chat.timestamps.format = "24h"
+                chat.timestamps.color = {0.2, 0.6, 1.0}
+                chat.hideButtons = true
+            else
+                -- Glass: the default H3z0 UI look
+                chat.glass.enabled = true
+                chat.glass.bgAlpha = 0.25
+                chat.glass.bgColor = {0, 0, 0}
+                chat.editBox.enabled = true
+                chat.font.forceOutline = false
+                chat.timestamps.enabled = false
+                chat.timestamps.color = {0.6, 0.6, 0.6}
+            end
+            RefreshChat()
+            do
+                print("|cff34D399H3z0 UI:|r Chat style applied (" .. (kind == "clean" and "Clean" or "Glass") .. "). Reopen this tab to see the updated settings below.")
+            end
+        end
+
+        local glassBtn = GUI:CreateButton(tabContent, "Glass (default)", 170, 26, function() ApplyChatPreset("glass") end)
+        glassBtn:SetPoint("TOPLEFT", PADDING, y)
+        local cleanBtn = GUI:CreateButton(tabContent, "Clean (no background)", 190, 26, function() ApplyChatPreset("clean") end)
+        cleanBtn:SetPoint("LEFT", glassBtn, "RIGHT", 10, 0)
+        y = y - 34
+
+        local styleInfo = GUI:CreateLabel(tabContent, "Clean: transparent chat, outlined text and blue timestamps. Glass: dark see-through panel. You can still fine-tune everything below.", 10, C.textMuted)
+        styleInfo:SetPoint("TOPLEFT", PADDING, y)
+        styleInfo:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+        styleInfo:SetJustifyH("LEFT")
+        y = y - 30
+
         -- SECTION: Intro Message
         local introHeader = GUI:CreateSectionHeader(tabContent, "Intro Message")
         introHeader:SetPoint("TOPLEFT", PADDING, y)

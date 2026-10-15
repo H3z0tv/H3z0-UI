@@ -28,6 +28,7 @@ local function CreateGeneralQoLPage(parent)
         {name = "Bottom Bar", builder = ns.H3z0UI_BottomBarOptions.BuildBottomBarTab},
         {name = "Steam Deck", builder = ns.H3z0UI_HandheldOptions.BuildHandheldTab},
         {name = "Nameplates", builder = ns.H3z0UI_NameplatesOptions.BuildNameplatesTab},
+        {name = "Party Frames", builder = ns.H3z0UI_PartyFramesOptions.BuildPartyFramesTab},
     })
 
     content:SetHeight(600)

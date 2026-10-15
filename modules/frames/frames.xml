@@ -7,4 +7,5 @@
     <Script file="buffbar.lua"/>
     <Script file="raidbuffs.lua"/>
     <Script file="totems.lua"/>
+    <Script file="partyframes.lua"/>
 </Ui>

@@ -1604,6 +1604,34 @@ local defaults = {
             },
         },
 
+        -- Party Frames (H3z0 UI own party frames: portrait ring, name, health/power, auras)
+        partyFrames = {
+            enabled = true,
+            hideBlizzard = true,       -- hide Blizzard's party frames while these are on
+            showPlayer = false,        -- also show yourself in the list
+            scale = 1.0,
+            spacing = 10,
+            growUp = false,
+            portraitSize = 46,
+            barWidth = 96,
+            healthHeight = 12,
+            powerHeight = 5,
+            fontSize = 10,
+            classColorName = true,
+            classColorHealth = false,
+            classColorRing = true,
+            showPower = true,
+            showRole = true,
+            showLevel = true,
+            showLeader = true,
+            rangeFade = true,
+            showAuras = true,
+            showBuffs = true,
+            showDebuffs = true,
+            auraSize = 20,
+            auraMax = 6,
+        },
+
         -- Hover Name (based on HoverName by MorphieBlossom, MIT)
         hoverName = {
             enabled = true,

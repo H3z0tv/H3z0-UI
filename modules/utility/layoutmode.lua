@@ -660,32 +660,39 @@ end
 ---------------------------------------------------------------------------
 local UF_SUB = { player = 2, target = 3, targettarget = 4, pet = 5, focus = 6, boss = 7 }
 local SETTINGS = {
-    party = { 1, 6 }, raidtab = { 1, 6 },
-    powerbar = { 3, 5, "Primary Class Resource Bar" },
-    secondarypowerbar = { 3, 5, "Secondary Class Resource Bar" },
-    totems = { 5, 5 },
-    combattimer = { 2, 1, "Combat Timer" },
-    mplus = { 7, 2, "H3z0 UI M+ Timer" },
-    minimap = { 6, 1 },
-    coords = { 1, 8 },
-    panel_bottombar = { 1, 3 },
+    party = { 4, 1 }, raidtab = { 4, 1 },
+    powerbar = { 5, 5, "Primary Class Resource Bar" },
+    secondarypowerbar = { 5, 5, "Secondary Class Resource Bar" },
+    totems = { 7, 5 },
+    combattimer = { 3, 1, "Combat Timer" },
+    mplus = { 9, 2, "H3z0 UI M+ Timer" },
+    minimap = { 8, 1 },
+    coords = { 1, 5 },
+    panel_bottombar = { 1, 2 },
 }
 for unit, sub in pairs(UF_SUB) do
-    SETTINGS["uf_" .. unit] = { 4, sub }
-    SETTINGS["cb_" .. unit] = { 4, sub, "Castbar" }
+    SETTINGS["uf_" .. unit] = { 6, sub }
+    SETTINGS["cb_" .. unit] = { 6, sub, "Castbar" }
 end
 for _, k in ipairs({ "ab1", "ab2", "ab3", "ab4", "ab5", "ab6", "ab7", "ab8", "abStance", "abPet" }) do
-    SETTINGS[k] = { 5, 3 }
+    SETTINGS[k] = { 7, 3 }
 end
 
 local function SettingsFor(el)
     if SETTINGS[el.key] then return SETTINGS[el.key] end
-    if el.key:match("^panel_") then return { 6, 2 } end
+    if el.key:match("^panel_") then return { 8, 2 } end
+    local S = Enum and Enum.EditModeSystem or {}
+    if el.sys and S.ObjectiveTracker and el.sys == S.ObjectiveTracker then
+        return { 9, 2, "Objective Tracker" }          -- Skinning & Autohide > Skinning
+    end
+    if el.sys and S.AuraFrame and el.sys == S.AuraFrame then
+        return { 3, 4 }                               -- General & QoL > Buff & Debuff
+    end
     if el.cdmIndex ~= nil then
         local I = Enum and Enum.EditModeCooldownViewerSystemIndices or {}
-        if el.cdmIndex == I.Essential then return { 3, 1 } end
-        if el.cdmIndex == I.Utility then return { 3, 2 } end
-        return { 3, 4 }
+        if el.cdmIndex == I.Essential then return { 5, 1 } end
+        if el.cdmIndex == I.Utility then return { 5, 2 } end
+        return { 5, 4 }
     end
 end
 
@@ -700,11 +707,7 @@ local function OpenSettings(el)
     -- Layout Mode stays open: the options window opens on top of the handles
     GUI:NavigateTo(where[1], where[2], where[3])
     local mf = GUI.MainFrame
-    if mf then
-        mf:SetFrameStrata("FULLSCREEN_DIALOG")
-        mf:Raise()
-        LM.raisedGUI = true
-    end
+    if mf then mf:Raise() end
 end
 
 local function OptionsOpen()
@@ -714,7 +717,9 @@ end
 
 local function CreateHandle(el)
     local h = CreateFrame("Button", nil, UIParent, "BackdropTemplate")
-    h:SetFrameStrata("DIALOG")
+    -- HIGH: above every frame it moves, below the options window (DIALOG), so the
+    -- options can open on top of Layout Mode without changing the window's layer
+    h:SetFrameStrata("HIGH")
     h:SetFrameLevel(200)
     h:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
     h:RegisterForDrag("LeftButton")
@@ -835,6 +840,7 @@ local function BlizzardSystemElements()
                     -- Cooldown Manager gets a handle even while it's hidden out of combat
                     showHidden = (CDM ~= nil and sys == CDM),
                     cdmIndex = (CDM ~= nil and sys == CDM) and idx or nil,
+                    sys = sys,
                     frame = function() return f end,
                     saveOffset = function(frame, dx, dy)
                         EM.SaveSystemOffset(sys, idx, frame, dx, dy)
@@ -1125,10 +1131,11 @@ function LM:Enter()
 end
 
 function LM:Exit()
-    if LM.raisedGUI then
+    -- older builds raised the options window's layer: put it back if needed
+    do
         local GUI = _G.H3z0UI and _G.H3z0UI.GUI
-        if GUI and GUI.MainFrame then GUI.MainFrame:SetFrameStrata("DIALOG") end
-        LM.raisedGUI = nil
+        local mf = GUI and GUI.MainFrame
+        if mf and mf:GetFrameStrata() ~= "DIALOG" then mf:SetFrameStrata("DIALOG") end
     end
     if not self.active then return end
     self.active = false

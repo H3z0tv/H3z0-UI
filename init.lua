@@ -125,6 +125,9 @@ function H3z0UI:SlashCommandOpen(input)
             print("|cFF56D1FFH3z0 UI:|r Layout Mode not loaded.")
         end
         return
+    elseif input and (input == "whatsnew" or input == "news" or input == "changelog") then
+        if _G.H3z0UI_ShowWhatsNew then _G.H3z0UI_ShowWhatsNew() end
+        return
     elseif input and input == "export" then
         if _G.H3z0UI_ExportLayout then _G.H3z0UI_ExportLayout() end
         return

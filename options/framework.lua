@@ -390,6 +390,8 @@ function GUI:ShowConfirmation(options)
         confirmDialog:SetSize(320, 160)
         confirmDialog:SetPoint("CENTER")
         confirmDialog:SetFrameStrata("FULLSCREEN_DIALOG")
+        if confirmDialog.SetFixedFrameStrata then confirmDialog:SetFixedFrameStrata(true) end  -- stays on top even if the options window changes layer
+        confirmDialog:SetFrameLevel(500)
         confirmDialog:SetFrameLevel(500)
         confirmDialog:EnableMouse(true)
         confirmDialog:SetMovable(true)
@@ -1794,6 +1796,26 @@ function GUI:CreateDropdown(parent, label, options, dbKey, dbTable, onChange)
     menuFrame:SetBackdropColor(0.08, 0.08, 0.08, 0.98)
     menuFrame:SetBackdropBorderColor(unpack(C.accent))
     menuFrame:SetFrameStrata("TOOLTIP")
+    if menuFrame.SetFixedFrameStrata then menuFrame:SetFixedFrameStrata(true) end  -- stays on top even if the options window changes layer
+    menuFrame:SetFrameLevel(500)
+    -- The list lives outside the (clipping, scrolling) options page so nothing on the
+    -- page can draw over it; it stays anchored under its dropdown and closes with it.
+    local function PinOnTop(self)
+        -- unlock, set the top layer, lock again (a locked layer can ignore SetFrameStrata)
+        if self.SetFixedFrameStrata then self:SetFixedFrameStrata(false) end
+        self:SetFrameStrata("TOOLTIP")
+        if self.SetFixedFrameStrata then self:SetFixedFrameStrata(true) end
+        self:SetFrameLevel(5000)   -- far above any widget level inside the options page
+    end
+    menuFrame:SetParent(UIParent)
+    PinOnTop(menuFrame)
+    menuFrame:HookScript("OnShow", function(self)
+        local es, us = dropdown:GetEffectiveScale(), UIParent:GetEffectiveScale()
+        if es and us and us > 0 then self:SetScale(es / us) end
+        PinOnTop(self)
+        self:Raise()
+    end)
+    dropdown:HookScript("OnHide", function() menuFrame:Hide() end)
     menuFrame:Hide()
     
     local menuButtons = {}
@@ -2044,6 +2066,26 @@ function GUI:CreateDropdownFullWidth(parent, label, options, dbKey, dbTable, onC
     menuFrame:SetBackdropColor(0.08, 0.08, 0.08, 0.98)
     menuFrame:SetBackdropBorderColor(unpack(C.accent))
     menuFrame:SetFrameStrata("TOOLTIP")
+    if menuFrame.SetFixedFrameStrata then menuFrame:SetFixedFrameStrata(true) end  -- stays on top even if the options window changes layer
+    menuFrame:SetFrameLevel(500)
+    -- The list lives outside the (clipping, scrolling) options page so nothing on the
+    -- page can draw over it; it stays anchored under its dropdown and closes with it.
+    local function PinOnTop(self)
+        -- unlock, set the top layer, lock again (a locked layer can ignore SetFrameStrata)
+        if self.SetFixedFrameStrata then self:SetFixedFrameStrata(false) end
+        self:SetFrameStrata("TOOLTIP")
+        if self.SetFixedFrameStrata then self:SetFixedFrameStrata(true) end
+        self:SetFrameLevel(5000)   -- far above any widget level inside the options page
+    end
+    menuFrame:SetParent(UIParent)
+    PinOnTop(menuFrame)
+    menuFrame:HookScript("OnShow", function(self)
+        local es, us = dropdown:GetEffectiveScale(), UIParent:GetEffectiveScale()
+        if es and us and us > 0 then self:SetScale(es / us) end
+        PinOnTop(self)
+        self:Raise()
+    end)
+    dropdown:HookScript("OnHide", function() menuFrame:Hide() end)
     menuFrame:Hide()
     
     local buttonHeight = 22
@@ -2876,6 +2918,26 @@ function GUI:CreateFormDropdown(parent, label, options, dbKey, dbTable, onChange
     menuFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.98)
     menuFrame:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
     menuFrame:SetFrameStrata("TOOLTIP")
+    if menuFrame.SetFixedFrameStrata then menuFrame:SetFixedFrameStrata(true) end  -- stays on top even if the options window changes layer
+    menuFrame:SetFrameLevel(500)
+    -- The list lives outside the (clipping, scrolling) options page so nothing on the
+    -- page can draw over it; it stays anchored under its dropdown and closes with it.
+    local function PinOnTop(self)
+        -- unlock, set the top layer, lock again (a locked layer can ignore SetFrameStrata)
+        if self.SetFixedFrameStrata then self:SetFixedFrameStrata(false) end
+        self:SetFrameStrata("TOOLTIP")
+        if self.SetFixedFrameStrata then self:SetFixedFrameStrata(true) end
+        self:SetFrameLevel(5000)   -- far above any widget level inside the options page
+    end
+    menuFrame:SetParent(UIParent)
+    PinOnTop(menuFrame)
+    menuFrame:HookScript("OnShow", function(self)
+        local es, us = dropdown:GetEffectiveScale(), UIParent:GetEffectiveScale()
+        if es and us and us > 0 then self:SetScale(es / us) end
+        PinOnTop(self)
+        self:Raise()
+    end)
+    dropdown:HookScript("OnHide", function() menuFrame:Hide() end)
     menuFrame:SetClipsChildren(true)
     menuFrame:Hide()
 
@@ -3590,6 +3652,8 @@ function GUI:ShowLinkPopup(label, url)
         popup:SetSize(400, 104)
         popup:SetPoint("CENTER", 0, 120)
         popup:SetFrameStrata("FULLSCREEN_DIALOG")
+        if popup.SetFixedFrameStrata then popup:SetFixedFrameStrata(true) end  -- stays on top even if the options window changes layer
+        popup:SetFrameLevel(500)
         popup:SetFrameLevel(600)
         popup:SetMovable(true)
         popup:SetClampedToScreen(true)
@@ -4817,6 +4881,8 @@ function GUI:ShowExportPopup(title, exportString)
         popup:SetSize(500, 220)
         popup:SetPoint("CENTER")
         popup:SetFrameStrata("FULLSCREEN_DIALOG")
+        if popup.SetFixedFrameStrata then popup:SetFixedFrameStrata(true) end  -- stays on top even if the options window changes layer
+        popup:SetFrameLevel(500)
         popup:SetFrameLevel(500)
         popup:SetMovable(true)
         popup:EnableMouse(true)
@@ -4930,6 +4996,8 @@ function GUI:ShowImportPopup(config)
         popup:SetSize(500, 250)
         popup:SetPoint("CENTER")
         popup:SetFrameStrata("FULLSCREEN_DIALOG")
+        if popup.SetFixedFrameStrata then popup:SetFixedFrameStrata(true) end  -- stays on top even if the options window changes layer
+        popup:SetFrameLevel(500)
         popup:SetFrameLevel(500)
         popup:SetMovable(true)
         popup:EnableMouse(true)

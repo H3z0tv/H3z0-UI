@@ -15,7 +15,7 @@ local function BuildQuickAccessTab(tabContent)
     local PADDING = Shared.PADDING
     local db = Shared.GetDB()
 
-    GUI:SetSearchContext({tabIndex = 2, tabName = "General & QoL", subTabIndex = 12, subTabName = "Quick Access"})
+    GUI:SetSearchContext({tabIndex = 3, tabName = "General & QoL", subTabIndex = 12, subTabName = "Quick Access"})
 
     local qa = db and db.quickAccess
     if not qa then return end

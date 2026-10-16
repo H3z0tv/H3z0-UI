@@ -397,6 +397,43 @@ local function ScheduleBackdropUpdate()
     end)
 end
 
+-- Blizzard's tracker fonts. Changing these font objects lets Blizzard lay the
+-- tracker out with the right sizes itself (correct line heights, indents and
+-- spacing) instead of resizing every line afterwards, which made the text messy.
+local TITLE_FONTS = { "ObjectiveTrackerHeaderFont", "ObjectiveTitleFont" }
+local LINE_FONTS  = { "ObjectiveTrackerLineFont", "ObjectiveFont" }
+local fontObjectsActive = false
+
+local function SetFontObjects(names, path, size)
+    local done = false
+    for _, n in ipairs(names) do
+        local fo = _G[n]
+        if fo and fo.SetFont then
+            fo:SetFont(path, size, FONT_FLAGS)
+            done = true
+        end
+    end
+    return done
+end
+
+local function RelayoutTracker()
+    local manager = _G.ObjectiveTrackerManager
+    if manager and manager.UpdateAll then
+        pcall(manager.UpdateAll, manager)
+    elseif _G.ObjectiveTracker_Update then
+        pcall(_G.ObjectiveTracker_Update)
+    end
+end
+
+local function ApplyFontObjects(path, titleSize, textSize)
+    local any = false
+    if titleSize and titleSize > 0 and SetFontObjects(TITLE_FONTS, path, titleSize) then any = true end
+    if textSize and textSize > 0 and SetFontObjects(LINE_FONTS, path, textSize) then any = true end
+    fontObjectsActive = any
+    if any then RelayoutTracker() end
+    return any
+end
+
 -- Reposition all lines within a block based on their actual heights
 -- This fixes overlap caused by font changes affecting text wrapping
 local function RepositionBlockLines(block)
@@ -442,6 +479,7 @@ end
 -- Debounced line repositioning for all visible blocks
 local pendingLineReposition = false
 local function ScheduleLineReposition()
+    if fontObjectsActive then return end
     if pendingLineReposition then return end
     pendingLineReposition = true
     -- Small delay to batch multiple style changes
@@ -566,6 +604,11 @@ end
 -- Apply font and color to a single line (objective text)
 local function StyleLine(line, fontPath, textFontSize, textColor)
     if not line then return end
+    if fontObjectsActive then
+        if line.Text then SafeSetTextColor(line.Text, textColor) end
+        if line.Dash then SafeSetTextColor(line.Dash, textColor) end
+        return
+    end
     if line.Text then
         line.Text:SetFont(fontPath, textFontSize, FONT_FLAGS)
         SafeSetTextColor(line.Text, textColor)
@@ -593,7 +636,7 @@ local function StyleBlock(block, fontPath, titleFontSize, textFontSize, titleCol
 
     -- Style block header (quest/achievement title)
     if titleFontSize > 0 and block.HeaderText then
-        block.HeaderText:SetFont(fontPath, titleFontSize, FONT_FLAGS)
+        if not fontObjectsActive then block.HeaderText:SetFont(fontPath, titleFontSize, FONT_FLAGS) end
         SafeSetTextColor(block.HeaderText, titleColor)
     end
 
@@ -678,7 +721,7 @@ local function HookLineCreation()
             local currentTitleSize = currentSettings and currentSettings.objectiveTrackerTitleFontSize or 0
             local currentTitleColor = currentSettings and currentSettings.objectiveTrackerTitleColor
             if currentTitleSize > 0 and self.HeaderText then
-                self.HeaderText:SetFont(GetFontPath(), currentTitleSize, FONT_FLAGS)
+                if not fontObjectsActive then self.HeaderText:SetFont(GetFontPath(), currentTitleSize, FONT_FLAGS) end
                 SafeSetTextColor(self.HeaderText, currentTitleColor)
             end
         end)
@@ -714,6 +757,7 @@ local function SkinObjectiveTracker()
     local moduleColor = settings.objectiveTrackerModuleColor
     local titleColor = settings.objectiveTrackerTitleColor
     local textColor = settings.objectiveTrackerTextColor
+    ApplyFontObjects(GetFontPath(), titleFontSize, textFontSize)
     ApplyFontStyles(moduleFontSize, titleFontSize, textFontSize, moduleColor, titleColor, textColor)
 
     -- Hook line creation to style new lines dynamically
@@ -854,6 +898,7 @@ local function RefreshObjectiveTracker()
     local moduleColor = settings.objectiveTrackerModuleColor
     local titleColor = settings.objectiveTrackerTitleColor
     local textColor = settings.objectiveTrackerTextColor
+    ApplyFontObjects(GetFontPath(), titleFontSize, textFontSize)
     ApplyFontStyles(moduleFontSize, titleFontSize, textFontSize, moduleColor, titleColor, textColor)
 
     -- Ensure hooks are in place

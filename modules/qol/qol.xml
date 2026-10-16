@@ -15,4 +15,6 @@
     <Script file="handheld_layout.lua"/>
     <Script file="handheld.lua"/>
     <Script file="setupwizard.lua"/>
+    <Script file="whatsnew_data.lua"/>
+    <Script file="whatsnew.lua"/>
 </Ui>

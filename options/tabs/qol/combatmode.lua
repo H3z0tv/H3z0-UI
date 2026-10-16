@@ -35,6 +35,8 @@ local function CMLoaded()
 end
 
 local function CMEnabled()
+    local hh = _G.H3z0UI_Handheld
+    if hh and hh.IsAddOnEnabled then return hh.IsAddOnEnabled(CM_NAME) end
     if C_AddOns and C_AddOns.GetAddOnEnableState then
         local state = C_AddOns.GetAddOnEnableState(CM_NAME, UnitName("player"))
         return state and state > 0
@@ -100,7 +102,10 @@ local function BuildCombatModeTab(tabContent)
     local toggleBtn
     toggleBtn = GUI:CreateButton(tabContent, "Enable / Disable Combat Mode", 220, 28, function()
         if not CMInstalled() then Refresh() return end
-        if CMEnabled() then
+        local hh = _G.H3z0UI_Handheld
+        if hh and hh.SetAddOnEnabled then
+            hh.SetAddOnEnabled(CM_NAME, not CMEnabled())
+        elseif CMEnabled() then
             C_AddOns.DisableAddOn(CM_NAME)
         else
             C_AddOns.EnableAddOn(CM_NAME)

@@ -2,7 +2,7 @@
     H3z0UI Options - H3z0 Features (first sidebar tab)
 
     Everything H3z0 UI added on top of the base addon, in one place:
-      Combat Mode, Bottom Bar, Steam Deck + PC Controller, Nameplates, Party Frames (moved from General & QoL)
+      Combat Mode, Bottom Bar, Steam Deck + PC Controller (moved from General & QoL)
       Portraits     - frame style (round / docked), classic unit frame portraits, party portraits
       Layout & Bars - Layout Mode, Compact Action Bars
       Map           - minimap coordinates
@@ -102,7 +102,7 @@ end
 -- PORTRAITS
 ---------------------------------------------------------------------------
 local function BuildPortraits(tabContent)
-    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 1, subTabName = "Portraits"})
+    GUI:SetSearchContext({tabIndex = 6, tabName = "Unit Frames", subTabIndex = 8, subTabName = "Portraits"})
     local b = Builder(tabContent)
     local db = Shared.GetDB()
 
@@ -182,7 +182,7 @@ end
 -- LAYOUT & BARS
 ---------------------------------------------------------------------------
 local function BuildLayout(tabContent)
-    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 7, subTabName = "Layout & Bars"})
+    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 4, subTabName = "Layout & Bars"})
     local b = Builder(tabContent)
 
     b.Section("Layout Mode")
@@ -221,7 +221,7 @@ end
 -- MAP
 ---------------------------------------------------------------------------
 local function BuildMap(tabContent)
-    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 8, subTabName = "Map"})
+    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 5, subTabName = "Map"})
     local b = Builder(tabContent)
     local db = Shared.GetDB()
     local mm = db and db.minimap
@@ -259,20 +259,26 @@ end
 -- EXTRAS
 ---------------------------------------------------------------------------
 local function BuildExtras(tabContent)
-    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 9, subTabName = "Extras"})
+    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 6, subTabName = "Extras"})
     local b = Builder(tabContent)
     local db = Shared.GetDB()
 
     local pf = db and db.partyFrames
     if pf then
         b.Section("Party")
-        b.Info("Ready check ticks show on the party frame portraits (green = ready, red = not ready) and fade out after the check. Blizzard's raid manager tab on the left edge is hidden in a party when \"Hide Blizzard Party Frames\" is on (Party Frames tab).", 46)
+        b.Info("Ready check ticks show on the party frame portraits (green = ready, red = not ready) and fade out after the check. Blizzard's raid manager tab on the left edge is hidden in a party when \"Hide Blizzard Party Frames\" is on (Party Frames page).", 46)
     end
 
     b.Section("WoW: Forever")
     b.Info("On WoW: Forever, H3z0 UI hides the gryphons and bar art, and the character window stays Blizzard's own with item levels on each slot plus your equipped / overall item level.", 34)
     local client = ns.Client
     b.Info("Running on: " .. ((client and client.isForever) and "WoW: Forever" or "Midnight"), 22, C.text)
+
+    b.Section("What's New")
+    b.Info("The list of what's new and what's fixed opens once after every update. Open it again here.", 22)
+    b.Button("What's New", "Open", 140, function()
+        if _G.H3z0UI_ShowWhatsNew then _G.H3z0UI_ShowWhatsNew() end
+    end)
 
     b.Section("Setup Wizard")
     b.Info("Run the setup again: PC or Steam Deck, nameplate addon, features and the extras (coordinates, party frames, combat timer, M+ timer, consumables, crosshair, totems, skyriding).", 34)
@@ -281,7 +287,7 @@ local function BuildExtras(tabContent)
     end)
 
     b.Section("Chat Commands")
-    b.Info("/h3z0ui layout  -  Layout Mode (also the Esc menu Edit Mode button)\n/h3z0ui blizzedit  -  Blizzard Edit Mode (size settings only)\n/h3z0ui cdm  -  Cooldown Manager not showing? check and repair\n/h3z0ui export  /  import  -  share a layout code\n/h3z0ui style  -  Frame Style on/off\n/h3z0ui bars  -  Compact Action Bars on/off\n/h3z0ui coords  -  Map coordinates on/off\n/h3z0ui controller  -  PC Controller on/off\n/h3z0ui deck  -  Handheld Mode on/off\n/h3z0ui setup  -  Setup Wizard", 166, C.text)
+    b.Info("/h3z0ui layout  -  Layout Mode (also the Esc menu Edit Mode button)\n/h3z0ui blizzedit  -  Blizzard Edit Mode (size settings only)\n/h3z0ui cdm  -  Cooldown Manager not showing? check and repair\n/h3z0ui export  /  import  -  share a layout code\n/h3z0ui style  -  Frame Style on/off\n/h3z0ui bars  -  Compact Action Bars on/off\n/h3z0ui coords  -  Map coordinates on/off\n/h3z0ui controller  -  PC Controller on/off\n/h3z0ui deck  -  Handheld Mode on/off\n/h3z0ui whatsnew  -  What's New window\n/h3z0ui setup  -  Setup Wizard", 182, C.text)
 
     b.Finish()
 end
@@ -297,12 +303,9 @@ end
 local function CreateFeaturesPage(parent)
     local scroll, content = Shared.CreateScrollableContent(parent)
     GUI:CreateSubTabs(content, {
-        { name = "Portraits", builder = BuildPortraits },
         { name = "Combat Mode", builder = function(c) Sub(ns.H3z0UI_CombatModeOptions, "BuildCombatModeTab", c) end },
         { name = "Bottom Bar", builder = function(c) Sub(ns.H3z0UI_BottomBarOptions, "BuildBottomBarTab", c) end },
         { name = "Steam Deck + PC Controller", builder = function(c) Sub(ns.H3z0UI_HandheldOptions, "BuildHandheldTab", c) end },
-        { name = "Nameplates", builder = function(c) Sub(ns.H3z0UI_NameplatesOptions, "BuildNameplatesTab", c) end },
-        { name = "Party Frames", builder = function(c) Sub(ns.H3z0UI_PartyFramesOptions, "BuildPartyFramesTab", c) end },
         { name = "Layout & Bars", builder = BuildLayout },
         { name = "Map", builder = BuildMap },
         { name = "Extras", builder = BuildExtras },
@@ -313,4 +316,5 @@ end
 
 ns.H3z0UI_FeaturesOptions = {
     CreateFeaturesPage = CreateFeaturesPage,
+    BuildPortraits = BuildPortraits,   -- shown as Unit Frames > Portraits
 }

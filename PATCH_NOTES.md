@@ -1,5 +1,12 @@
 # H3z0 UI - Patch Notes
 
+## 0.23.1 - Fixes and menu order
+- Menu order: **Nameplates** and **Party Frames** are their own pages in the sidebar (after H3z0 Features and after General & QoL), and **Portraits** is a tab in Unit Frames.
+- **What's New window**: opens once after each update with what's new and what's fixed (not on a fresh install). `/h3z0ui whatsnew` or H3z0 Features > Extras opens it again. Entries live in modules/qol/whatsnew_data.lua.
+- Fixed: Objective Tracker skin text overlapping / misplaced after changing its font sizes. The sizes now go into Blizzard's own tracker fonts, so Blizzard lays the tracker out correctly (no more manual line moving). Layout Mode: right-click on the Objective Tracker opens its skin settings, buffs/debuffs open Buff & Debuff.
+- Fixed: dropdown lists in the options (e.g. Bar Texture) opened behind switches and headers and could not be clicked after a right-click from Layout Mode. Dropdown lists and popups now always stay on top, and Layout Mode no longer changes the options window's layer.
+- Fixed: the ConsolePort / Action Combat Mode switch (Handheld Mode, PC Controller, Setup Wizard) did not work reliably on WoW: Forever. It now reads the addon state the way both clients answer, switches all ConsolePort modules together (ConsolePort_Bar, _Menu, ...), sets them for all characters and the current one, turns the game's gamepad support on for ConsolePort, and lists in chat what it switched.
+
 ## 0.23 - Layout Mode, Midnight + WoW: Forever
 Everything from 0.22.18 is unchanged (same menu, same frames, same sizes). New:
 - **Share layouts**: Export / Import buttons in the Layout Mode toolbar and in H3z0 Features > Layout & Bars (`/h3z0ui export`, `/h3z0ui import`). One code holds every frame position for PC and Deck, Blizzard frames included. The H3z0 default layout (layout_default.lua) is applied automatically the first time someone runs the addon (new installs only; existing setups are never overwritten).

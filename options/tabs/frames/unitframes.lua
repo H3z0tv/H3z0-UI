@@ -52,7 +52,7 @@ local function CreateUnitFramesPage(parent)
         local ufdb = GetUFDB()
 
         -- Set search context for auto-registration
-        GUI:SetSearchContext({tabIndex = 4, tabName = "Unit Frames", subTabIndex = 1, subTabName = "General"})
+        GUI:SetSearchContext({tabIndex = 6, tabName = "Unit Frames", subTabIndex = 1, subTabName = "General"})
 
         if not ufdb then
             local info = GUI:CreateLabel(tabContent, "Unit frame settings not available - database not loaded", 12, C.textMuted)
@@ -129,7 +129,7 @@ local function CreateUnitFramesPage(parent)
         end)
         y = y - FORM_ROW - 10
 
-        local featNote = GUI:CreateLabel(tabContent, "Frame Style (round / docked portraits), all portrait settings, Layout Mode and Compact Action Bars are in the H3z0 Features tab.", 11, C.textMuted)
+        local featNote = GUI:CreateLabel(tabContent, "Frame Style (round / docked portraits) and all portrait settings are in the Portraits tab. Layout Mode and Compact Action Bars are in H3z0 Features.", 11, C.textMuted)
         featNote:SetPoint("TOPLEFT", PAD, y)
         featNote:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         featNote:SetJustifyH("LEFT")
@@ -367,7 +367,7 @@ local function CreateUnitFramesPage(parent)
             boss = {index = 7, name = "Boss"},
         }
         local subTabInfo = unitSubTabs[unitKey] or {index = 2, name = unitKey}
-        GUI:SetSearchContext({tabIndex = 4, tabName = "Unit Frames", subTabIndex = subTabInfo.index, subTabName = subTabInfo.name})
+        GUI:SetSearchContext({tabIndex = 6, tabName = "Unit Frames", subTabIndex = subTabInfo.index, subTabName = subTabInfo.name})
 
         if not ufdb or not ufdb[unitKey] then
             local info = GUI:CreateLabel(tabContent, "Unit frame settings not available for " .. unitKey, 12, C.textMuted)
@@ -1673,12 +1673,12 @@ local function CreateUnitFramesPage(parent)
             y = y - FORM_ROW
         end
 
-        -- Portrait settings live in H3z0 Features > Portraits
+        -- Portrait settings live in Unit Frames > Portraits
         if unitKey == "player" or unitKey == "target" or unitKey == "focus" then
             local portraitHeader = GUI:CreateSectionHeader(tabContent, "Portrait")
             portraitHeader:SetPoint("TOPLEFT", PAD, y)
             y = y - portraitHeader.gap
-            local pNote = GUI:CreateLabel(tabContent, "All portrait settings are in H3z0 Features > Portraits.", 11, C.textMuted)
+            local pNote = GUI:CreateLabel(tabContent, "All portrait settings are in the Portraits tab (last tab above).", 11, C.textMuted)
             pNote:SetPoint("TOPLEFT", PAD, y)
             pNote:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
             pNote:SetJustifyH("LEFT")
@@ -1697,6 +1697,10 @@ local function CreateUnitFramesPage(parent)
         {name = "Pet", builder = function(c) BuildUnitTab(c, "pet") end},
         {name = "Focus", builder = function(c) BuildUnitTab(c, "focus") end},
         {name = "Boss", builder = function(c) BuildUnitTab(c, "boss") end},
+        {name = "Portraits", builder = function(c)
+            local F = ns.H3z0UI_FeaturesOptions
+            if F and F.BuildPortraits then F.BuildPortraits(c) end
+        end},
     })
 
     content:SetHeight(600)

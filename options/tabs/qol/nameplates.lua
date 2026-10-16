@@ -160,7 +160,7 @@ Build = function(tabContent)
     local db = Shared.GetDB()
     if not db then return end
 
-    GUI:SetSearchContext({tabIndex = 1, tabName = "H3z0 Features", subTabIndex = 5, subTabName = "Nameplates"})
+    GUI:SetSearchContext({tabIndex = 2, tabName = "Nameplates", subTabIndex = 1, subTabName = "Nameplates"})
 
     local boxes = {}
     local function SelectOnly(target)
@@ -272,6 +272,14 @@ Build = function(tabContent)
     tabContent:SetHeight(math.abs(y) + 50)
 end
 
+-- Own sidebar page (between H3z0 Features and General & QoL)
+local function CreateNameplatesPage(parent)
+    local scroll, content = ns.H3z0UI_Options.CreateScrollableContent(parent)
+    Build(content)
+    return scroll
+end
+
 ns.H3z0UI_NameplatesOptions = {
     BuildNameplatesTab = Build,
+    CreateNameplatesPage = CreateNameplatesPage,
 }

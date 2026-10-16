@@ -484,6 +484,8 @@ function H3z0UI_Anchoring_Options:CreateMultiAnchorPopover(anchorButton, setting
     popover:SetSize(420, 300)
     popover:SetPoint("TOPLEFT", anchorButton, "BOTTOMLEFT", 0, -5)
     popover:SetFrameStrata("FULLSCREEN_DIALOG")
+    if popover.SetFixedFrameStrata then popover:SetFixedFrameStrata(true) end  -- stays on top even if the options window changes layer
+    popover:SetFrameLevel(500)
     popover:SetFrameLevel(500)
     local pxPopover = GetPixelSizeOrDefault(popover, 1)
     popover:SetBackdrop({
@@ -673,6 +675,8 @@ function H3z0UI_Anchoring_Options:CreateMultiAnchorPopover(anchorButton, setting
     local clickFrame = CreateFrame("Frame", nil, UIParent)
     clickFrame:SetAllPoints(UIParent)
     clickFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    if clickFrame.SetFixedFrameStrata then clickFrame:SetFixedFrameStrata(true) end  -- stays on top even if the options window changes layer
+    clickFrame:SetFrameLevel(500)
     clickFrame:SetFrameLevel(499)
     clickFrame:EnableMouse(true)
     clickFrame:Hide()

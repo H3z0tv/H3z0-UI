@@ -746,7 +746,7 @@ local function CreateCDMSetupPage(parent)
         local FORM_ROW = 32
 
         -- Set search context for auto-registration
-        GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 3, subTabName = "Custom Entries"})
+        GUI:SetSearchContext({tabIndex = 5, tabName = "Cooldown Manager", subTabIndex = 3, subTabName = "Custom Entries"})
 
         -- Rebuild callback
         local function rebuildCustomEntries()
@@ -1020,6 +1020,8 @@ local function CreateCDMSetupPage(parent)
             barMenu:SetBackdropColor(0.08, 0.08, 0.08, 0.98)
             barMenu:SetBackdropBorderColor(C.accent[1], C.accent[2], C.accent[3], 1)
             barMenu:SetFrameStrata("TOOLTIP")
+            if barMenu.SetFixedFrameStrata then barMenu:SetFixedFrameStrata(true) end  -- stays on top even if the options window changes layer
+            barMenu:SetFrameLevel(500)
             barMenu:SetHeight(4 + #barDropdownOptions * 20)
             barMenu:Hide()
 
@@ -1328,7 +1330,7 @@ local function CreateCDMSetupPage(parent)
         local y = tabContent._currentY
 
         -- Set search context for auto-registration
-        GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 1, subTabName = "Essential"})
+        GUI:SetSearchContext({tabIndex = 5, tabName = "Cooldown Manager", subTabIndex = 1, subTabName = "Essential"})
 
         if db and db.ncdm and db.ncdm.essential then
             local ess = db.ncdm.essential
@@ -1396,7 +1398,7 @@ local function CreateCDMSetupPage(parent)
         local y = tabContent._currentY
 
         -- Set search context for auto-registration
-        GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 2, subTabName = "Utility"})
+        GUI:SetSearchContext({tabIndex = 5, tabName = "Cooldown Manager", subTabIndex = 2, subTabName = "Utility"})
 
         if db and db.ncdm and db.ncdm.utility then
             local util = db.ncdm.utility
@@ -1487,7 +1489,7 @@ local function CreateCDMSetupPage(parent)
         local y = -10
 
         -- Set search context for widget auto-registration
-        GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 4, subTabName = "Buff"})
+        GUI:SetSearchContext({tabIndex = 5, tabName = "Cooldown Manager", subTabIndex = 4, subTabName = "Buff"})
 
         -- Ensure buff settings exist with all required fields
         if not db.ncdm then db.ncdm = {} end
@@ -3387,7 +3389,7 @@ local function CreateCDMSetupPage(parent)
         local y = -10
 
         -- Set search context for widget auto-registration
-        GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 5, subTabName = "Class Resource Bar"})
+        GUI:SetSearchContext({tabIndex = 5, tabName = "Cooldown Manager", subTabIndex = 5, subTabName = "Class Resource Bar"})
 
         -- Ensure powerBar settings exist
         if not db.powerBar then db.powerBar = {} end

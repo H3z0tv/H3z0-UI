@@ -16,7 +16,7 @@ local function BuildPartyFramesTab(tabContent)
     local PADDING = Shared.PADDING
     local db = Shared.GetDB()
 
-    GUI:SetSearchContext({tabIndex = 1, tabName = "H3z0 Features", subTabIndex = 6, subTabName = "Party Frames"})
+    GUI:SetSearchContext({tabIndex = 4, tabName = "Party Frames", subTabIndex = 1, subTabName = "Party Frames"})
 
     local pf = db and db.partyFrames
     if not pf then return end
@@ -69,7 +69,7 @@ local function BuildPartyFramesTab(tabContent)
     Slider("Scale", 0.5, 2.0, 0.05, "scale")
     Slider("Spacing", 0, 40, 1, "spacing")
     Check("Grow Upwards", "growUp")
-    Info("Portrait size is in the Portraits tab.", 20)
+    Info("Portrait size is in Unit Frames > Portraits.", 20)
     Slider("Bar Width", 50, 220, 1, "barWidth")
     Slider("Health Bar Height", 6, 30, 1, "healthHeight")
     Slider("Power Bar Height", 2, 14, 1, "powerHeight")
@@ -97,6 +97,14 @@ local function BuildPartyFramesTab(tabContent)
     tabContent:SetHeight(math.abs(y) + 50)
 end
 
+-- Own sidebar page (between General & QoL and Cooldown Manager)
+local function CreatePartyFramesPage(parent)
+    local scroll, content = ns.H3z0UI_Options.CreateScrollableContent(parent)
+    BuildPartyFramesTab(content)
+    return scroll
+end
+
 ns.H3z0UI_PartyFramesOptions = {
-    BuildPartyFramesTab = BuildPartyFramesTab
+    BuildPartyFramesTab = BuildPartyFramesTab,
+    CreatePartyFramesPage = CreatePartyFramesPage,
 }

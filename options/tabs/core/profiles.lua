@@ -272,6 +272,8 @@ local function CreateSpecProfilesPage(parent)
     profileMenu:SetBackdropColor(0.1, 0.1, 0.1, 0.98)
     profileMenu:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
     profileMenu:SetFrameStrata("TOOLTIP")
+    if profileMenu.SetFixedFrameStrata then profileMenu:SetFixedFrameStrata(true) end  -- stays on top even if the options window changes layer
+    profileMenu:SetFrameLevel(500)
     profileMenu:Hide()
 
     local function BuildProfileMenu()

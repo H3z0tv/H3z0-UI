@@ -35,7 +35,7 @@ local function CreateCustomTrackersPage(parent)
     local db = GetDB()
 
     -- Set search context for auto-registration
-    GUI:SetSearchContext({tabIndex = 8, tabName = "Custom Trackers"})
+    GUI:SetSearchContext({tabIndex = 10, tabName = "Custom Trackers"})
 
     -- Ensure customTrackers.bars exists
     if not db.customTrackers then
@@ -199,7 +199,7 @@ local function CreateCustomTrackersPage(parent)
     -- Build tab content for a single tracker bar
     ---------------------------------------------------------------------------
     local function BuildTrackerBarTab(tabContent, barConfig, barIndex, subTabsRef)
-        GUI:SetSearchContext({tabIndex = 8, tabName = "Custom Trackers", subTabIndex = barIndex, subTabName = barConfig.name or ("Bar " .. barIndex)})
+        GUI:SetSearchContext({tabIndex = 10, tabName = "Custom Trackers", subTabIndex = barIndex, subTabName = barConfig.name or ("Bar " .. barIndex)})
         local y = -10
         local entryListFrame  -- Forward declaration for refresh callback
 
@@ -1523,7 +1523,7 @@ local function CreateCustomTrackersPage(parent)
     table.insert(tabDefs, {
         name = "Setup Custom Buff Tracking",
         builder = function(tabContent)
-            GUI:SetSearchContext({tabIndex = 8, tabName = "Custom Trackers", subTabIndex = 1, subTabName = "Spell Scanner"})
+            GUI:SetSearchContext({tabIndex = 10, tabName = "Custom Trackers", subTabIndex = 1, subTabName = "Spell Scanner"})
             local y = -10
             local scanner = H3z0UI.SpellScanner
             local scannedListFrame  -- Forward declaration for refresh

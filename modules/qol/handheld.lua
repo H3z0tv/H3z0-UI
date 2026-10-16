@@ -580,6 +580,16 @@ local function FindAddOns(key, exactOnly)
 end
 
 function Handheld._FindAddOnsByKey(key, exactOnly)
+    if key == "consoleport" then
+        local found = {}
+        local num = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or (GetNumAddOns and GetNumAddOns()) or 0
+        for i = 1, num do
+            local name
+            if C_AddOns and C_AddOns.GetAddOnInfo then name = C_AddOns.GetAddOnInfo(i) else name = GetAddOnInfo(i) end
+            if name and Clean(name):sub(1, #key) == key then found[#found + 1] = name end
+        end
+        return found
+    end
     local found = {}
     local num = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or (GetNumAddOns and GetNumAddOns()) or 0
     for i = 1, num do
@@ -597,24 +607,53 @@ end
 
 function Handheld.FindCombatModeAddOns() return FindAddOns("actioncombat") end
 
-local function IsAddOnOn(name)
-    local me = UnitName("player")
-    local state
-    if C_AddOns and C_AddOns.GetAddOnEnableState then
-        state = C_AddOns.GetAddOnEnableState(name, me)
-    elseif GetAddOnEnableState then
-        state = GetAddOnEnableState(me, name)
+-- Is the addon loaded right now? (reliable on Midnight and WoW: Forever)
+local function IsLoaded(name)
+    if C_AddOns and C_AddOns.IsAddOnLoaded then
+        local ok, loaded = pcall(C_AddOns.IsAddOnLoaded, name)
+        if ok then return loaded and true or false end
     end
-    return (tonumber(state) or 0) > 0
+    if IsAddOnLoaded then return IsAddOnLoaded(name) and true or false end
+    return false
 end
 
-local function SetAddOn(name, on)
-    if on then
-        if C_AddOns and C_AddOns.EnableAddOn then C_AddOns.EnableAddOn(name) elseif EnableAddOn then EnableAddOn(name) end
-    else
-        if C_AddOns and C_AddOns.DisableAddOn then C_AddOns.DisableAddOn(name) elseif DisableAddOn then DisableAddOn(name) end
+-- Enabled for the next load? Both argument orders exist (Midnight: name, character;
+-- older-style clients: character, name), so ask both ways and take the one that answers.
+local function IsAddOnOn(name)
+    local me = UnitName("player")
+    local function Try(fn, a, b)
+        local ok, v = pcall(fn, a, b)
+        v = ok and tonumber(v) or nil
+        return v
     end
+    local state
+    if C_AddOns and C_AddOns.GetAddOnEnableState then
+        state = Try(C_AddOns.GetAddOnEnableState, name, me) or Try(C_AddOns.GetAddOnEnableState, me, name)
+    end
+    if state == nil and GetAddOnEnableState then
+        state = Try(GetAddOnEnableState, me, name) or Try(GetAddOnEnableState, name, me)
+    end
+    if state == nil then return IsLoaded(name) end
+    return state > 0
 end
+
+-- Enable / disable for all characters AND this character (per-character settings
+-- would otherwise win on some clients)
+local function SetAddOn(name, on)
+    local me = UnitName("player")
+    local fn
+    if on then
+        fn = (C_AddOns and C_AddOns.EnableAddOn) or EnableAddOn
+    else
+        fn = (C_AddOns and C_AddOns.DisableAddOn) or DisableAddOn
+    end
+    if not fn then return end
+    pcall(fn, name)
+    if me then pcall(fn, name, me) end
+end
+
+function Handheld.IsAddOnEnabled(name) return IsAddOnOn(name) end
+function Handheld.SetAddOnEnabled(name, on) SetAddOn(name, on) end
 
 local function NumPresetLayouts()
     local n = 0
@@ -650,15 +689,25 @@ local function Say(msg) print("|cff34D399H3z0 UI:|r " .. msg) end
 -- or the mouse / keyboard set (Action Combat Mode on + ConsolePort off).
 -- Returns true when an addon was switched (needs a reload).
 local function ApplyAddonSet(controller)
-    local changed = false
-    for _, name in ipairs(FindAddOns("actioncombat")) do
-        if IsAddOnOn(name) == controller then SetAddOn(name, not controller) changed = true end
+    local changed, switched = false, {}
+    -- Always set the wanted state (cheap, and fixes a wrong saved state);
+    -- a reload is needed when what's loaded right now differs from what we want.
+    local function Want(name, on)
+        if IsAddOnOn(name) ~= on then switched[#switched + 1] = (on and "+" or "-") .. name end
+        SetAddOn(name, on)
+        if IsLoaded(name) ~= on then changed = true end
     end
-    local cp = FindAddOns("consoleport", true)
+    for _, name in ipairs(FindAddOns("actioncombat")) do Want(name, not controller) end
+    -- ConsolePort and all its modules (ConsolePort_Bar, ConsolePort_Menu, ...)
+    local cp = FindAddOns("consoleport")
     if controller and #cp == 0 then Say("ConsolePort is not installed.") end
-    for _, name in ipairs(cp) do
-        if IsAddOnOn(name) ~= controller then SetAddOn(name, controller) changed = true end
+    for _, name in ipairs(cp) do Want(name, controller) end
+    -- the game's own gamepad support must be on for ConsolePort
+    if controller and C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("GamePadEnable") == "0" then
+        pcall(C_CVar.SetCVar, "GamePadEnable", "1")
+        changed = true
     end
+    if #switched > 0 then Say("Addons: " .. table.concat(switched, ", ")) end
     return changed
 end
 

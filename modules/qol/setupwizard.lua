@@ -595,9 +595,9 @@ local function BuildDoneText(f, result)
     local hint = ""
     if np == "plater" then
         hint = IsLoaded("Plater") and "Press \"Import into Plater\" to load H3z0 UI's Plater profile (Plater switches to its own \"H3z0 UI\" profile and reloads)."
-            or "Install Plater, then run this wizard again (or use Options > H3z0 Features > Nameplates) to import the profile."
+            or "Install Plater, then run this wizard again (or use Options > Nameplates) to import the profile."
     elseif np == "platynator" or np == "bbp" then
-        hint = "Open Options > H3z0 Features > Nameplates, copy the string and use the addon's own Import."
+        hint = "Open Options > Nameplates, copy the string and use the addon's own Import."
     end
     f.doneHint:SetText(hint)
     f.importPlater:SetShown(np == "plater" and IsLoaded("Plater"))
@@ -839,7 +839,7 @@ local function CreateWizard()
             if StaticPopupDialogs and StaticPopupDialogs["H3Z0UI_PLATER_IMPORT"] then
                 StaticPopup_Show("H3Z0UI_PLATER_IMPORT")
             else
-                Say("Open Options > H3z0 Features > Nameplates and use \"Import into Plater\".")
+                Say("Open Options > Nameplates and use \"Import into Plater\".")
             end
         end)
         f.importPlater:SetPoint("BOTTOMLEFT", 0, 40)
@@ -847,7 +847,7 @@ local function CreateWizard()
             f:Hide()
             local gui = _G.H3z0UI and _G.H3z0UI.GUI
             if gui and gui.Show then gui:Show() end
-            Say("Go to |cffFFFF00H3z0 Features > Nameplates|r, copy the string and import it in the nameplate addon.")
+            Say("Go to |cffFFFF00Nameplates|r, copy the string and import it in the nameplate addon.")
         end)
         f.openOptions:SetPoint("BOTTOMLEFT", 0, 40)
         f.reloadBtn = MakeButton(page, "Reload UI now", 180, 30, false, ar, ag, ab, function()

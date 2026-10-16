@@ -14,7 +14,7 @@ end
 -- MIDNIGHT (12.0+) DETECTION
 ---------------------------------------------------------------------------
 
-local IS_MIDNIGHT = select(4, GetBuildInfo()) >= 120000
+local IS_MIDNIGHT = ((ns.Client and ns.Client.apiVersion) or select(4, GetBuildInfo())) >= 120000
 
 ---------------------------------------------------------------------------
 -- CONSTANTS

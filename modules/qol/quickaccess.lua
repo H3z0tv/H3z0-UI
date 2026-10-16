@@ -12,6 +12,9 @@
 -- When anything is unavailable the panel silently does less, never errors.
 ---------------------------------------------------------------------------
 local ADDON_NAME, ns = ...
+-- spec API (Midnight + WoW: Forever)
+local GetSpecializationRole = ns.Compat and ns.Compat.GetSpecializationRole or GetSpecializationRole
+local GetSpecialization = ns.Compat and ns.Compat.GetSpecialization or GetSpecialization
 local Helpers = ns.Helpers
 
 local issecretvalue = issecretvalue or function() return false end

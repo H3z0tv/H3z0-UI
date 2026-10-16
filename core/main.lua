@@ -2,6 +2,8 @@
 --- All branding changed to H3z0UI
 
 local ADDON_NAME, ns = ...
+-- spec API (Midnight + WoW: Forever)
+local GetSpecialization = ns.Compat and ns.Compat.GetSpecialization or GetSpecialization
 local H3z0UI = H3z0UI
 local ADDON_NAME = "H3z0UI"
 

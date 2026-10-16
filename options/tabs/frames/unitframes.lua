@@ -52,7 +52,7 @@ local function CreateUnitFramesPage(parent)
         local ufdb = GetUFDB()
 
         -- Set search context for auto-registration
-        GUI:SetSearchContext({tabIndex = 3, tabName = "Unit Frames", subTabIndex = 1, subTabName = "General"})
+        GUI:SetSearchContext({tabIndex = 4, tabName = "Unit Frames", subTabIndex = 1, subTabName = "General"})
 
         if not ufdb then
             local info = GUI:CreateLabel(tabContent, "Unit frame settings not available - database not loaded", 12, C.textMuted)
@@ -79,7 +79,7 @@ local function CreateUnitFramesPage(parent)
         editHeader:SetPoint("TOPLEFT", PAD, y)
         y = y - editHeader.gap
 
-        local editDesc = GUI:CreateLabel(tabContent, "Toggle Edit Mode to drag and reposition unit frames. Or use /h3z0ui editmode", 11, C.textMuted)
+        local editDesc = GUI:CreateLabel(tabContent, "Opens H3z0 UI Layout Mode to drag and reposition the unit frames (and everything else). Or use /h3z0ui layout", 11, C.textMuted)
         editDesc:SetPoint("TOPLEFT", PAD, y)
         editDesc:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         editDesc:SetJustifyH("LEFT")
@@ -93,6 +93,7 @@ local function CreateUnitFramesPage(parent)
 
         local editLabel = editContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         editLabel:SetPoint("LEFT", 0, 0)
+        if GUI.FitFormLabel then GUI.FitFormLabel(editLabel) end
         editLabel:SetText("Edit Mode")
         editLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -120,11 +121,19 @@ local function CreateUnitFramesPage(parent)
             self:SetBackdropBorderColor(C.border[1], C.border[2], C.border[3], 1)
         end)
         editModeBtn:SetScript("OnClick", function()
-            if _G.H3z0UI_ToggleUnitFrameEditMode then
+            if _G.H3z0UI_ToggleLayoutMode then
+                _G.H3z0UI_ToggleLayoutMode()
+            elseif _G.H3z0UI_ToggleUnitFrameEditMode then
                 _G.H3z0UI_ToggleUnitFrameEditMode()
             end
         end)
         y = y - FORM_ROW - 10
+
+        local featNote = GUI:CreateLabel(tabContent, "Frame Style (round / docked portraits), all portrait settings, Layout Mode and Compact Action Bars are in the H3z0 Features tab.", 11, C.textMuted)
+        featNote:SetPoint("TOPLEFT", PAD, y)
+        featNote:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        featNote:SetJustifyH("LEFT")
+        y = y - 30
 
         -- Store widget refs for BOTH sections (bidirectional conditional disable)
         local defaultWidgets = {}
@@ -358,7 +367,7 @@ local function CreateUnitFramesPage(parent)
             boss = {index = 7, name = "Boss"},
         }
         local subTabInfo = unitSubTabs[unitKey] or {index = 2, name = unitKey}
-        GUI:SetSearchContext({tabIndex = 3, tabName = "Unit Frames", subTabIndex = subTabInfo.index, subTabName = subTabInfo.name})
+        GUI:SetSearchContext({tabIndex = 4, tabName = "Unit Frames", subTabIndex = subTabInfo.index, subTabName = subTabInfo.name})
 
         if not ufdb or not ufdb[unitKey] then
             local info = GUI:CreateLabel(tabContent, "Unit frame settings not available for " .. unitKey, 12, C.textMuted)
@@ -402,6 +411,7 @@ local function CreateUnitFramesPage(parent)
 
         local previewLabel = previewContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         previewLabel:SetPoint("LEFT", 0, 0)
+        if GUI.FitFormLabel then GUI.FitFormLabel(previewLabel) end
         previewLabel:SetText("Frame Preview")
         previewLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -1069,6 +1079,7 @@ local function CreateUnitFramesPage(parent)
 
             local debuffPreviewLabel = debuffPreviewContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             debuffPreviewLabel:SetPoint("LEFT", 0, 0)
+            if GUI.FitFormLabel then GUI.FitFormLabel(debuffPreviewLabel) end
             debuffPreviewLabel:SetText("Debuff Preview")
             debuffPreviewLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -1255,6 +1266,7 @@ local function CreateUnitFramesPage(parent)
 
             local buffPreviewLabel = buffPreviewContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             buffPreviewLabel:SetPoint("LEFT", 0, 0)
+            if GUI.FitFormLabel then GUI.FitFormLabel(buffPreviewLabel) end
             buffPreviewLabel:SetText("Buff Preview")
             buffPreviewLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -1661,105 +1673,16 @@ local function CreateUnitFramesPage(parent)
             y = y - FORM_ROW
         end
 
-        -- Portrait section (player, target, focus only)
+        -- Portrait settings live in H3z0 Features > Portraits
         if unitKey == "player" or unitKey == "target" or unitKey == "focus" then
             local portraitHeader = GUI:CreateSectionHeader(tabContent, "Portrait")
             portraitHeader:SetPoint("TOPLEFT", PAD, y)
             y = y - portraitHeader.gap
-
-            -- Initialize defaults
-            if unitDB.showPortrait == nil then unitDB.showPortrait = false end
-            if unitDB.portraitSide == nil then
-                unitDB.portraitSide = (unitKey == "player") and "LEFT" or "RIGHT"
-            end
-            -- Migrate from portraitScale to portraitSize (pixels)
-            if unitDB.portraitSize == nil then
-                if unitDB.portraitScale then
-                    local frameHeight = unitDB.height or 40
-                    unitDB.portraitSize = math.floor(frameHeight * unitDB.portraitScale)
-                else
-                    unitDB.portraitSize = 40
-                end
-            end
-            if unitDB.portraitBorderSize == nil then unitDB.portraitBorderSize = 1 end
-
-            -- Show Portrait checkbox
-            local showPortraitCheck = GUI:CreateFormCheckbox(tabContent, "Show Portrait", "showPortrait", unitDB, RefreshUnit)
-            showPortraitCheck:SetPoint("TOPLEFT", PAD, y)
-            showPortraitCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            -- Portrait Side dropdown
-            local sideOptions = {
-                {value = "LEFT", text = "Left"},
-                {value = "RIGHT", text = "Right"},
-            }
-            local sideDropdown = GUI:CreateFormDropdown(tabContent, "Portrait Side", sideOptions, "portraitSide", unitDB, RefreshUnit)
-            sideDropdown:SetPoint("TOPLEFT", PAD, y)
-            sideDropdown:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            -- Portrait Size slider (pixels)
-            local sizeSlider = GUI:CreateFormSlider(tabContent, "Portrait Size (Pixels)", 20, 150, 1, "portraitSize", unitDB, RefreshUnit)
-            sizeSlider:SetPoint("TOPLEFT", PAD, y)
-            sizeSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            -- Portrait Border Size slider
-            local borderSlider = GUI:CreateFormSlider(tabContent, "Portrait Border", 0, 5, 1, "portraitBorderSize", unitDB, RefreshUnit)
-            borderSlider:SetPoint("TOPLEFT", PAD, y)
-            borderSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            -- Portrait Gap slider
-            if unitDB.portraitGap == nil then unitDB.portraitGap = 0 end
-            local gapSlider = GUI:CreateFormSlider(tabContent, "Portrait Gap", 0, 10, 1, "portraitGap", unitDB, RefreshUnit)
-            gapSlider:SetPoint("TOPLEFT", PAD, y)
-            gapSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            -- Portrait Offset X slider
-            if unitDB.portraitOffsetX == nil then unitDB.portraitOffsetX = 0 end
-            local portraitOffsetXSlider = GUI:CreateFormSlider(tabContent, "Portrait Offset X", -500, 500, 1, "portraitOffsetX", unitDB, RefreshUnit)
-            portraitOffsetXSlider:SetPoint("TOPLEFT", PAD, y)
-            portraitOffsetXSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            -- Portrait Offset Y slider
-            if unitDB.portraitOffsetY == nil then unitDB.portraitOffsetY = 0 end
-            local portraitOffsetYSlider = GUI:CreateFormSlider(tabContent, "Portrait Offset Y", -500, 500, 1, "portraitOffsetY", unitDB, RefreshUnit)
-            portraitOffsetYSlider:SetPoint("TOPLEFT", PAD, y)
-            portraitOffsetYSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            -- Initialize border color defaults
-            if unitDB.portraitBorderUseClassColor == nil then unitDB.portraitBorderUseClassColor = false end
-            if unitDB.portraitBorderColor == nil then unitDB.portraitBorderColor = { 0, 0, 0, 1 } end
-
-            -- Forward declare color picker for conditional enable/disable
-            local borderColorPicker
-
-            -- Use Class Color for Border checkbox
-            local useClassColorCheck = GUI:CreateFormCheckbox(tabContent, "Use Class Color for Border", "portraitBorderUseClassColor", unitDB, function(val)
-                RefreshUnit()
-                -- Enable/disable color picker based on toggle
-                if borderColorPicker and borderColorPicker.SetEnabled then
-                    borderColorPicker:SetEnabled(not val)
-                end
-            end)
-            useClassColorCheck:SetPoint("TOPLEFT", PAD, y)
-            useClassColorCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            -- Custom Border Color picker
-            borderColorPicker = GUI:CreateFormColorPicker(tabContent, "Border Color", "portraitBorderColor", unitDB, RefreshUnit)
-            borderColorPicker:SetPoint("TOPLEFT", PAD, y)
-            borderColorPicker:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            -- Initial state based on class color toggle
-            if borderColorPicker.SetEnabled then
-                borderColorPicker:SetEnabled(not unitDB.portraitBorderUseClassColor)
-            end
-            y = y - FORM_ROW
+            local pNote = GUI:CreateLabel(tabContent, "All portrait settings are in H3z0 Features > Portraits.", 11, C.textMuted)
+            pNote:SetPoint("TOPLEFT", PAD, y)
+            pNote:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            pNote:SetJustifyH("LEFT")
+            y = y - 24
         end
 
         tabContent:SetHeight(math.abs(y) + 30)

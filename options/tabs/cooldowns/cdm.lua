@@ -746,7 +746,7 @@ local function CreateCDMSetupPage(parent)
         local FORM_ROW = 32
 
         -- Set search context for auto-registration
-        GUI:SetSearchContext({tabIndex = 2, tabName = "Cooldown Manager", subTabIndex = 3, subTabName = "Custom Entries"})
+        GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 3, subTabName = "Custom Entries"})
 
         -- Rebuild callback
         local function rebuildCustomEntries()
@@ -1328,7 +1328,7 @@ local function CreateCDMSetupPage(parent)
         local y = tabContent._currentY
 
         -- Set search context for auto-registration
-        GUI:SetSearchContext({tabIndex = 2, tabName = "Cooldown Manager", subTabIndex = 1, subTabName = "Essential"})
+        GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 1, subTabName = "Essential"})
 
         if db and db.ncdm and db.ncdm.essential then
             local ess = db.ncdm.essential
@@ -1396,7 +1396,7 @@ local function CreateCDMSetupPage(parent)
         local y = tabContent._currentY
 
         -- Set search context for auto-registration
-        GUI:SetSearchContext({tabIndex = 2, tabName = "Cooldown Manager", subTabIndex = 2, subTabName = "Utility"})
+        GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 2, subTabName = "Utility"})
 
         if db and db.ncdm and db.ncdm.utility then
             local util = db.ncdm.utility
@@ -1487,7 +1487,7 @@ local function CreateCDMSetupPage(parent)
         local y = -10
 
         -- Set search context for widget auto-registration
-        GUI:SetSearchContext({tabIndex = 2, tabName = "Cooldown Manager", subTabIndex = 4, subTabName = "Buff"})
+        GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 4, subTabName = "Buff"})
 
         -- Ensure buff settings exist with all required fields
         if not db.ncdm then db.ncdm = {} end
@@ -1987,6 +1987,7 @@ local function CreateCDMSetupPage(parent)
 
         local snapPrimaryLabel = snapPrimaryContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         snapPrimaryLabel:SetPoint("LEFT", 0, 0)
+        if GUI.FitFormLabel then GUI.FitFormLabel(snapPrimaryLabel) end
         snapPrimaryLabel:SetText("Quick Position")
         snapPrimaryLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -2098,6 +2099,7 @@ local function CreateCDMSetupPage(parent)
 
         local lockLabel = lockContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         lockLabel:SetPoint("LEFT", 0, 0)
+        if GUI.FitFormLabel then GUI.FitFormLabel(lockLabel) end
         lockLabel:SetText("Auto-Resize")
         lockLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -2485,6 +2487,7 @@ local function CreateCDMSetupPage(parent)
 
         local snapSecondaryLabel = snapSecondaryContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         snapSecondaryLabel:SetPoint("LEFT", 0, 0)
+        if GUI.FitFormLabel then GUI.FitFormLabel(snapSecondaryLabel) end
         snapSecondaryLabel:SetText("Quick Position")
         snapSecondaryLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -2661,6 +2664,7 @@ local function CreateCDMSetupPage(parent)
 
         local lockSecLabel = lockSecContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         lockSecLabel:SetPoint("LEFT", 0, 0)
+        if GUI.FitFormLabel then GUI.FitFormLabel(lockSecLabel) end
         lockSecLabel:SetText("Auto-Resize")
         lockSecLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -3134,6 +3138,7 @@ local function CreateCDMSetupPage(parent)
 
         local resetPowerColorsLabel = resetPowerColorsContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         resetPowerColorsLabel:SetPoint("LEFT", 0, 0)
+        if GUI.FitFormLabel then GUI.FitFormLabel(resetPowerColorsLabel) end
         resetPowerColorsLabel:SetText("Reset Colors")
         resetPowerColorsLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -3382,7 +3387,7 @@ local function CreateCDMSetupPage(parent)
         local y = -10
 
         -- Set search context for widget auto-registration
-        GUI:SetSearchContext({tabIndex = 2, tabName = "Cooldown Manager", subTabIndex = 5, subTabName = "Class Resource Bar"})
+        GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 5, subTabName = "Class Resource Bar"})
 
         -- Ensure powerBar settings exist
         if not db.powerBar then db.powerBar = {} end

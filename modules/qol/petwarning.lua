@@ -1,4 +1,7 @@
 local addonName, ns = ...
+-- spec API (Midnight + WoW: Forever)
+local GetSpecializationInfo = ns.Compat and ns.Compat.GetSpecializationInfo or GetSpecializationInfo
+local GetSpecialization = ns.Compat and ns.Compat.GetSpecialization or GetSpecialization
 local Helpers = ns.Helpers
 
 ---------------------------------------------------------------------------

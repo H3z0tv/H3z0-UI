@@ -285,6 +285,7 @@ local function BuildCastbarOptions(tabContent, unitKey, y, PAD, FORM_ROW, Refres
 
         local castPreviewLabel = castPreviewContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         castPreviewLabel:SetPoint("LEFT", 0, 0)
+        if GUI.FitFormLabel then GUI.FitFormLabel(castPreviewLabel) end
         castPreviewLabel:SetText("Castbar Preview")
         castPreviewLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -340,6 +341,7 @@ local function BuildCastbarOptions(tabContent, unitKey, y, PAD, FORM_ROW, Refres
 
         local snapLabel = snapContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         snapLabel:SetPoint("LEFT", 0, 0)
+        if GUI.FitFormLabel then GUI.FitFormLabel(snapLabel) end
         snapLabel:SetText("Quick Snap")
         snapLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -766,6 +768,7 @@ local function BuildCastbarOptions(tabContent, unitKey, y, PAD, FORM_ROW, Refres
 
             local resetLabel = resetContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             resetLabel:SetPoint("LEFT", 0, 0)
+            if GUI.FitFormLabel then GUI.FitFormLabel(resetLabel) end
             resetLabel:SetText("Reset Empowered Colors")
             resetLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 

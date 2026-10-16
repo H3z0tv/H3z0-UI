@@ -1,4 +1,6 @@
 local addonName, ns = ...
+-- WoW: Forever keeps Blizzard's own character frame (item levels are added by forever_ilvl.lua)
+if ns.Client and ns.Client.isForever then return end
 local H3z0UICore = ns.Addon
 local Helpers = ns.Helpers
 

@@ -257,7 +257,7 @@ local function BuildMinimapTab(tabContent)
     local db = Shared.GetDB()
 
     -- Set search context for auto-registration
-    GUI:SetSearchContext({tabIndex = 5, tabName = "Minimap", subTabIndex = 1, subTabName = "Minimap"})
+    GUI:SetSearchContext({tabIndex = 6, tabName = "Minimap", subTabIndex = 1, subTabName = "Minimap"})
 
     -- Early return if database not ready
     if not db then
@@ -456,6 +456,14 @@ local function BuildMinimapTab(tabContent)
             zoneClassColor:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
             y = y - FORM_ROW
         end
+
+        -- Coordinates settings live in H3z0 Features > Map
+        y = y - 10
+        local coordsNote = GUI:CreateLabel(tabContent, "Map coordinates are in H3z0 Features > Map.", 11, C.textMuted)
+        coordsNote:SetPoint("TOPLEFT", PAD, y)
+        coordsNote:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        coordsNote:SetJustifyH("LEFT")
+        y = y - 22
     end
 
     -- SECTION 5: Dungeon Eye (LFG Queue Button)
@@ -534,7 +542,7 @@ BuildDatatextTab = function(tabContent)
     local db = Shared.GetDB()
 
     -- Set search context for auto-registration
-    GUI:SetSearchContext({tabIndex = 5, tabName = "Minimap", subTabIndex = 2, subTabName = "Datatext"})
+    GUI:SetSearchContext({tabIndex = 6, tabName = "Minimap", subTabIndex = 2, subTabName = "Datatext"})
 
     -- Early return if database not ready
     if not db then

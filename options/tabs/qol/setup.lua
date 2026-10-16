@@ -13,7 +13,7 @@ local function Build(tabContent)
     local y = -10
     local PAD = Shared.PADDING
 
-    GUI:SetSearchContext({tabIndex = 11, tabName = "Setup Wizard", subTabIndex = 1, subTabName = "Setup Wizard"})
+    GUI:SetSearchContext({tabIndex = 12, tabName = "Setup Wizard", subTabIndex = 1, subTabName = "Setup Wizard"})
 
     GUI:SetSearchSection("Setup Wizard")
     local header = GUI:CreateSectionHeader(tabContent, "Setup Wizard")

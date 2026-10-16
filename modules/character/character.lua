@@ -3,6 +3,14 @@
 -- Custom character panel styling with equipment overlays and stats panel
 ---------------------------------------------------------------------------
 local ADDON_NAME, ns = ...
+-- spec API (Midnight + WoW: Forever)
+local GetSpecializationInfo = ns.Compat and ns.Compat.GetSpecializationInfo or GetSpecializationInfo
+local GetSpecializationRole = ns.Compat and ns.Compat.GetSpecializationRole or GetSpecializationRole
+local GetSpecialization = ns.Compat and ns.Compat.GetSpecialization or GetSpecialization
+-- WoW: Forever: the custom character pane overlay doesn't fit Forever's character frame.
+-- The light item level display (forever_ilvl.lua) is used there instead.
+if ns.Client and ns.Client.isForever then return end
+
 local H3z0UI = ns.H3z0UI or {}
 ns.H3z0UI = H3z0UI
 local Helpers = ns.Helpers

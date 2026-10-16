@@ -24,11 +24,6 @@ local function CreateGeneralQoLPage(parent)
         {name = "Missing Raid Buffs", builder = ns.H3z0UI_RaidBuffsOptions.BuildRaidBuffsTab},
         {name = "Party Keystones", builder = ns.H3z0UI_PartyKeystonesOptions.BuildPartyKeystonesTab},
         {name = "Quick Access", builder = ns.H3z0UI_QuickAccessOptions.BuildQuickAccessTab},
-        {name = "Combat Mode", builder = ns.H3z0UI_CombatModeOptions.BuildCombatModeTab},
-        {name = "Bottom Bar", builder = ns.H3z0UI_BottomBarOptions.BuildBottomBarTab},
-        {name = "Steam Deck", builder = ns.H3z0UI_HandheldOptions.BuildHandheldTab},
-        {name = "Nameplates", builder = ns.H3z0UI_NameplatesOptions.BuildNameplatesTab},
-        {name = "Party Frames", builder = ns.H3z0UI_PartyFramesOptions.BuildPartyFramesTab},
     })
 
     content:SetHeight(600)

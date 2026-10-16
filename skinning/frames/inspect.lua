@@ -1,4 +1,6 @@
 local addonName, ns = ...
+-- WoW: Forever keeps Blizzard's own inspect frame (like the character frame)
+if ns.Client and ns.Client.isForever then return end
 local H3z0UICore = ns.Addon
 local Helpers = ns.Helpers
 

@@ -56,7 +56,7 @@ Build = function(tabContent)
     local db = Shared.GetDB()
     if not db then return end
 
-    GUI:SetSearchContext({tabIndex = 1, tabName = "General & QoL", subTabIndex = 14, subTabName = "Bottom Bar"})
+    GUI:SetSearchContext({tabIndex = 1, tabName = "H3z0 Features", subTabIndex = 3, subTabName = "Bottom Bar"})
 
     local cfg = FindBar(db)
 

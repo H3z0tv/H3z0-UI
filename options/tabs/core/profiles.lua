@@ -1,4 +1,8 @@
 local ADDON_NAME, ns = ...
+-- spec API (Midnight + WoW: Forever)
+local GetSpecializationInfo = ns.Compat and ns.Compat.GetSpecializationInfo or GetSpecializationInfo
+local GetNumSpecializations = ns.Compat and ns.Compat.GetNumSpecializations or GetNumSpecializations
+local GetSpecialization = ns.Compat and ns.Compat.GetSpecialization or GetSpecialization
 local H3z0UI = H3z0UI
 local GUI = H3z0UI.GUI
 local C = GUI.Colors
@@ -49,6 +53,7 @@ local function CreateSpecProfilesPage(parent)
 
     local currentProfileLabel = activeContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     currentProfileLabel:SetPoint("LEFT", 0, 0)
+    if GUI.FitFormLabel then GUI.FitFormLabel(currentProfileLabel) end
     currentProfileLabel:SetText("Active Profile")
     currentProfileLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -87,6 +92,7 @@ local function CreateSpecProfilesPage(parent)
 
     local resetLabel = resetContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     resetLabel:SetPoint("LEFT", 0, 0)
+    if GUI.FitFormLabel then GUI.FitFormLabel(resetLabel) end
     resetLabel:SetText("Reset Profile")
     resetLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -178,6 +184,7 @@ local function CreateSpecProfilesPage(parent)
 
     local profileDropdownLabel = profileDropdownContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     profileDropdownLabel:SetPoint("LEFT", 0, 0)
+    if GUI.FitFormLabel then GUI.FitFormLabel(profileDropdownLabel) end
     profileDropdownLabel:SetText("Select Profile")
     profileDropdownLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
@@ -377,6 +384,7 @@ local function CreateSpecProfilesPage(parent)
 
     local newProfileLabel = newProfileContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     newProfileLabel:SetPoint("LEFT", 0, 0)
+    if GUI.FitFormLabel then GUI.FitFormLabel(newProfileLabel) end
     newProfileLabel:SetText("Profile Name")
     newProfileLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 

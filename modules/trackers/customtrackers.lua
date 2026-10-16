@@ -5,6 +5,11 @@
 ]]
 
 local ADDON_NAME, ns = ...
+-- spec API (Midnight + WoW: Forever)
+local GetSpecializationInfoByID = ns.Compat and ns.Compat.GetSpecializationInfoByID or GetSpecializationInfoByID
+local GetSpecializationInfo = ns.Compat and ns.Compat.GetSpecializationInfo or GetSpecializationInfo
+local GetNumSpecializations = ns.Compat and ns.Compat.GetNumSpecializations or GetNumSpecializations
+local GetSpecialization = ns.Compat and ns.Compat.GetSpecialization or GetSpecialization
 local H3z0UI = H3z0UI  -- Use global addon table, not ns.Addon (which is H3z0UICore)
 local LSM = LibStub("LibSharedMedia-3.0")
 local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)  -- For active state glow

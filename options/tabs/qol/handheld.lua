@@ -38,7 +38,7 @@ Build = function(tabContent)
     local handheld = HH()
     if not db or not handheld then return end
 
-    GUI:SetSearchContext({tabIndex = 1, tabName = "General & QoL", subTabIndex = 15, subTabName = "Steam Deck"})
+    GUI:SetSearchContext({tabIndex = 1, tabName = "H3z0 Features", subTabIndex = 4, subTabName = "Steam Deck + PC Controller"})
 
     -- Make sure the settings table exists with defaults (module fills it on first use)
     db.handheld = db.handheld or {}
@@ -48,6 +48,7 @@ Build = function(tabContent)
     if cfg.keepBarsVisible == nil then cfg.keepBarsVisible = true end
     if cfg.fitOptionsWindow == nil then cfg.fitOptionsWindow = true end
     if cfg.deckUnitFrames == nil then cfg.deckUnitFrames = true end
+    if cfg.pcController == nil then cfg.pcController = false end
     if cfg.uiScale == nil or cfg.uiScale <= 0 then cfg.uiScale = handheld.AutoScale() end
 
     local function Section(title)
@@ -72,6 +73,12 @@ Build = function(tabContent)
     end
 
     ---------------------------------------------------------------------
+    Section("PC Controller")
+    Info("Play on your PC with a controller: keeps your normal PC layout (same positions, sizes and scale) and only swaps the addons - ConsolePort on, Action Combat Mode off - then reloads. Untick to go back to mouse and keyboard (Action Combat Mode on, ConsolePort off). PC Controller and Steam Deck can't be on together: turning one on turns the other off.", 58)
+    Place(GUI:CreateFormCheckbox(tabContent, "PC Controller (ConsolePort instead of Action Combat Mode)", "pcController", cfg, function()
+        handheld.SetPCController(cfg.pcController)
+    end))
+
     Section("Handheld / Steam Deck Mode")
     Info("Optimizes H3z0 UI for small handheld screens like the Steam Deck (1280x800, 16:10) and for controller play. " ..
          "It applies a handheld UI scale, keeps your action bars visible, and fits this settings window on the screen. " ..
@@ -95,6 +102,7 @@ Build = function(tabContent)
     Place(GUI:CreateFormCheckbox(tabContent, "Enable Handheld Mode", "enabled", cfg, function()
         handheld.SetEnabled(cfg.enabled)
     end))
+    Info("Turning it on disables Action Combat Mode, enables ConsolePort, switches to the Deck layout and reloads. Turning it off enables Action Combat Mode, disables ConsolePort, switches to the PC layout and reloads. PC and Deck each keep their own frame positions: move frames in H3z0 UI Layout Mode while in that mode.", 46)
     Place(GUI:CreateFormCheckbox(tabContent, "Auto-enable on a small screen (<= 800p), first launch only", "autoDetect", cfg))
 
     ---------------------------------------------------------------------

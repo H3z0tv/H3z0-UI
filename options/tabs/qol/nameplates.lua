@@ -160,7 +160,7 @@ Build = function(tabContent)
     local db = Shared.GetDB()
     if not db then return end
 
-    GUI:SetSearchContext({tabIndex = 1, tabName = "General & QoL", subTabIndex = 16, subTabName = "Nameplates"})
+    GUI:SetSearchContext({tabIndex = 1, tabName = "H3z0 Features", subTabIndex = 5, subTabName = "Nameplates"})
 
     local boxes = {}
     local function SelectOnly(target)

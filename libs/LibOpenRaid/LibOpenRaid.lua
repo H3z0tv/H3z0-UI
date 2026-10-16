@@ -46,6 +46,11 @@ LIB_OPEN_RAID_CAN_LOAD = false
 
 local versionString, revision, launchDate, gameVersion = GetBuildInfo()
 
+-- WoW: Forever (1.60.x) has no LibOpenRaid data; stay unloaded there.
+if type(versionString) == "string" and versionString:match("^1%.60%.") then
+    return
+end
+
 local isExpansion_Dragonflight = function()
 	if (gameVersion >= 100000) then
 		return true

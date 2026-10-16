@@ -320,17 +320,34 @@ local function UpdateGCDCooldown()
     -- Only show GCD swipe when the icon itself is visible
     if not iconFrame:IsShown() then return end
 
+    local cd = iconFrame.cooldown
+
+    -- Midnight: DurationObject path accepts secret values from addon code
+    if cd.SetCooldownFromDurationObject and C_Spell and C_Spell.GetSpellCooldownDuration then
+        local ok, obj = pcall(C_Spell.GetSpellCooldownDuration, GCD_SPELL_ID, false)
+        if ok and obj and pcall(cd.SetCooldownFromDurationObject, cd, obj) then
+            cd:Show()
+            return
+        end
+    end
+
     local start, duration, modRate = ReadSpellCooldown(GCD_SPELL_ID)
+    if issecretvalue and ((start ~= nil and issecretvalue(start)) or (duration ~= nil and issecretvalue(duration)) or (modRate ~= nil and issecretvalue(modRate))) then
+        cd:Clear()
+        return
+    end
 
     if IsCooldownActive(start, duration) then
-        iconFrame.cooldown:Show()
+        cd:Show()
+        local ok
         if modRate then
-            iconFrame.cooldown:SetCooldown(start, duration, modRate)
+            ok = pcall(cd.SetCooldown, cd, start, duration, modRate)
         else
-            iconFrame.cooldown:SetCooldown(start, duration)
+            ok = pcall(cd.SetCooldown, cd, start, duration)
         end
+        if not ok then cd:Clear() end
     else
-        iconFrame.cooldown:Clear()
+        cd:Clear()
     end
 end
 

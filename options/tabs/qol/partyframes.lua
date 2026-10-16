@@ -16,7 +16,7 @@ local function BuildPartyFramesTab(tabContent)
     local PADDING = Shared.PADDING
     local db = Shared.GetDB()
 
-    GUI:SetSearchContext({tabIndex = 1, tabName = "General & QoL", subTabIndex = 17, subTabName = "Party Frames"})
+    GUI:SetSearchContext({tabIndex = 1, tabName = "H3z0 Features", subTabIndex = 6, subTabName = "Party Frames"})
 
     local pf = db and db.partyFrames
     if not pf then return end
@@ -69,7 +69,7 @@ local function BuildPartyFramesTab(tabContent)
     Slider("Scale", 0.5, 2.0, 0.05, "scale")
     Slider("Spacing", 0, 40, 1, "spacing")
     Check("Grow Upwards", "growUp")
-    Slider("Portrait Size", 24, 90, 1, "portraitSize")
+    Info("Portrait size is in the Portraits tab.", 20)
     Slider("Bar Width", 50, 220, 1, "barWidth")
     Slider("Health Bar Height", 6, 30, 1, "healthHeight")
     Slider("Power Bar Height", 2, 14, 1, "powerHeight")

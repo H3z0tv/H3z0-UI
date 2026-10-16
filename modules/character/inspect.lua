@@ -4,6 +4,10 @@
 -- Split from h3z0ui_character.lua for better organization
 ---------------------------------------------------------------------------
 local ADDON_NAME, ns = ...
+-- WoW: Forever keeps Blizzard's own inspect frame (like the character frame)
+if ns.Client and ns.Client.isForever then return end
+-- spec API (Midnight + WoW: Forever)
+local GetSpecializationInfoByID = ns.Compat and ns.Compat.GetSpecializationInfoByID or GetSpecializationInfoByID
 local H3z0UI = ns.H3z0UI or {}
 ns.H3z0UI = H3z0UI
 local H3z0UICore = ns.Addon

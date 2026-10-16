@@ -6,4 +6,5 @@
     <Script file="glows.lua"/>
     <Script file="effects.lua"/>
     <Script file="swipe.lua"/>
+    <Script file="cdm_doctor.lua"/>
 </Ui>

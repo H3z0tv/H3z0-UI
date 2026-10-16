@@ -4,4 +4,10 @@
       H3z0UI.GUI:Toggle()
     end
   </Binding>
+  <Binding name="H3z0UI_TOGGLE_LAYOUT" category="H3z0UI">
+    if H3z0UI_ToggleLayoutMode then H3z0UI_ToggleLayoutMode() end
+  </Binding>
+  <Binding name="H3z0UI_TOGGLE_COORDS" category="H3z0UI">
+    if H3z0UI_ToggleMapCoords then H3z0UI_ToggleMapCoords() end
+  </Binding>
 </Bindings>

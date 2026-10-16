@@ -5,7 +5,8 @@
 --   1. Device       - PC (mouse + keyboard) or Steam Deck / Handheld (controller, compact HUD)
 --   2. Nameplates   - none / Plater / Platynator / BetterBlizzPlates (strings live in importstrings/)
 --   3. Features     - Bottom Bar, minimap, chat, unit frames, action bars, tooltips, ...
---   4. Done         - summary + reload button
+--   4. Extras       - map coordinates, party frames, combat timer, M+ timer, consumables, ...
+--   5. Done         - summary + reload button + Layout Mode
 --
 -- * Shown automatically ONCE on a brand-new install (db.global.setupShown), from handheld.lua's login check.
 --   Existing users are never interrupted (firstRunProfile == "skipped").
@@ -171,6 +172,47 @@ for _, f in ipairs(FEATURES) do
     end
 end
 
+-- Step 4: extras and helpers (path = profile table + key, so each is one switch)
+local IS_FOREVER = ns.Client and ns.Client.isForever
+local EXTRAS = {
+    { id = "coords",     label = "Map coordinates",   desc = "Your X,Y position on the minimap (toggle any time with the XY button on the minimap).",
+      path = { "minimap", "showCoords" }, refresh = "H3z0UI_RefreshMinimap" },
+    { id = "party",      label = "H3z0 party frames", desc = "Round-portrait party frames with ready check, auras and the Raid Control tab.",
+      path = { "partyFrames", "enabled" }, refresh = "H3z0UI_RefreshPartyFrames" },
+    { id = "combattimer",label = "Combat timer",      desc = "Small timer that counts how long you have been in combat.",
+      path = { "combatTimer", "enabled" }, refresh = "H3z0UI_RefreshCombatTimer" },
+    { id = "mplus",      label = "M+ timer",          desc = "Mythic+ timer with forces, deaths and boss splits.",
+      path = { "mplusTimer", "enabled" }, hide = IS_FOREVER },
+    { id = "consumables",label = "Consumable check",  desc = "Reminds you about missing food, flask, rune and weapon buffs.",
+      path = { "general", "consumableCheckEnabled" }, refresh = "H3z0UI_RefreshConsumables" },
+    { id = "crosshair",  label = "Crosshair",         desc = "Small crosshair in the middle of the screen.",
+      path = { "crosshair", "enabled" }, refresh = "H3z0UI_RefreshCrosshair" },
+    { id = "totems",     label = "Totem bar",         desc = "Shaman totems as a bar of icons with timers.",
+      path = { "totemBar", "enabled" }, refresh = "H3z0UI_RefreshTotemBar" },
+    { id = "skyriding",  label = "Skyriding bar",     desc = "Vigor / speed display while skyriding.",
+      path = { "skyriding", "enabled" }, refresh = "H3z0UI_RefreshSkyriding", hide = IS_FOREVER },
+}
+do
+    local list = {}
+    for _, e in ipairs(EXTRAS) do if not e.hide then list[#list + 1] = e end end
+    EXTRAS = list
+end
+for _, e in ipairs(EXTRAS) do
+    e.get = function()
+        local p = Profile()
+        local t = p and p[e.path[1]]
+        return type(t) == "table" and t[e.path[2]] == true
+    end
+    e.set = function(on)
+        local p = Profile()
+        if not p then return end
+        p[e.path[1]] = type(p[e.path[1]]) == "table" and p[e.path[1]] or {}
+        p[e.path[1]][e.path[2]] = on and true or false
+        local fn = e.refresh and _G[e.refresh]
+        if fn then pcall(fn) end
+    end
+end
+
 ---------------------------------------------------------------------------
 -- State (what the wizard currently shows) and Apply
 ---------------------------------------------------------------------------
@@ -185,6 +227,7 @@ local function LoadState()
     local device = s.device
     if not device then
         if hc.enabled then device = "handheld"
+        elseif hc.pcController then device = "pccontroller"
         elseif hh and hh.IsSmallScreen and hh.IsSmallScreen() then device = "handheld"
         else device = "pc" end
     end
@@ -194,6 +237,10 @@ local function LoadState()
     state.features = {}
     for _, f in ipairs(FEATURES) do
         state.features[f.id] = f.get() and true or false
+    end
+    state.extras = {}
+    for _, e in ipairs(EXTRAS) do
+        state.extras[e.id] = e.get() and true or false
     end
 end
 
@@ -218,9 +265,14 @@ function Setup.Apply()
         result.lines[#result.lines + 1] = string.format("Steam Deck / Handheld layout ON (UI scale %.2f)", hc.uiScale)
     else
         hc.autoDetect = false
+        -- PC or PC + Controller: set the addon choice first, Handheld Mode off uses it
+        hc.pcController = (state.device == "pccontroller")
         if hh and hh.SetEnabled then hh.SetEnabled(false, true) end
+        if hh and hh.SetPCController then hh.SetPCController(hc.pcController, true) end
         result.needReload = true
-        result.lines[#result.lines + 1] = "PC layout (Handheld Mode OFF)"
+        result.lines[#result.lines + 1] = hc.pcController
+            and "PC layout with a controller (ConsolePort on, Action Combat Mode off)"
+            or "PC layout (Handheld Mode OFF)"
     end
 
     -- 3. Features (done before the unit-frame layout re-run so the preset sees the final state)
@@ -238,6 +290,21 @@ function Setup.Apply()
         result.lines[#result.lines + 1] = "Features changed: " .. table.concat(changed, ", ")
     else
         result.lines[#result.lines + 1] = "Features: no change"
+    end
+
+    -- 4. Extras
+    local extrasChanged = {}
+    for _, e in ipairs(EXTRAS) do
+        local want = state.extras and state.extras[e.id] and true or false
+        local have = e.get() and true or false
+        if want ~= have then
+            e.set(want)
+            extrasChanged[#extrasChanged + 1] = (want and "+ " or "- ") .. e.label
+            result.needReload = true
+        end
+    end
+    if #extrasChanged > 0 then
+        result.lines[#result.lines + 1] = "Extras changed: " .. table.concat(extrasChanged, ", ")
     end
 
     -- 2. Nameplates (the strings themselves are imported from the Done page / Nameplates tab)
@@ -452,16 +519,18 @@ end
 -- The window
 ---------------------------------------------------------------------------
 local wizard
-local TOTAL_STEPS = 3
+local TOTAL_STEPS = 4
 local STEP_TITLES = {
     "How do you play?",
     "Which nameplates do you want?",
     "Which features do you want?",
+    "Extras and helpers",
     "All set",
 }
 
 local function RefreshDevicePage(f)
     f.deviceCards.pc:SetSelected(state.device == "pc")
+    if f.deviceCards.pccontroller then f.deviceCards.pccontroller:SetSelected(state.device == "pccontroller") end
     f.deviceCards.handheld:SetSelected(state.device == "handheld")
     f.scaleRow:SetShown(state.device == "handheld")
     for value, btn in pairs(f.scaleButtons) do
@@ -511,6 +580,12 @@ local function RefreshFeaturePage(f)
     end
 end
 
+local function RefreshExtrasPage(f)
+    for _, e in ipairs(EXTRAS) do
+        if f.extraRows[e.id] then f.extraRows[e.id]:SetChecked(state.extras[e.id]) end
+    end
+end
+
 local function BuildDoneText(f, result)
     local lines = {}
     for _, l in ipairs(result.lines) do lines[#lines + 1] = "|cff" .. string.format("%02x%02x%02x", math.floor(f.ar * 255), math.floor(f.ag * 255), math.floor(f.ab * 255)) .. "-|r  " .. l end
@@ -520,9 +595,9 @@ local function BuildDoneText(f, result)
     local hint = ""
     if np == "plater" then
         hint = IsLoaded("Plater") and "Press \"Import into Plater\" to load H3z0 UI's Plater profile (Plater switches to its own \"H3z0 UI\" profile and reloads)."
-            or "Install Plater, then run this wizard again (or use Options > General & QoL > Nameplates) to import the profile."
+            or "Install Plater, then run this wizard again (or use Options > H3z0 Features > Nameplates) to import the profile."
     elseif np == "platynator" or np == "bbp" then
-        hint = "Open Options > General & QoL > Nameplates, copy the string and use the addon's own Import."
+        hint = "Open Options > H3z0 Features > Nameplates, copy the string and use the addon's own Import."
     end
     f.doneHint:SetText(hint)
     f.importPlater:SetShown(np == "plater" and IsLoaded("Plater"))
@@ -554,7 +629,8 @@ local function ShowStep(f, step)
 
     if step == 1 then RefreshDevicePage(f)
     elseif step == 2 then RefreshNameplatePage(f)
-    elseif step == 3 then RefreshFeaturePage(f) end
+    elseif step == 3 then RefreshFeaturePage(f)
+    elseif step == 4 then RefreshExtrasPage(f) end
 end
 
 local function CreateWizard()
@@ -628,7 +704,7 @@ local function CreateWizard()
         page:Hide()
         return page
     end
-    f.pages = { NewPage(), NewPage(), NewPage(), NewPage() }
+    f.pages = { NewPage(), NewPage(), NewPage(), NewPage(), NewPage() }
 
     -- Page 1: device
     do
@@ -643,14 +719,18 @@ local function CreateWizard()
             state.device = value
             RefreshDevicePage(f)
         end
-        f.deviceCards.pc = MakeCard(page, PAGE_W, 66, "PC / Desktop",
-            "Mouse and keyboard. The standard H3z0 UI layout - nothing is shrunk or moved for a small screen.", ar, ag, ab,
+        f.deviceCards.pc = MakeCard(page, PAGE_W, 56, "PC / Desktop",
+            "Mouse and keyboard. The standard H3z0 UI layout with Action Combat Mode.", ar, ag, ab,
             function() Pick("pc") end, 14)
         f.deviceCards.pc:SetPoint("TOPLEFT", 0, -36)
+        f.deviceCards.pccontroller = MakeCard(page, PAGE_W, 56, "PC + Controller",
+            "Same PC layout, played with a controller: ConsolePort on, Action Combat Mode off.", ar, ag, ab,
+            function() Pick("pccontroller") end, 14)
+        f.deviceCards.pccontroller:SetPoint("TOPLEFT", f.deviceCards.pc, "BOTTOMLEFT", 0, -8)
         f.deviceCards.handheld = MakeCard(page, PAGE_W, 80, "Steam Deck / Handheld",
             "Controller play. Compact HUD (target bar top centre, player top left, power bar bottom centre), action bars always visible, settings window fitted to the screen.", ar, ag, ab,
             function() Pick("handheld") end, 14)
-        f.deviceCards.handheld:SetPoint("TOPLEFT", f.deviceCards.pc, "BOTTOMLEFT", 0, -8)
+        f.deviceCards.handheld:SetPoint("TOPLEFT", f.deviceCards.pccontroller, "BOTTOMLEFT", 0, -8)
 
         f.scaleRow = CreateFrame("Frame", nil, page)
         f.scaleRow:SetSize(PAGE_W, 56)
@@ -721,9 +801,28 @@ local function CreateWizard()
         end
     end
 
-    -- Page 4: done
+    -- Page 4: extras
     do
         local page = f.pages[4]
+        local intro = MakeText(page, 11, 0.85, 0.88, 0.92)
+        intro:SetPoint("TOPLEFT", 0, 0)
+        intro:SetWidth(PAGE_W)
+        intro:SetText("Small helpers. Off by default - turn on what you like. You can move all of them later in Layout Mode.")
+        f.extraRows = {}
+        local prev
+        for _, e in ipairs(EXTRAS) do
+            local row = MakeToggle(page, PAGE_W, e.label, e.desc, ar, ag, ab, function(on)
+                state.extras[e.id] = on
+            end)
+            if prev then row:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -2) else row:SetPoint("TOPLEFT", 0, -34) end
+            f.extraRows[e.id] = row
+            prev = row
+        end
+    end
+
+    -- Page 5: done
+    do
+        local page = f.pages[5]
         f.doneTitle = MakeText(page, 14, lr, lg, lb, "OUTLINE")
         f.doneTitle:SetPoint("TOPLEFT", 0, 0)
         f.doneTitle:SetText("Your setup is applied")
@@ -740,7 +839,7 @@ local function CreateWizard()
             if StaticPopupDialogs and StaticPopupDialogs["H3Z0UI_PLATER_IMPORT"] then
                 StaticPopup_Show("H3Z0UI_PLATER_IMPORT")
             else
-                Say("Open Options > General & QoL > Nameplates and use \"Import into Plater\".")
+                Say("Open Options > H3z0 Features > Nameplates and use \"Import into Plater\".")
             end
         end)
         f.importPlater:SetPoint("BOTTOMLEFT", 0, 40)
@@ -748,7 +847,7 @@ local function CreateWizard()
             f:Hide()
             local gui = _G.H3z0UI and _G.H3z0UI.GUI
             if gui and gui.Show then gui:Show() end
-            Say("Go to |cffFFFF00General & QoL > Nameplates|r, copy the string and import it in the nameplate addon.")
+            Say("Go to |cffFFFF00H3z0 Features > Nameplates|r, copy the string and import it in the nameplate addon.")
         end)
         f.openOptions:SetPoint("BOTTOMLEFT", 0, 40)
         f.reloadBtn = MakeButton(page, "Reload UI now", 180, 30, false, ar, ag, ab, function()
@@ -756,6 +855,11 @@ local function CreateWizard()
             if ui and ui.SafeReload then ui:SafeReload() else ReloadUI() end
         end)
         f.reloadBtn:SetPoint("BOTTOMLEFT", 0, 4)
+        f.layoutBtn = MakeButton(page, "Open Layout Mode", 160, 30, false, ar, ag, ab, function()
+            f:Hide()
+            if _G.H3z0UI_ToggleLayoutMode then _G.H3z0UI_ToggleLayoutMode() end
+        end)
+        f.layoutBtn:SetPoint("BOTTOMRIGHT", 0, 40)
         local rl = MakeText(page, 10, 0.6, 0.65, 0.7)
         rl:SetPoint("LEFT", f.reloadBtn, "RIGHT", 10, 0)
         rl:SetText("A reload finishes switching frames and modules on or off.")
@@ -823,5 +927,5 @@ function Setup.Describe()
     local np = s.nameplates or "none"
     for _, o in ipairs(NAMEPLATES) do if o.value == np then np = o.label end end
     return string.format("Last choices: %s  |  Nameplates: %s",
-        s.device == "handheld" and "Steam Deck / Handheld" or "PC", np)
+        s.device == "handheld" and "Steam Deck / Handheld" or (s.device == "pccontroller" and "PC + Controller" or "PC"), np)
 end

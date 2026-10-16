@@ -1,12 +1,12 @@
-## Interface: 120105, 120100, 120001, 120000
-## Title: |cFF30D1FFH3z0 UI (Midnight)|r
+## Interface: 120105, 120100, 120001, 120000, 16001
+## Title: |cFF30D1FFH3z0 UI|r
 ## IconTexture: Interface\AddOns\H3z0UI\assets\icon
 ## AddonCompartmentFunc: H3z0UI_CompartmentClick
 ## AddonCompartmentFuncOnEnter: H3z0UI_CompartmentOnEnter
 ## AddonCompartmentFuncOnLeave: H3z0UI_CompartmentOnLeave
 ## Notes: Comprehensive UI customization addon
 ## Author: H3z0
-## Version: 0.22.18
+## Version: 0.23
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
 ## OptionalDeps: CombatMode

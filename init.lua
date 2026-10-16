@@ -1,5 +1,7 @@
 -- Keybinding display name (must be global before Bindings.xml loads)
 BINDING_NAME_H3z0UI_TOGGLE_OPTIONS = "Open H3z0 UI Options"
+BINDING_NAME_H3z0UI_TOGGLE_LAYOUT = "Toggle H3z0 UI Layout Mode"
+BINDING_NAME_H3z0UI_TOGGLE_COORDS = "Show / hide map coordinates"
 
 ---@type table|AceAddon
 H3z0UI = LibStub("AceAddon-3.0"):NewAddon("H3z0UI", "AceConsole-3.0", "AceEvent-3.0")
@@ -87,6 +89,12 @@ function H3z0UI:SlashCommandOpen(input)
             print("|cFF56D1FFH3z0 UI:|r Handheld module not loaded.")
         end
         return
+    elseif input and (input == "controller" or input == "pad") then
+        -- PC Controller: PC layout + ConsolePort (Action Combat Mode off)
+        if _G.H3z0UI_Handheld and _G.H3z0UI_Handheld.TogglePCController then
+            _G.H3z0UI_Handheld.TogglePCController()
+        end
+        return
     elseif input and (input == "deck" or input == "handheld") then
         -- Toggle Handheld / Steam Deck Mode
         if _G.H3z0UI_Handheld then
@@ -95,7 +103,45 @@ function H3z0UI:SlashCommandOpen(input)
             print("|cFF56D1FFH3z0 UI:|r Handheld module not loaded.")
         end
         return
+    elseif input and (input == "style" or input == "portraits") then
+        -- Round Portrait frame style (test) on/off
+        if _G.H3z0UI_ToggleFrameStyle then
+            local on = _G.H3z0UI_ToggleFrameStyle()
+            print("|cFF30D1FFH3z0 UI:|r Frame style " .. (on and "|cff00ff00on|r" or "|cffff4040off|r"))
+        end
+        return
+    elseif input and (input == "bars" or input == "compact") then
+        -- Compact action bar layout (test) on/off
+        if _G.H3z0UI_ToggleCompactBars then _G.H3z0UI_ToggleCompactBars() end
+        return
+    elseif input and (input == "coords" or input == "coordinates") then
+        if _G.H3z0UI_ToggleMapCoords then _G.H3z0UI_ToggleMapCoords() end
+        return
+    elseif input and (input == "layout" or input == "move" or input == "unlock") then
+        -- H3z0 UI Layout Mode (drag every H3z0 UI frame)
+        if _G.H3z0UI_ToggleLayoutMode then
+            _G.H3z0UI_ToggleLayoutMode()
+        else
+            print("|cFF56D1FFH3z0 UI:|r Layout Mode not loaded.")
+        end
+        return
+    elseif input and input == "export" then
+        if _G.H3z0UI_ExportLayout then _G.H3z0UI_ExportLayout() end
+        return
+    elseif input and input == "import" then
+        if _G.H3z0UI_ImportLayout then _G.H3z0UI_ImportLayout() end
+        return
+    elseif input and (input == "cdm" or input == "cdmfix") then
+        -- Cooldown Manager repair: why Essential / Tracked Bars don't show
+        if _G.H3z0UI_CDMDoctor then _G.H3z0UI_CDMDoctor() end
+        return
+    elseif input and (input == "blizzedit" or input == "blizzardedit") then
+        -- Blizzard's own Edit Mode (only for its size / row settings)
+        if _G.H3z0UI_OpenBlizzardEditMode then _G.H3z0UI_OpenBlizzardEditMode() end
+        return
     elseif input and input == "editmode" then
+        -- One edit mode: H3z0 UI Layout Mode
+        if _G.H3z0UI_ToggleLayoutMode then _G.H3z0UI_ToggleLayoutMode() return end
         -- Toggle Unit Frames Edit Mode
         if _G.H3z0UI_ToggleUnitFrameEditMode then
             _G.H3z0UI_ToggleUnitFrameEditMode()

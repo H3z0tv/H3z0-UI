@@ -405,6 +405,7 @@ function GUI:InitializeOptions()
     local frame = self:CreateMainFrame()
 
     -- Sidebar tabs (short names for vertical layout)
+    GUI:AddTab(frame, "H3z0 Features", ns.H3z0UI_FeaturesOptions.CreateFeaturesPage)
     GUI:AddTab(frame, "General & QoL", ns.H3z0UI_GeneralOptions.CreateGeneralQoLPage)
     GUI:AddTab(frame, "Cooldown Manager", ns.H3z0UI_NCDMOptions.CreateCDMSetupPage)
     GUI:AddTab(frame, "Unit Frames", ns.H3z0UI_UnitFramesOptions.CreateUnitFramesPage)

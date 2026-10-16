@@ -2129,6 +2129,42 @@ local FORM_ROW_HEIGHT = 28
 -- OFF: Dark grey track, white circle on left
 -- ON: Mint track, white circle slides to right
 ---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+-- FORM LABELS: the control column starts 180px in; long labels used to run
+-- under the switch / slider. Keep the label inside its column: wrap to two
+-- lines and shrink the font a little if two lines are still not enough.
+---------------------------------------------------------------------------
+local FORM_LABEL_W = 170
+local function FitFormLabel(text)
+    if not (text and text.SetWidth) then return end
+    text:SetWidth(FORM_LABEL_W)
+    text:SetJustifyH("LEFT")
+    text:SetJustifyV("MIDDLE")
+    if text.SetWordWrap then text:SetWordWrap(true) end
+    if text.SetNonSpaceWrap then text:SetNonSpaceWrap(true) end
+    if text.SetMaxLines then text:SetMaxLines(2) end
+    local function Shrink(self)
+        local font, size, flags = self:GetFont()
+        if not (font and size) then return end
+        self._h3zBaseSize = self._h3zBaseSize or size
+        local base = self._h3zBaseSize
+        if size ~= base then self:SetFont(font, base, flags or "") end
+        local full = (self.GetUnboundedStringWidth and self:GetUnboundedStringWidth()) or self:GetStringWidth() or 0
+        local room = FORM_LABEL_W * 2 - 16
+        if full > room then
+            local newSize = math.max(9, math.floor(base * room / full))
+            if newSize < base then self:SetFont(font, newSize, flags or "") end
+        end
+    end
+    Shrink(text)
+    -- labels whose text is set after this call get the same treatment
+    if not text._h3zFitHooked then
+        text._h3zFitHooked = true
+        hooksecurefunc(text, "SetText", Shrink)
+    end
+end
+GUI.FitFormLabel = FitFormLabel
+
 function GUI:CreateFormToggle(parent, label, dbKey, dbTable, onChange, registryInfo)
     if parent._hasContent ~= nil then parent._hasContent = true end
     local container = CreateFrame("Frame", nil, parent)
@@ -2139,6 +2175,7 @@ function GUI:CreateFormToggle(parent, label, dbKey, dbTable, onChange, registryI
     SetFont(text, 12, "", C.text)
     text:SetText(label or "Option")
     text:SetPoint("LEFT", 0, 0)
+    FitFormLabel(text)
 
     -- Toggle track (the pill-shaped background)
     local track = CreateFrame("Button", nil, container, "BackdropTemplate")
@@ -2270,6 +2307,7 @@ function GUI:CreateFormToggleInverted(parent, label, dbKey, dbTable, onChange)
     SetFont(text, 12, "", C.text)
     text:SetText(label or "Option")
     text:SetPoint("LEFT", 0, 0)
+    FitFormLabel(text)
 
     -- Toggle track
     local track = CreateFrame("Button", nil, container, "BackdropTemplate")
@@ -2386,6 +2424,7 @@ function GUI:CreateFormCheckboxOriginal(parent, label, dbKey, dbTable, onChange)
     SetFont(text, 12, "", C.text)
     text:SetText(label or "Option")
     text:SetPoint("LEFT", 0, 0)
+    FitFormLabel(text)
 
     -- Checkbox aligned with other widgets (starts at 180px from left)
     local box = CreateFrame("Button", nil, container, "BackdropTemplate")
@@ -2481,6 +2520,7 @@ function GUI:CreateFormSlider(parent, label, min, max, step, dbKey, dbTable, onC
     SetFont(text, 12, "", C.text)
     text:SetText(label or "Setting")
     text:SetPoint("LEFT", 0, 0)
+    FitFormLabel(text)
     container.label = text
 
     -- Track container (for the filled + unfilled portions)
@@ -2750,6 +2790,7 @@ function GUI:CreateFormDropdown(parent, label, options, dbKey, dbTable, onChange
     SetFont(text, 12, "", C.text)
     text:SetText(label or "Setting")
     text:SetPoint("LEFT", 0, 0)
+    FitFormLabel(text)
 
     -- Dropdown button (right side)
     local dropdown = CreateFrame("Button", nil, container, "BackdropTemplate")
@@ -3028,6 +3069,7 @@ function GUI:CreateFormColorPicker(parent, label, dbKey, dbTable, onChange, opti
     SetFont(text, 12, "", C.text)
     text:SetText(label or "Color")
     text:SetPoint("LEFT", 0, 0)
+    FitFormLabel(text)
 
     -- Color swatch aligned with other widgets (starts at 180px from left)
     local swatch = CreateFrame("Button", nil, container, "BackdropTemplate")
@@ -3732,6 +3774,8 @@ function GUI:CreateMainFrame()
         { name = "Twitch",  url = "https://twitch.tv/h3z0" },
         { name = "X",       url = "https://x.com/h3z0music" },
         { name = "Discord", url = "https://discord.gg/PU6g3WW" },
+        { name = "Layout Mode", desc = "Move every H3z0 UI frame (/h3z0ui layout)",
+          action = function() if _G.H3z0UI_ToggleLayoutMode then _G.H3z0UI_ToggleLayoutMode() end end },
     }
     local socialButtons = {}
     local prevAnchor, prevPoint = tagline, "RIGHT"
@@ -3763,12 +3807,18 @@ function GUI:CreateMainFrame()
             self.label:SetTextColor(C.textBright[1], C.textBright[2], C.textBright[3], 1)
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
             GameTooltip:SetText(info.name, 1, 1, 1)
-            GameTooltip:AddLine(info.url, C.accent[1], C.accent[2], C.accent[3])
-            GameTooltip:AddLine("Click to copy the link", 0.7, 0.7, 0.7)
+            if info.action then
+                GameTooltip:AddLine(info.desc or "", C.accent[1], C.accent[2], C.accent[3], true)
+            else
+                GameTooltip:AddLine(info.url, C.accent[1], C.accent[2], C.accent[3])
+                GameTooltip:AddLine("Click to copy the link", 0.7, 0.7, 0.7)
+            end
             GameTooltip:Show()
         end)
         sb:SetScript("OnLeave", function() Idle(); GameTooltip:Hide() end)
-        sb:SetScript("OnClick", function() GUI:ShowLinkPopup(info.name, info.url) end)
+        sb:SetScript("OnClick", function()
+            if info.action then info.action() else GUI:ShowLinkPopup(info.name, info.url) end
+        end)
         sb.Idle = Idle
         socialButtons[i] = sb
     end
@@ -4444,6 +4494,39 @@ function GUI:AddTab(frame, name, pageCreateFunc, isBottomItem)
     end
 
     return tab
+end
+
+---------------------------------------------------------------------------
+-- NAVIGATE: open the options on a tab / sub-tab and scroll to a section
+-- (used by Layout Mode's right-click "open its settings")
+---------------------------------------------------------------------------
+function GUI:NavigateTo(tabIndex, subTabIndex, sectionName)
+    if not self.MainFrame or not self.MainFrame:IsShown() then
+        if self.Show then self:Show() end
+    end
+    local frame = self.MainFrame
+    if not (frame and tabIndex) then return end
+    self:SelectTab(frame, tabIndex)
+
+    local function ScrollToSection()
+        local regKey = tabIndex .. "_" .. (subTabIndex or 0) .. "_" .. (sectionName or "")
+        local info = self.SectionRegistry and self.SectionRegistry[regKey]
+        if not (info and info.scrollParent and info.frame and info.contentParent) then return end
+        if not info.frame:IsVisible() then return end
+        local sectionTop, contentTop = info.frame:GetTop(), info.contentParent:GetTop()
+        if not (sectionTop and contentTop) then return end
+        local pos = math.max(0, (contentTop - sectionTop) - 20)
+        pos = math.min(pos, info.scrollParent:GetVerticalScrollRange() or 0)
+        info.scrollParent:SetVerticalScroll(pos)
+    end
+
+    C_Timer.After(0, function()
+        if subTabIndex then
+            local page = frame.pages and frame.pages[tabIndex]
+            if page and page._subTabGroup then page._subTabGroup.SelectTab(subTabIndex) end
+        end
+        if sectionName then C_Timer.After(0.05, ScrollToSection) end
+    end)
 end
 
 ---------------------------------------------------------------------------

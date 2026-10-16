@@ -40,7 +40,14 @@ ns.HandheldUnitFrameLayout = {
         ["auras.showBuffs"] = false,
         ["auras.showDebuffs"] = false,
         ["borderSize"] = 1,
-        ["castbar.enabled"] = false,
+        -- H3z0 UI cast bar stays on (otherwise Blizzard's default cast bar shows);
+        -- free position so it can be moved in H3z0 UI Layout Mode
+        ["castbar.enabled"] = true,
+        ["castbar.anchor"] = "none",
+        ["castbar.width"] = 260,
+        ["castbar.height"] = 18,
+        ["castbar.offsetX"] = 0,
+        ["castbar.offsetY"] = -200,
         ["customHealthColor"] = { 0.2, 0.8, 0.2, 1 },
         ["enabled"] = true,
         ["height"] = 14,

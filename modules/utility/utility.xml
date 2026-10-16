@@ -3,4 +3,9 @@
     <Script file="nudge.lua"/>
     <Script file="keybinds.lua"/>
     <Script file="anchoring.lua"/>
+    <Script file="layoutsets.lua"/>
+    <Script file="layoutmode.lua"/>
+    <Script file="layout_default.lua"/>
+    <Script file="layoutshare.lua"/>
+    <Script file="compactbars.lua"/>
 </Ui>

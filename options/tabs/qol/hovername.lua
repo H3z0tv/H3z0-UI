@@ -16,7 +16,7 @@ local function BuildHoverNameTab(tabContent)
     local PADDING = Shared.PADDING
     local db = Shared.GetDB()
 
-    GUI:SetSearchContext({tabIndex = 1, tabName = "General & QoL", subTabIndex = 7, subTabName = "Hover Name"})
+    GUI:SetSearchContext({tabIndex = 2, tabName = "General & QoL", subTabIndex = 7, subTabName = "Hover Name"})
 
     local hn = db and db.hoverName
     if not hn then return end

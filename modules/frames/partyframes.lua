@@ -247,9 +247,38 @@ local function UpdateRange(f)
     end
 end
 
+-- Ready check: tick / cross / waiting icon over the portrait
+local READY_TEX = {
+    ready    = READY_CHECK_READY_TEXTURE or "Interface\\RaidFrame\\ReadyCheck-Ready",
+    notready = READY_CHECK_NOT_READY_TEXTURE or "Interface\\RaidFrame\\ReadyCheck-NotReady",
+    waiting  = READY_CHECK_WAITING_TEXTURE or "Interface\\RaidFrame\\ReadyCheck-Waiting",
+}
+local readyCheckActive = false
+local readyCheckFinishedAt = nil
+
+local function UpdateReadyCheck(f)
+    if not f.ready then return end
+    local unit = f.displayUnit
+    local status
+    if (readyCheckActive or readyCheckFinishedAt) and unit and UnitExists(unit) then
+        local ok, s = pcall(GetReadyCheckStatus, unit)
+        if ok and s and not (issecretvalue and issecretvalue(s)) then status = s end
+    end
+    if status and READY_TEX[status] then
+        -- after the check ends, players who never answered count as not ready
+        if not readyCheckActive and status == "waiting" then status = "notready" end
+        f.ready:SetTexture(READY_TEX[status])
+        f.ready:SetAlpha(1)
+        f.ready:Show()
+    else
+        f.ready:Hide()
+    end
+end
+
 local function UpdateAll(f)
     UpdateName(f); UpdateLevel(f); UpdateRoleAndLeader(f); UpdateRing(f)
     UpdatePortrait(f); UpdateHealth(f); UpdatePower(f); UpdateAuras(f); UpdateRange(f)
+    UpdateReadyCheck(f)
 end
 
 ---------------------------------------------------------------------------
@@ -327,6 +356,12 @@ local function CreateMember(index)
     f.powerBG:SetAllPoints()
     f.powerBG:SetColorTexture(0, 0, 0, 0.7)
 
+    -- ready check icon (above everything on the portrait)
+    f.readyHolder = CreateFrame("Frame", nil, f)
+    f.readyHolder:SetFrameLevel(f:GetFrameLevel() + 20)
+    f.ready = f.readyHolder:CreateTexture(nil, "OVERLAY", nil, 7)
+    f.ready:Hide()
+
     f.auraIcons = {}
     f.displayUnit = "party" .. index
     return f
@@ -354,6 +389,12 @@ local function StyleMember(f)
     f.portrait:ClearAllPoints()
     f.portrait:SetPoint("CENTER", f.ring, "CENTER", 0, 0)
     f.mask:SetAllPoints(f.portrait)
+    if f.readyHolder then
+        f.readyHolder:SetAllPoints(f.portrait)
+        f.ready:ClearAllPoints()
+        f.ready:SetPoint("CENTER", f.portrait, "CENTER", 0, 0)
+        f.ready:SetSize(math.floor(P * 0.62), math.floor(P * 0.62))
+    end
 
     f.levelBox:SetSize(math.max(16, fontSize * 2), fontSize + 4)
     f.levelBox:ClearAllPoints()
@@ -471,7 +512,28 @@ end
 ---------------------------------------------------------------------------
 -- Blizzard party frames: hide while ours are active
 ---------------------------------------------------------------------------
+-- Blizzard's raid frame manager (the tab at the left screen edge): not needed in a party,
+-- the H3z0 UI Raid Control tab replaces it. Shown again in raids.
+local managerHooked = false
+local function HideRaidManager()
+    local s = GetSettings()
+    local mgr = _G.CompactRaidFrameManager
+    if not mgr then return end
+    local hide = s and s.enabled and s.hideBlizzard and not IsInRaid()
+    pcall(mgr.SetAlpha, mgr, hide and 0 or 1)
+    if not InCombatLockdown() then
+        pcall(mgr.EnableMouse, mgr, not hide)
+        local toggle = mgr.toggleButton or _G.CompactRaidFrameManagerToggleButton
+        if toggle and toggle.EnableMouse then pcall(toggle.EnableMouse, toggle, not hide) end
+    end
+    if not managerHooked then
+        managerHooked = true
+        mgr:HookScript("OnShow", function() C_Timer.After(0, HideRaidManager) end)
+    end
+end
+
 local function HideBlizzardParty()
+    HideRaidManager()
     local s = GetSettings()
     local hide = s and s.enabled and s.hideBlizzard
     for _, name in ipairs({"PartyFrame", "CompactPartyFrame"}) do
@@ -533,7 +595,36 @@ events:SetScript("OnEvent", function(_, event, unit)
         return
     end
 
-    if event == "PLAYER_TARGET_CHANGED" then
+    if event == "READY_CHECK" then
+        readyCheckActive = true
+        readyCheckFinishedAt = nil
+        for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end
+        return
+    elseif event == "READY_CHECK_CONFIRM" then
+        for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end
+        return
+    elseif event == "READY_CHECK_FINISHED" then
+        for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end
+        readyCheckActive = false
+        local stamp = GetTime()
+        readyCheckFinishedAt = stamp
+        for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end
+        -- keep the result on screen for a few seconds, then fade it out
+        C_Timer.After(6, function()
+            if readyCheckFinishedAt ~= stamp then return end
+            for _, f in ipairs(members) do
+                if f.ready and f.ready:IsShown() then
+                    UIFrameFadeOut(f.ready, 1.5, 1, 0)
+                end
+            end
+            C_Timer.After(1.6, function()
+                if readyCheckFinishedAt ~= stamp then return end
+                readyCheckFinishedAt = nil
+                for _, f in ipairs(members) do if f.ready then f.ready:Hide(); f.ready:SetAlpha(1) end end
+            end)
+        end)
+        return
+    elseif event == "PLAYER_TARGET_CHANGED" then
         for _, f in ipairs(members) do if f:IsShown() then UpdateRing(f) end end
     elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ROLES_ASSIGNED" or event == "PARTY_LEADER_CHANGED" then
         HideBlizzardParty()
@@ -552,6 +643,7 @@ for _, e in ipairs({
     "UNIT_DISPLAYPOWER", "UNIT_AURA", "UNIT_PORTRAIT_UPDATE", "UNIT_MODEL_CHANGED",
     "UNIT_NAME_UPDATE", "UNIT_LEVEL", "PLAYER_TARGET_CHANGED", "GROUP_ROSTER_UPDATE",
     "PLAYER_ROLES_ASSIGNED", "PARTY_LEADER_CHANGED", "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD",
+    "READY_CHECK", "READY_CHECK_CONFIRM", "READY_CHECK_FINISHED",
 }) do
     events:RegisterEvent(e)
 end
@@ -601,6 +693,13 @@ loader:SetScript("OnEvent", function()
 end)
 
 _G.H3z0UI_RefreshPartyFrames = Refresh
+-- Layout Mode hooks (preview the list while solo)
+_G.H3z0UI_PartyFramesSetTest = function(on)
+    if not container or InCombatLockdown() then return end
+    testMode = on and true or false
+    ApplyLayout()
+end
+_G.H3z0UI_PartyFramesIsTest = function() return testMode end
 
 SLASH_H3Z0PARTY1 = "/h3z0party"
 SlashCmdList["H3Z0PARTY"] = function(msg)

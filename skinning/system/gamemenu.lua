@@ -235,6 +235,8 @@ local function SkinGameMenu()
 
     if not GameMenuFrame then return end
     if GameMenuFrame.h3z0uiSkinned then return end
+    -- first skin re-lays out the (protected) menu: do it out of combat, next time it opens
+    if InCombatLockdown() then return end
 
     -- Get colors based on setting
     local sr, sg, sb, sa, bgr, bgg, bgb, bga = GetGameMenuColors()
@@ -259,7 +261,8 @@ local function SkinGameMenu()
         end
     end
 
-    GameMenuFrame:MarkDirty()
+    -- re-layout only out of combat (protected frame)
+    if not InCombatLockdown() then GameMenuFrame:MarkDirty() end
     GameMenuFrame.h3z0uiSkinned = true
 end
 
@@ -302,7 +305,7 @@ local function RefreshGameMenuFontSize()
     end
 
     -- Mark dirty to recalculate layout if needed
-    if GameMenuFrame.MarkDirty then
+    if GameMenuFrame.MarkDirty and not InCombatLockdown() then
         GameMenuFrame:MarkDirty()
     end
 end
@@ -317,6 +320,9 @@ _G.H3z0UI_RefreshGameMenuFontSize = RefreshGameMenuFontSize
 
 -- Inject button on every InitButtons call (buttonPool gets reset each time)
 local function InjectH3z0UIButton()
+    -- The Esc menu is protected in combat: adding / changing buttons there makes
+    -- Blizzard re-layout it from addon code (ADDON_ACTION_BLOCKED GameMenuFrame:SetSize)
+    if InCombatLockdown() then return end
     local core = GetCore()
     local settings = core and core.db and core.db.profile and core.db.profile.general
     if not settings then return end
@@ -327,9 +333,21 @@ local function InjectH3z0UIButton()
         settings._gameMenuButtonOn017 = true
         settings.addH3z0UIButton = true
     end
-    if settings.addH3z0UIButton == false then return end
-
     if not GameMenuFrame or not GameMenuFrame.buttonPool then return end
+
+    -- Blizzard's "Edit Mode" button opens H3z0 UI Layout Mode (the only edit mode)
+    local editText = HUD_EDIT_MODE_MENU or "Edit Mode"
+    for button in GameMenuFrame.buttonPool:EnumerateActive() do
+        if button:GetText() == editText then
+            button:SetScript("OnClick", function()
+                PlaySound(SOUNDKIT.IG_MAINMENU_OPTION)
+                HideUIPanel(GameMenuFrame)
+                if _G.H3z0UI_ToggleLayoutMode then _G.H3z0UI_ToggleLayoutMode() end
+            end)
+        end
+    end
+
+    if settings.addH3z0UIButton == false then return end
 
     -- v0.17: Place the H3z0 UI button at the very BOTTOM of the menu (below "Return to Game")
     local lastIndex = 0
@@ -352,6 +370,7 @@ local function InjectH3z0UIButton()
         end
     end)
     h3z0uiButton.layoutIndex = lastIndex + 1
+
     GameMenuFrame:MarkDirty()
 end
 

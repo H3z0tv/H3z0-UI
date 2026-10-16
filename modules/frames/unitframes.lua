@@ -69,7 +69,7 @@ local PREVIEW_AURAS = {
 -- HELPER: Health percent with 12.01 API compatibility
 -- API signature changed: old (unit, scaleTo100) -> new (unit, usePredicted, curve)
 ---------------------------------------------------------------------------
-local tocVersion = tonumber((select(4, GetBuildInfo()))) or 0
+local tocVersion = (ns.Client and ns.Client.apiVersion) or tonumber((select(4, GetBuildInfo()))) or 0
 
 local function GetHealthPct(unit, usePredicted)
     if tocVersion >= 120000 and type(UnitHealthPercent) == "function" then
@@ -4253,8 +4253,8 @@ function H3z0UI_UF:EnableEditMode()
         end
     end
 
-    print("|cFF56D1FFH3z0 UI|r: Edit Mode |cff00ff00ENABLED|r - Drag frames to reposition.")
-    if hasLockedCastbar then
+    if not self._layoutModeQuiet then print("|cFF56D1FFH3z0 UI|r: Edit Mode |cff00ff00ENABLED|r - Drag frames to reposition.") end
+    if hasLockedCastbar and not self._layoutModeQuiet then
         print("|cFF56D1FFH3z0 UI|r: Cast bars locked to a frame can't be dragged - set 'Autoresize + Lock To' to None in their options to move them freely.")
     end
 end
@@ -4329,7 +4329,7 @@ function H3z0UI_UF:DisableEditMode()
         wipe(self.editModeCastbarPreview)
     end
 
-    print("|cFF56D1FFH3z0 UI|r: Edit Mode |cffff0000DISABLED|r - Positions saved.")
+    if not self._layoutModeQuiet then print("|cFF56D1FFH3z0 UI|r: Edit Mode |cffff0000DISABLED|r - Positions saved.") end
 end
 
 function H3z0UI_UF:ToggleEditMode()
@@ -4558,7 +4558,27 @@ end
 ---------------------------------------------------------------------------
 -- INITIALIZE
 ---------------------------------------------------------------------------
+-- Preview casts are a temporary view (options toggle / Layout Mode): never keep
+-- them across a reload or logout, otherwise the fake cast shows after every /reload
+local function ClearCastbarPreviews()
+    local db = GetDB()
+    if type(db) ~= "table" then return end
+    for _, unitSettings in pairs(db) do
+        if type(unitSettings) == "table" and type(unitSettings.castbar) == "table" then
+            unitSettings.castbar.previewMode = false
+        end
+    end
+end
+H3z0UI_UF.ClearCastbarPreviews = ClearCastbarPreviews
+
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_LOGOUT")
+    f:SetScript("OnEvent", function() ClearCastbarPreviews() end)
+end
+
 function H3z0UI_UF:Initialize()
+    ClearCastbarPreviews()
     -- Defer initialization if in combat (protects RegisterStateDriver calls)
     if InCombatLockdown() then
         H3z0UI_UF.pendingInitialize = true

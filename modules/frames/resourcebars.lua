@@ -1,4 +1,7 @@
 local ADDON_NAME, ns = ...
+-- spec API (Midnight + WoW: Forever)
+local GetSpecializationInfo = ns.Compat and ns.Compat.GetSpecializationInfo or GetSpecializationInfo
+local GetSpecialization = ns.Compat and ns.Compat.GetSpecialization or GetSpecialization
 local H3z0UICore = ns.Addon
 local LSM = LibStub("LibSharedMedia-3.0")
 
@@ -110,7 +113,7 @@ end
 
 --TABLES
 
-local tocVersion = select(4, GetBuildInfo())
+local tocVersion = (ns.Client and ns.Client.apiVersion) or select(4, GetBuildInfo())
 local HAS_UNIT_POWER_PERCENT = type(UnitPowerPercent) == "function"
 
 -- Power percent with 12.01 API compatibility

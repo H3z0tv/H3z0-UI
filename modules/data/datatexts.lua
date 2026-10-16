@@ -2,6 +2,10 @@
 --- Central system for managing and displaying datatexts
 
 local ADDON_NAME, ns = ...
+-- spec API (Midnight + WoW: Forever)
+local GetSpecializationInfo = ns.Compat and ns.Compat.GetSpecializationInfo or GetSpecializationInfo
+local GetNumSpecializations = ns.Compat and ns.Compat.GetNumSpecializations or GetNumSpecializations
+local GetSpecialization = ns.Compat and ns.Compat.GetSpecialization or GetSpecialization
 local H3z0UICore = ns.Addon
 local Helpers = ns.Helpers
 local LSM = LibStub("LibSharedMedia-3.0")

@@ -28,6 +28,7 @@ local DEFAULTS = {
     fitOptionsWindow = true,  -- Shrink the settings window so it fits the screen
     setupPrompted = false,    -- Steam Deck setup popup: answered (Apply / Don't ask again)
     deckUnitFrames = true,    -- Use the Steam Deck unit frame layout (handheld_layout.lua) while enabled
+    pcController = false,     -- PC Controller: PC layout, but ConsolePort on / Action Combat Mode off
 }
 
 local Handheld = {}
@@ -119,13 +120,17 @@ function Handheld.ApplyScale()
         if c.enabled then
             if c.prevScale == nil then c.prevScale = p.general.uiScale end
             p.general.uiScale = Handheld.TargetScale()
-            if core.ApplyUIScale then core:ApplyUIScale() else pcall(UIParent.SetScale, UIParent, p.general.uiScale) end
+            if not Handheld._dataOnly then
+                if core.ApplyUIScale then core:ApplyUIScale() else pcall(UIParent.SetScale, UIParent, p.general.uiScale) end
+            end
         elseif c.prevScale ~= nil then
             p.general.uiScale = c.prevScale
             c.prevScale = nil
-            if core.ApplyUIScale then core:ApplyUIScale() else pcall(UIParent.SetScale, UIParent, p.general.uiScale) end
+            if not Handheld._dataOnly then
+                if core.ApplyUIScale then core:ApplyUIScale() else pcall(UIParent.SetScale, UIParent, p.general.uiScale) end
+            end
         end
-        Handheld.FitOptionsWindow()
+        if not Handheld._dataOnly then Handheld.FitOptionsWindow() end
         -- the layout is proportional to the UI size, so it has to follow every scale change (slider / preset buttons)
         Handheld.ApplyUnitFrames()
         Handheld.ApplyProfileLayout()
@@ -148,7 +153,7 @@ function Handheld.ApplyBars()
         c.prevFade = nil
         changed = true
     end
-    if changed and _G.H3z0UI_RefreshActionBars then _G.H3z0UI_RefreshActionBars() end
+    if changed and not Handheld._dataOnly and _G.H3z0UI_RefreshActionBars then _G.H3z0UI_RefreshActionBars() end
 end
 
 ---------------------------------------------------------------------------
@@ -177,7 +182,8 @@ local SCALED_KEYS = {
     ["nameFontSize"] = "font", ["healthFontSize"] = "font",
     ["nameOffsetX"] = true, ["nameOffsetY"] = true, ["healthOffsetX"] = true, ["healthOffsetY"] = true,
     ["auras.iconSize"] = true, ["auras.buffIconSize"] = true,
-    ["castbar.height"] = true, ["powerBarHeight"] = true, ["spacing"] = true,
+    ["castbar.height"] = true, ["castbar.width"] = true, ["castbar.offsetX"] = true, ["castbar.offsetY"] = true,
+    ["powerBarHeight"] = true, ["spacing"] = true,
 }
 
 local function RoundHalf(v)
@@ -259,8 +265,8 @@ function Handheld.ApplyUnitFrames()
         else
             return
         end
-        if _G.H3z0UI_RefreshUnitFrames then pcall(_G.H3z0UI_RefreshUnitFrames) end
-        if reloadNeeded then
+        if not Handheld._dataOnly and _G.H3z0UI_RefreshUnitFrames then pcall(_G.H3z0UI_RefreshUnitFrames) end
+        if reloadNeeded and not Handheld._dataOnly then
             print("|cff34D399H3z0 UI:|r Some unit frames or castbars were switched on/off by the Steam Deck layout - type |cffFFFF00/reload|r to finish.")
         end
     end)
@@ -314,7 +320,7 @@ function Handheld.ApplyProfileLayout()
         else
             return
         end
-        if changed then
+        if changed and not Handheld._dataOnly then
             local core = Core()
             if core and core.UpdatePowerBar then pcall(core.UpdatePowerBar, core) end
         end
@@ -540,20 +546,255 @@ function Handheld.ShowSetupPopup()
 end
 
 ---------------------------------------------------------------------------
+-- Deck switch: Action Combat Mode off, ConsolePort on, Edit Mode layout "H3z0 Deck"
+-- What was active before is saved in c.deckSwap and put back when Handheld
+-- Mode is turned off again.
+---------------------------------------------------------------------------
+local DECK_LAYOUT = "h3z0 deck"
+
+local function Clean(str)
+    str = tostring(str or "")
+    str = str:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    return str:lower():gsub("[%s_%-%.]", "")
+end
+
+-- Every name the Combat Mode addon has had (folder "CombatMode", now titled "Action Combat Mode")
+local COMBAT_MODE_KEYS = { combatmode = true, actioncombat = true, actioncombatmode = true }
+
+-- Folder names of installed addons matching a key ("actioncombat", "consoleport")
+local function FindAddOns(key, exactOnly)
+    if key == "actioncombat" then
+        local found = {}
+        local num = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or (GetNumAddOns and GetNumAddOns()) or 0
+        for i = 1, num do
+            local name, title
+            if C_AddOns and C_AddOns.GetAddOnInfo then name, title = C_AddOns.GetAddOnInfo(i) else name, title = GetAddOnInfo(i) end
+            if name then
+                local n, t = Clean(name), Clean(title)
+                if COMBAT_MODE_KEYS[n] or COMBAT_MODE_KEYS[t] then found[#found + 1] = name end
+            end
+        end
+        return found
+    end
+    return Handheld._FindAddOnsByKey(key, exactOnly)
+end
+
+function Handheld._FindAddOnsByKey(key, exactOnly)
+    local found = {}
+    local num = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or (GetNumAddOns and GetNumAddOns()) or 0
+    for i = 1, num do
+        local name, title
+        if C_AddOns and C_AddOns.GetAddOnInfo then name, title = C_AddOns.GetAddOnInfo(i) else name, title = GetAddOnInfo(i) end
+        if name then
+            local n = Clean(name)
+            if n == key or (not exactOnly and Clean(title) == key) then
+                found[#found + 1] = name
+            end
+        end
+    end
+    return found
+end
+
+function Handheld.FindCombatModeAddOns() return FindAddOns("actioncombat") end
+
+local function IsAddOnOn(name)
+    local me = UnitName("player")
+    local state
+    if C_AddOns and C_AddOns.GetAddOnEnableState then
+        state = C_AddOns.GetAddOnEnableState(name, me)
+    elseif GetAddOnEnableState then
+        state = GetAddOnEnableState(me, name)
+    end
+    return (tonumber(state) or 0) > 0
+end
+
+local function SetAddOn(name, on)
+    if on then
+        if C_AddOns and C_AddOns.EnableAddOn then C_AddOns.EnableAddOn(name) elseif EnableAddOn then EnableAddOn(name) end
+    else
+        if C_AddOns and C_AddOns.DisableAddOn then C_AddOns.DisableAddOn(name) elseif DisableAddOn then DisableAddOn(name) end
+    end
+end
+
+local function NumPresetLayouts()
+    local n = 0
+    if Enum and Enum.EditModePresetLayouts then
+        for _ in pairs(Enum.EditModePresetLayouts) do n = n + 1 end
+    end
+    return n > 0 and n or 2
+end
+
+local function EditModeInfo()
+    if not (C_EditMode and C_EditMode.GetLayouts) then return nil end
+    local info = C_EditMode.GetLayouts()
+    if type(info) ~= "table" or type(info.layouts) ~= "table" then return nil end
+    return info
+end
+
+local function FindDeckLayout(info)
+    for i, l in ipairs(info.layouts) do
+        if Clean(l.layoutName) == Clean(DECK_LAYOUT) then return NumPresetLayouts() + i end
+    end
+end
+
+local function SetLayout(index)
+    if index and C_EditMode and C_EditMode.SetActiveLayout then
+        pcall(C_EditMode.SetActiveLayout, index)
+        return true
+    end
+end
+
+local function Say(msg) print("|cff34D399H3z0 UI:|r " .. msg) end
+
+-- Controller addons: ConsolePort on + Action Combat Mode off (controller = true),
+-- or the mouse / keyboard set (Action Combat Mode on + ConsolePort off).
+-- Returns true when an addon was switched (needs a reload).
+local function ApplyAddonSet(controller)
+    local changed = false
+    for _, name in ipairs(FindAddOns("actioncombat")) do
+        if IsAddOnOn(name) == controller then SetAddOn(name, not controller) changed = true end
+    end
+    local cp = FindAddOns("consoleport", true)
+    if controller and #cp == 0 then Say("ConsolePort is not installed.") end
+    for _, name in ipairs(cp) do
+        if IsAddOnOn(name) ~= controller then SetAddOn(name, controller) changed = true end
+    end
+    return changed
+end
+
+-- Returns true when something changed (a reload is needed)
+function Handheld.ApplyDeckSwitch(on)
+    local c = Cfg()
+    if not c then return false end
+    if InCombatLockdown() then
+        Say("Leave combat to switch addons and the Edit Mode layout.")
+        return false
+    end
+    local changed = false
+
+    if on then
+        local swap = {}
+        if ApplyAddonSet(true) then changed = true end
+        local info = EditModeInfo()
+        local LSets = ns.LayoutSets
+        if info then
+            swap.layout = tonumber(info.activeLayout)
+            local deck = FindDeckLayout(info)
+            if not deck and LSets then
+                -- no "H3z0 Deck" yet: start it as a copy of the current layout
+                deck = LSets.EnsureLayout(LSets.DECK_LAYOUT, swap.layout)
+                if deck then changed = true end
+            end
+            if deck and swap.layout ~= deck then
+                SetLayout(deck)
+                changed = true
+            end
+        end
+        -- keep the first saved state if Handheld Mode is switched on twice
+        if not c.deckSwap then c.deckSwap = swap end
+    else
+        -- Off: back to the PC layout; addons follow PC / PC Controller
+        if ApplyAddonSet(c.pcController and true or false) then changed = true end
+        local info = EditModeInfo()
+        if info then
+            local active = tonumber(info.activeLayout)
+            local deck = FindDeckLayout(info)
+            local total = NumPresetLayouts() + #info.layouts
+            local back = c.deckSwap and tonumber(c.deckSwap.layout)
+            if not back or back < 1 or back > total or back == deck then
+                back = nil
+                -- first custom layout that isn't "H3z0 Deck", else Blizzard's Modern preset
+                for i, l in ipairs(info.layouts) do
+                    if Clean(l.layoutName) ~= Clean(DECK_LAYOUT) then back = NumPresetLayouts() + i break end
+                end
+                back = back or 1
+            end
+            local LSets = ns.LayoutSets
+            local pc = LSets and LSets.EnsureLayout(LSets.PC_LAYOUT, back) or back
+            if pc and pc ~= active then
+                SetLayout(pc)
+                changed = true
+            end
+        end
+        c.deckSwap = nil
+    end
+    return changed
+end
+
+StaticPopupDialogs["H3Z0UI_DECK_RELOAD"] = {
+    text = "Handheld Mode switched addons and the Edit Mode layout.\n\nReload the UI now?",
+    button1 = RELOADUI or "Reload UI",
+    button2 = LATER or "Later",
+    OnAccept = function() ReloadUI() end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+}
+
+---------------------------------------------------------------------------
 -- Public entry points
 ---------------------------------------------------------------------------
 function Handheld.Apply()
-    Handheld.ApplyScale()
+    Handheld.ApplyScale()   -- also runs ApplyUnitFrames + ApplyProfileLayout
     Handheld.ApplyBars()
-    Handheld.ApplyUnitFrames()
-    Handheld.ApplyProfileLayout()
 end
 
-function Handheld.SetEnabled(on, silent)
+-- Save every handheld setting without refreshing anything on screen
+-- (used right before a reload, which applies it all anyway)
+function Handheld.ApplyDataOnly()
+    Handheld._dataOnly = true
+    local ok, err = pcall(Handheld.Apply)
+    Handheld._dataOnly = nil
+    if not ok then geterrorhandler()(err) end
+end
+
+function Handheld.SetEnabled(on, silent, auto)
     local c = Cfg()
     if not c then return end
+    -- Steam Deck on turns PC Controller off (they can't be on together)
+    if on and c.pcController then
+        c.pcController = false
+        if not silent then Say("Steam Deck (Handheld Mode) on - PC Controller turned off.") end
+    end
+    local was = c.enabled and true or false
     c.enabled = on and true or false
+
+    -- Action Combat / ConsolePort / Edit Mode layout first: if that needs a
+    -- reload, only save the settings (no live rescale or frame refreshes,
+    -- the reload applies everything) - this is what made the toggle freeze.
+    -- PC / Deck positions of the H3z0 UI frames: remember the ones of the mode we leave
+    local LSets = ns.LayoutSets
+    local modeChanged = (was ~= c.enabled)
+    if modeChanged and LSets then
+        LSets.Save(was and "deck" or "pc")
+    end
+
+    local needReload = false
+    if modeChanged or (c.enabled and not c.deckSwap) or not c.enabled then
+        needReload = Handheld.ApplyDeckSwitch(c.enabled)
+    end
+
+    -- after the Steam Deck preset ran, put back the positions saved for the new mode
+    local function LoadPositions()
+        if modeChanged and LSets and LSets.Load(c.enabled and "deck" or "pc") then
+            return true
+        end
+    end
+
+    if modeChanged then needReload = true end
+
+    if needReload and not auto and not silent and not InCombatLockdown() then
+        Handheld.ApplyDataOnly()
+        LoadPositions()
+        ReloadUI()
+        return
+    end
+
     Handheld.Apply()
+    if LoadPositions() and _G.H3z0UI_RefreshUnitFrames then pcall(_G.H3z0UI_RefreshUnitFrames) end
+    if needReload and auto then
+        StaticPopup_Show("H3Z0UI_DECK_RELOAD")
+    end
+    -- silent (Setup Wizard): the wizard shows its own Reload button
+
     if not silent then
         local w, h = Handheld.GetResolution()
         if c.enabled then
@@ -562,6 +803,39 @@ function Handheld.SetEnabled(on, silent)
             print("|cff34D399H3z0 UI:|r Handheld Mode |cffff5555OFF|r - previous UI scale restored.")
         end
     end
+end
+
+-- PC Controller: keeps the PC layout, only swaps the addons (ConsolePort on,
+-- Action Combat Mode off) and reloads. While Handheld Mode is on the controller
+-- addons are used anyway; the choice applies when Handheld Mode goes off.
+function Handheld.SetPCController(on, silent)
+    local c = Cfg()
+    if not c then return end
+    c.pcController = on and true or false
+    -- PC Controller and Steam Deck can't be on together: PC Controller on turns
+    -- Handheld Mode off (back to the PC layout, ConsolePort stays on) and reloads
+    if c.enabled then
+        if c.pcController then
+            if not silent then Say("PC Controller on - Steam Deck (Handheld Mode) turned off.") end
+            Handheld.SetEnabled(false, silent)
+        end
+        return
+    end
+    if InCombatLockdown() then
+        Say("Leave combat to switch addons.")
+        return
+    end
+    local changed = ApplyAddonSet(c.pcController)
+    if not silent then
+        Say("PC Controller " .. (c.pcController and "|cff00ff00ON|r - ConsolePort on, Action Combat Mode off." or "|cffff5555OFF|r - Action Combat Mode on, ConsolePort off."))
+        if changed then ReloadUI() end
+    end
+    return changed
+end
+
+function Handheld.TogglePCController()
+    local c = Cfg()
+    if c then Handheld.SetPCController(not c.pcController) end
 end
 
 function Handheld.Toggle()
@@ -620,7 +894,7 @@ frame:SetScript("OnEvent", function(self, event)
         -- First time on another small screen: switch on automatically, once
         elseif c.autoDetect and not c.autoApplied and Handheld.IsSmallScreen() then
             c.autoApplied = true
-            if not c.enabled then Handheld.SetEnabled(true) end
+            if not c.enabled then Handheld.SetEnabled(true, nil, true) end
         elseif c.enabled then
             -- Already on: make sure bars + window fit are in the right state (scale is already saved)
             Handheld.ApplyBars()

@@ -159,6 +159,48 @@ local function ReadSpellCooldown(spellID)
 end
 
 ---------------------------------------------------------------------------
+-- Secret-safe cooldown apply (Midnight 12.0+ / Forever)
+-- Prefers the DurationObject API (accepts secret values from tainted code),
+-- falls back to numeric SetCooldown only when no value is secret.
+---------------------------------------------------------------------------
+local function IsSecret(v)
+    return issecretvalue and v ~= nil and issecretvalue(v) or false
+end
+
+local function ApplySpellCooldown(cd, spellID)
+    if not cd or not spellID then return false end
+
+    if cd.SetCooldownFromDurationObject and C_Spell and C_Spell.GetSpellCooldownDuration then
+        local ok, obj = pcall(C_Spell.GetSpellCooldownDuration, spellID, false)
+        if ok and obj then
+            local ok2 = pcall(cd.SetCooldownFromDurationObject, cd, obj)
+            if ok2 then
+                cd:Show()
+                return true
+            end
+        end
+    end
+
+    local start, duration, modRate = ReadSpellCooldown(spellID)
+    if IsSecret(start) or IsSecret(duration) or IsSecret(modRate) then
+        cd:Hide()
+        return false
+    end
+    if not IsCooldownActive(start, duration) then
+        cd:Hide()
+        return false
+    end
+    local ok
+    if modRate then
+        ok = pcall(cd.SetCooldown, cd, start, duration, modRate)
+    else
+        ok = pcall(cd.SetCooldown, cd, start, duration)
+    end
+    if ok then cd:Show() else cd:Hide() end
+    return ok
+end
+
+---------------------------------------------------------------------------
 -- Create the cursor ring frame and elements
 ---------------------------------------------------------------------------
 local function CreateReticle()
@@ -269,25 +311,13 @@ local function UpdateGCDCooldown()
     if not gcdCooldown then return end
 
     local settings = GetSettings()
-    if not settings or not settings.gcdEnabled then
+    if not settings or not settings.enabled or not settings.gcdEnabled then
         gcdCooldown:Hide()
         UpdateRingAppearance()
         return
     end
 
-    local start, duration, modRate = ReadSpellCooldown(GCD_SPELL_ID)
-
-    if IsCooldownActive(start, duration) then
-        gcdCooldown:Show()
-        if modRate then
-            gcdCooldown:SetCooldown(start, duration, modRate)
-        else
-            gcdCooldown:SetCooldown(start, duration)
-        end
-    else
-        gcdCooldown:Hide()
-    end
-
+    ApplySpellCooldown(gcdCooldown, GCD_SPELL_ID)
     UpdateRingAppearance()
 end
 
@@ -450,30 +480,17 @@ eventFrame:SetScript("OnEvent", function(self, event, unit, _, spellID)
 
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" and unit == "player" then
         local settings = GetSettings()
-        if not settings or not settings.gcdEnabled then
+        if not settings or not settings.enabled or not settings.gcdEnabled then
             if gcdCooldown then gcdCooldown:Hide() end
             return
         end
+        if not gcdCooldown then return end
 
-        -- Check cooldown of cast spell, fall back to GCD spell
-        if spellID then
-            local start, duration, modRate = ReadSpellCooldown(spellID)
-            if IsCooldownActive(start, duration) then
-                if gcdCooldown then
-                    gcdCooldown:Show()
-                    if modRate then
-                        gcdCooldown:SetCooldown(start, duration, modRate)
-                    else
-                        gcdCooldown:SetCooldown(start, duration)
-                    end
-                    UpdateRingAppearance()
-                end
-            else
-                UpdateGCDCooldown()
-            end
-        else
-            UpdateGCDCooldown()
+        -- Show the cast spell's cooldown (GCD included); fall back to the GCD spell
+        if not (spellID and ApplySpellCooldown(gcdCooldown, spellID)) then
+            ApplySpellCooldown(gcdCooldown, GCD_SPELL_ID)
         end
+        UpdateRingAppearance()
     end
 end)
 

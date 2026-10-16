@@ -37,7 +37,7 @@ local function BuildKeybindsTab(tabContent)
     local overrideListActive = false
 
     -- Set search context for auto-registration
-    GUI:SetSearchContext({tabIndex = 2, tabName = "Cooldown Manager", subTabIndex = 7, subTabName = "Keybinds"})
+    GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 7, subTabName = "Keybinds"})
 
     -- Refresh function for keybinds
     local function RefreshKeybinds()
@@ -642,7 +642,7 @@ local function BuildRotationAssistTab(tabContent)
     local PAD = 10
 
     -- Set search context for auto-registration
-    GUI:SetSearchContext({tabIndex = 2, tabName = "Cooldown Manager", subTabIndex = 8, subTabName = "Rotation Assist"})
+    GUI:SetSearchContext({tabIndex = 3, tabName = "Cooldown Manager", subTabIndex = 8, subTabName = "Rotation Assist"})
 
     -- Refresh function for rotation helper
     local function RefreshRotationHelper()

@@ -12,9 +12,17 @@ local GUI = H3z0UI.GUI
 local C = GUI.Colors
 local Shared = ns.H3z0UI_Options
 
+-- Folder of the Combat Mode addon (now titled "Action Combat Mode"); found by name or title
 local CM_NAME = "CombatMode"
+local function FindCM()
+    local hh = _G.H3z0UI_Handheld
+    local list = hh and hh.FindCombatModeAddOns and hh.FindCombatModeAddOns()
+    if list and list[1] then CM_NAME = list[1] end
+    return CM_NAME
+end
 
 local function CMInstalled()
+    FindCM()
     if C_AddOns and C_AddOns.GetAddOnInfo then
         local name = C_AddOns.GetAddOnInfo(CM_NAME)
         return name ~= nil
@@ -39,7 +47,7 @@ local function BuildCombatModeTab(tabContent)
     local PADDING = Shared.PADDING
     local db = Shared.GetDB()
 
-    GUI:SetSearchContext({tabIndex = 1, tabName = "General & QoL", subTabIndex = 13, subTabName = "Combat Mode"})
+    GUI:SetSearchContext({tabIndex = 1, tabName = "H3z0 Features", subTabIndex = 2, subTabName = "Combat Mode"})
 
     GUI:SetSearchSection("Combat Mode")
     local header = GUI:CreateSectionHeader(tabContent, "Combat Mode")
@@ -55,7 +63,7 @@ local function BuildCombatModeTab(tabContent)
         return label
     end
 
-    Text("Combat Mode (by djsmithdev) adds action-combat controls: Mouse Look targeting instead of tab-targeting, a crosshair, soft-target reticle, click casting and ally cycling. It is a separate addon that is not included in H3z0 UI; install it from CurseForge or GitHub if you want it.", 56)
+    Text("Action Combat Mode (folder CombatMode, by djsmithdev) adds action-combat controls: Mouse Look targeting instead of tab-targeting, a crosshair, soft-target reticle, click casting and ally cycling. It is a separate addon that is not included in H3z0 UI; install it from CurseForge or GitHub if you want it.", 56)
 
     local status = Text("", 20, C.text)
     local hint = Text("", 36)
@@ -63,7 +71,7 @@ local function BuildCombatModeTab(tabContent)
     local function Refresh()
         if not CMInstalled() then
             status:SetText("Status: |cffff5555Not installed|r")
-            hint:SetText("Install the CombatMode addon (CurseForge / GitHub) into Interface\\AddOns, then restart the game.")
+            hint:SetText("Install the Action Combat Mode / CombatMode addon (CurseForge / GitHub) into Interface\\AddOns, then restart the game.")
         elseif CMLoaded() then
             status:SetText("Status: |cff55ff55Active|r")
             hint:SetText("Open the Combat Mode settings below, or type /cm in chat.")

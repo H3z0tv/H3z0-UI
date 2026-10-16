@@ -567,6 +567,7 @@ local function CreateCoords()
     coordsFrame = CreateFrame("Frame", nil, Minimap)
     coordsText = coordsFrame:CreateFontString(nil, "OVERLAY")
     coordsText:SetAllPoints(coordsFrame)
+    _G.H3z0UI_MinimapCoordsFrame = coordsFrame  -- Layout Mode
 end
 
 local function UpdateCoords()
@@ -1578,5 +1579,81 @@ end)
 -- Expose refresh globals for options panel (matches pattern used by all other modules)
 _G.H3z0UI_RefreshMinimap = function()
     Minimap_Module:Refresh()
+end
+
+---=================================================================================
+--- COORDINATES TOGGLE (XY button on the minimap, keybind, /h3z0ui coords)
+---=================================================================================
+local coordsButton
+
+local function UpdateCoordsButton()
+    if not coordsButton then return end
+    local settings = GetSettings()
+    local on = settings and settings.showCoords
+    local C = _G.H3z0UI and _G.H3z0UI.GUI and _G.H3z0UI.GUI.Colors
+    local a = C and C.accent or {0.204, 0.827, 0.6, 1}
+    if on then
+        coordsButton.text:SetTextColor(a[1], a[2], a[3], 1)
+        coordsButton:SetBackdropBorderColor(a[1], a[2], a[3], 0.9)
+    else
+        coordsButton.text:SetTextColor(0.65, 0.65, 0.65, 1)
+        coordsButton:SetBackdropBorderColor(0.35, 0.35, 0.35, 0.9)
+    end
+    coordsButton:SetShown(settings and settings.enabled ~= false and settings.showCoordsButton ~= false)
+end
+
+_G.H3z0UI_ToggleMapCoords = function()
+    local settings = GetSettings()
+    if not settings then return end
+    settings.showCoords = not settings.showCoords
+    UpdateCoords()
+    if settings.showCoords then UpdateCoordsPosition() end
+    UpdateCoordsButton()
+end
+
+local function CreateCoordsButton()
+    if coordsButton or not Minimap then return end
+    local b = CreateFrame("Button", "H3z0UI_MinimapCoordsToggle", Minimap, "BackdropTemplate")
+    b:SetSize(24, 14)
+    b:SetPoint("BOTTOMLEFT", Minimap, "BOTTOMLEFT", 3, 3)
+    b:SetFrameLevel(Minimap:GetFrameLevel() + 10)
+    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+    b:SetBackdropColor(0, 0, 0, 0.7)
+    b.text = b:CreateFontString(nil, "OVERLAY")
+    b.text:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    b.text:SetPoint("CENTER", 0, 0)
+    b.text:SetText("XY")
+    b:SetAlpha(0)
+    b:SetScript("OnClick", function() _G.H3z0UI_ToggleMapCoords() end)
+    b:SetScript("OnEnter", function(self)
+        self:SetAlpha(1)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Map coordinates", 1, 1, 1)
+        GameTooltip:AddLine("Click to show or hide your coordinates.", 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function(self)
+        if not Minimap:IsMouseOver() then self:SetAlpha(0) end
+        GameTooltip:Hide()
+    end)
+    -- only visible while the mouse is over the minimap
+    Minimap:HookScript("OnEnter", function() if coordsButton then coordsButton:SetAlpha(1) end end)
+    Minimap:HookScript("OnLeave", function()
+        if coordsButton and not coordsButton:IsMouseOver() then coordsButton:SetAlpha(0) end
+    end)
+    coordsButton = b
+    UpdateCoordsButton()
+end
+
+local coordsButtonLoader = CreateFrame("Frame")
+coordsButtonLoader:RegisterEvent("PLAYER_ENTERING_WORLD")
+coordsButtonLoader:SetScript("OnEvent", function()
+    C_Timer.After(1, function()
+        CreateCoordsButton()
+        UpdateCoordsButton()
+    end)
+end)
+if Minimap_Module and Minimap_Module.Refresh then
+    hooksecurefunc(Minimap_Module, "Refresh", function() UpdateCoordsButton() end)
 end
 

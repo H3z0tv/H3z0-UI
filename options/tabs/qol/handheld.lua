@@ -49,6 +49,8 @@ Build = function(tabContent)
     if cfg.fitOptionsWindow == nil then cfg.fitOptionsWindow = true end
     if cfg.deckUnitFrames == nil then cfg.deckUnitFrames = true end
     if cfg.pcController == nil then cfg.pcController = false end
+    if cfg.pcHandheld == nil then cfg.pcHandheld = false end
+    cfg.deckChoice = (cfg.enabled and not cfg.pcHandheld) and true or false
     if cfg.uiScale == nil or cfg.uiScale <= 0 then cfg.uiScale = handheld.AutoScale() end
 
     local function Section(title)
@@ -74,9 +76,15 @@ Build = function(tabContent)
 
     ---------------------------------------------------------------------
     Section("PC Controller")
-    Info("Play on your PC with a controller: keeps your normal PC layout (same positions, sizes and scale) and only swaps the addons - ConsolePort on, Action Combat Mode off - then reloads. Untick to go back to mouse and keyboard (Action Combat Mode on, ConsolePort off). PC Controller and Steam Deck can't be on together: turning one on turns the other off.", 58)
+    Info("Play on your PC with a controller: keeps your normal PC layout (same positions, sizes and scale) and only swaps the addons - ConsolePort on, Action Combat Mode off - then reloads. Untick to go back to mouse and keyboard (Action Combat Mode on, ConsolePort off). Only one of PC Controller, PC Handheld and Steam Deck can be on: turning one on turns the others off.", 58)
     Place(GUI:CreateFormCheckbox(tabContent, "PC Controller (ConsolePort instead of Action Combat Mode)", "pcController", cfg, function()
         handheld.SetPCController(cfg.pcController)
+    end))
+
+    Section("PC Handheld")
+    Info("The Steam Deck setup on your PC: Steam Deck HUD and frame positions, and ConsolePort (Action Combat Mode off) - but your normal PC UI scale. Reloads when switched. Only one of PC Controller, PC Handheld and Steam Deck can be on.", 46)
+    Place(GUI:CreateFormCheckbox(tabContent, "PC Handheld (Steam Deck layout, PC scale)", "pcHandheld", cfg, function()
+        handheld.SetPCHandheld(cfg.pcHandheld)
     end))
 
     Section("Handheld / Steam Deck Mode")
@@ -99,10 +107,10 @@ Build = function(tabContent)
     local cpText = handheld.ConsolePortLoaded() and "ConsolePort: loaded" or "ConsolePort: not loaded"
     Info(padText .. "   |   " .. cpText, 22, C.text)
 
-    Place(GUI:CreateFormCheckbox(tabContent, "Enable Handheld Mode", "enabled", cfg, function()
-        handheld.SetEnabled(cfg.enabled)
+    Place(GUI:CreateFormCheckbox(tabContent, "Enable Handheld Mode (Steam Deck)", "deckChoice", cfg, function()
+        handheld.SetSteamDeck(cfg.deckChoice)
     end))
-    Info("Turning it on disables Action Combat Mode, enables ConsolePort, switches to the Deck layout and reloads. Turning it off enables Action Combat Mode, disables ConsolePort, switches to the PC layout and reloads. PC and Deck each keep their own frame positions: move frames in H3z0 UI Layout Mode while in that mode.", 46)
+    Info("Turning it on disables Action Combat Mode, enables ConsolePort, switches to the Deck positions and reloads. Turning it off enables Action Combat Mode, disables ConsolePort, switches to the PC positions and reloads. PC and Deck each keep their own frame positions: move frames in H3z0 UI Layout Mode while in that mode.", 46)
     Place(GUI:CreateFormCheckbox(tabContent, "Auto-enable on a small screen (<= 800p), first launch only", "autoDetect", cfg))
 
     ---------------------------------------------------------------------

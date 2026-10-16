@@ -57,15 +57,13 @@ function Share.Export()
     local mode = LS.CurrentMode()
     local other = (mode == "deck") and "pc" or "deck"
     local data = {
-        v = 1,
+        v = 2,
         positions = {
             [mode] = LS.Capture(),                                  -- live values of the mode in use
             [other] = p.layoutSets and p.layoutSets[other] or nil,  -- saved values of the other mode
         },
-        blizz = {
-            pc = BlizzardLayoutString(LS.PC_LAYOUT),
-            deck = BlizzardLayoutString(LS.DECK_LAYOUT),
-        },
+        -- Blizzard frames (action bars, Cooldown Manager, ...) as saved by H3z0 UI
+        blizzPositions = ns.BlizzPositions and ns.BlizzPositions.GetAll() or nil,
     }
     local serialized = AceSerializer:Serialize(data)
     local compressed = LibDeflate:CompressDeflate(serialized, { level = 9 })
@@ -80,7 +78,7 @@ local function Decode(str)
     local inflated = decoded and LibDeflate:DecompressDeflate(decoded)
     if not inflated then return nil, "The code is damaged (copy it again)." end
     local ok, data = AceSerializer:Deserialize(inflated)
-    if not ok or type(data) ~= "table" or data.v ~= 1 then return nil, "The code could not be read." end
+    if not ok or type(data) ~= "table" or (data.v ~= 1 and data.v ~= 2) then return nil, "The code could not be read." end
     return data
 end
 
@@ -102,33 +100,10 @@ function Share.Import(str, quiet)
     end
     LS.Load(LS.CurrentMode())
 
-    -- Blizzard frame layouts
-    local info = LS.GetLayouts()
-    if info and C_EditMode and C_EditMode.ConvertStringToLayoutInfo then
-        local changed = false
-        for mode, s in pairs(data.blizz or {}) do
-            if type(s) == "string" and s ~= "" then
-                local ok, layout = pcall(C_EditMode.ConvertStringToLayoutInfo, s)
-                if ok and type(layout) == "table" and type(layout.systems) == "table" then
-                    local name = LS.ModeLayoutName(mode)
-                    local idx = LS.FindLayout(name, info)
-                    local existing = idx and info.layouts[idx - LS.NumPresetLayouts()]
-                    if existing then
-                        existing.systems = layout.systems
-                    else
-                        local accountType = Enum and Enum.EditModeLayoutType and Enum.EditModeLayoutType.Account or 1
-                        table.insert(info.layouts, { layoutName = name, layoutType = accountType, systems = layout.systems })
-                    end
-                    changed = true
-                end
-            end
-        end
-        if changed then
-            local want = LS.FindLayout(LS.ModeLayoutName(), info)
-            if want then info.activeLayout = want end
-            local ok = pcall(C_EditMode.SaveLayouts, info)
-            if ok and want then LS.Activate(want) end
-        end
+    -- Blizzard frame positions (kept in H3z0 UI; Blizzard's Edit Mode layouts are never changed)
+    if type(data.blizzPositions) == "table" and ns.BlizzPositions then
+        ns.BlizzPositions.SetAll(data.blizzPositions)
+        ns.BlizzPositions.ApplyAll()
     end
 
     if not quiet then
@@ -241,7 +216,7 @@ function Share.ShowExport()
     local f = Build()
     local code, err = Share.Export()
     f.title:SetText("|cff34D399H3z0 UI|r  Export Layout")
-    f.hint:SetText("Copy this code (Ctrl+A, Ctrl+C) and share it. It contains the positions of every frame for PC and Deck, including the Blizzard frames.")
+    f.hint:SetText("Copy this code (Ctrl+A, Ctrl+C) and share it. It contains the positions of every frame for PC and Deck, including the Blizzard frames (saved in H3z0 UI, not in Edit Mode).")
     f.edit:SetText(code or "")
     f.action:Hide()
     f.status:SetText(code and "" or ("|cffff5555" .. tostring(err) .. "|r"))
@@ -281,12 +256,6 @@ ev:SetScript("OnEvent", function(self)
         local p = Profile()
         if not (p and wiz and wiz.ShouldAutoShow and wiz.ShouldAutoShow()) then return end
         if p._h3zDefaultLayoutApplied then return end
-        -- Blizzard's Edit Mode layouts load a moment after login: wait for them (max ~10s)
-        local LS = ns.LayoutSets
-        if not (LS and LS.GetLayouts()) and tries < 10 then
-            C_Timer.After(1, TryApply)
-            return
-        end
         local ok = Share.Import(code, true)
         if ok then
             p._h3zDefaultLayoutApplied = true

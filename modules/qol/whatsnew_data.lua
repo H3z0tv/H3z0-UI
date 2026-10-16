@@ -8,16 +8,14 @@
 local ADDON_NAME, ns = ...
 
 ns.WhatsNew = {
-    version = "0.23.1",
+    version = "0.23.2",
     new = {
-        "New menu order: |cff34D399H3z0 Features|r, |cff34D399Nameplates|r, General & QoL, |cff34D399Party Frames|r, Cooldown Manager, Unit Frames ... |cff34D399Portraits|r is now a tab in Unit Frames.",
-        "H3z0 Features: Combat Mode, Bottom Bar, Steam Deck + PC Controller, Layout & Bars, Map and Extras.",
-        "This |cff34D399What's New|r window - opens once after every update (/h3z0ui whatsnew to see it again).",
-        "Layout Mode: right-click the |cff34D399Objective Tracker|r to open its skin settings, buffs / debuffs open Buff & Debuff.",
+        "|cff34D399PC Handheld|r (H3z0 Features > Steam Deck + PC Controller, /h3z0ui pchandheld): the Steam Deck layout and ConsolePort on PC, with your normal PC UI scale.",
+        "Layout Mode now saves Blizzard frame positions (action bars, Cooldown Manager, buffs, ...) in H3z0 UI - Blizzard's Edit Mode layouts are no longer created or changed.",
+        "New default H3z0 UI layout for new installs (PC and Deck).",
     },
     fixed = {
-        "Objective Tracker skin: text overlapping or out of place after changing its font sizes.",
-        "Dropdown lists in the menu (e.g. Bar Texture) opening behind switches and headers, so nothing could be picked.",
-        "ConsolePort / Action Combat Mode switching on WoW: Forever (Handheld Mode, PC Controller, Setup Wizard) - all ConsolePort modules switch together now.",
+        "Switching Handheld Mode / PC Controller no longer creates or switches \"H3z0 PC\" / \"H3z0 Deck\" Edit Mode layouts - pick your own Edit Mode layout once with /h3z0ui blizzedit if needed.",
+        "Only one of PC Controller, PC Handheld and Steam Deck can be on at a time.",
     },
 }

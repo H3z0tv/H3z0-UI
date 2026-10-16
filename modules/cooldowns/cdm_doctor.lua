@@ -59,11 +59,9 @@ local function Run()
             if s.system == sys then
                 for _, e in ipairs(s.settings or {}) do
                     if e.setting == SET.VisibleSetting and e.value == VIS.Hidden then
-                        e.value = VIS.Always or 0
-                        layoutChanged = true
                         for _, v in ipairs(VIEWERS) do
                             if v.index == s.systemIndex then
-                                lines[#lines + 1] = v.label .. " was set to Hidden in the Edit Mode layout \"" .. tostring(layout.layoutName) .. "\" - set to Always."
+                                lines[#lines + 1] = v.label .. " is set to Hidden in your Edit Mode layout \"" .. tostring(layout.layoutName) .. "\" - set its Visibility to Always with /h3z0ui blizzedit."
                             end
                         end
                     end
@@ -81,8 +79,8 @@ local function Run()
             reload = true
         else
             if not OnScreen(f) then
-                if EM and EM.SaveSystemOffset and sys and v.index then
-                    EM.SaveSystemOffset(sys, v.index, f, 0, v.y)
+                if ns.BlizzPositions then
+                    ns.BlizzPositions.Save(f, 0, v.y)
                     lines[#lines + 1] = v.label .. " was off-screen - moved back below the screen centre."
                 else
                     lines[#lines + 1] = v.label .. " is off-screen - move it in Layout Mode."

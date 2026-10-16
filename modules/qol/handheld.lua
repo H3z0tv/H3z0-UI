@@ -29,6 +29,8 @@ local DEFAULTS = {
     setupPrompted = false,    -- Steam Deck setup popup: answered (Apply / Don't ask again)
     deckUnitFrames = true,    -- Use the Steam Deck unit frame layout (handheld_layout.lua) while enabled
     pcController = false,     -- PC Controller: PC layout, but ConsolePort on / Action Combat Mode off
+    pcHandheld = false,       -- PC Handheld: Steam Deck HUD + Deck layout + ConsolePort, but your PC UI scale
+    deckChoice = false,       -- menu mirror: Steam Deck (Handheld Mode with the handheld scale) is on
 }
 
 local Handheld = {}
@@ -117,7 +119,7 @@ function Handheld.ApplyScale()
     local c, p, core = Cfg(), Helpers.GetProfile(), Core()
     if not (c and p and p.general and core) then return end
     RunSafe(function()
-        if c.enabled then
+        if c.enabled and not c.pcHandheld then
             if c.prevScale == nil then c.prevScale = p.general.uiScale end
             p.general.uiScale = Handheld.TargetScale()
             if not Handheld._dataOnly then
@@ -336,7 +338,7 @@ function Handheld.FitOptionsWindow()
     local c, p = Cfg(), Helpers.GetProfile()
     if not (f and c and p) then return end
     local saved = p.configPanelScale or 1.0
-    if c.enabled and c.fitOptionsWindow then
+    if c.enabled and c.fitOptionsWindow and not c.pcHandheld then
         local w, h = f:GetWidth(), f:GetHeight()
         local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
         if w > 0 and h > 0 and sw > 0 and sh > 0 then
@@ -724,47 +726,12 @@ function Handheld.ApplyDeckSwitch(on)
     if on then
         local swap = {}
         if ApplyAddonSet(true) then changed = true end
-        local info = EditModeInfo()
-        local LSets = ns.LayoutSets
-        if info then
-            swap.layout = tonumber(info.activeLayout)
-            local deck = FindDeckLayout(info)
-            if not deck and LSets then
-                -- no "H3z0 Deck" yet: start it as a copy of the current layout
-                deck = LSets.EnsureLayout(LSets.DECK_LAYOUT, swap.layout)
-                if deck then changed = true end
-            end
-            if deck and swap.layout ~= deck then
-                SetLayout(deck)
-                changed = true
-            end
-        end
+        -- (Blizzard frame positions for Deck come from H3z0 UI, Edit Mode is not touched)
         -- keep the first saved state if Handheld Mode is switched on twice
         if not c.deckSwap then c.deckSwap = swap end
     else
         -- Off: back to the PC layout; addons follow PC / PC Controller
         if ApplyAddonSet(c.pcController and true or false) then changed = true end
-        local info = EditModeInfo()
-        if info then
-            local active = tonumber(info.activeLayout)
-            local deck = FindDeckLayout(info)
-            local total = NumPresetLayouts() + #info.layouts
-            local back = c.deckSwap and tonumber(c.deckSwap.layout)
-            if not back or back < 1 or back > total or back == deck then
-                back = nil
-                -- first custom layout that isn't "H3z0 Deck", else Blizzard's Modern preset
-                for i, l in ipairs(info.layouts) do
-                    if Clean(l.layoutName) ~= Clean(DECK_LAYOUT) then back = NumPresetLayouts() + i break end
-                end
-                back = back or 1
-            end
-            local LSets = ns.LayoutSets
-            local pc = LSets and LSets.EnsureLayout(LSets.PC_LAYOUT, back) or back
-            if pc and pc ~= active then
-                SetLayout(pc)
-                changed = true
-            end
-        end
         c.deckSwap = nil
     end
     return changed
@@ -798,11 +765,13 @@ end
 function Handheld.SetEnabled(on, silent, auto)
     local c = Cfg()
     if not c then return end
-    -- Steam Deck on turns PC Controller off (they can't be on together)
+    -- Steam Deck / PC Handheld on turns PC Controller off (only one at a time)
     if on and c.pcController then
         c.pcController = false
-        if not silent then Say("Steam Deck (Handheld Mode) on - PC Controller turned off.") end
+        if not silent then Say((c.pcHandheld and "PC Handheld" or "Steam Deck") .. " on - PC Controller turned off.") end
     end
+    if not on then c.pcHandheld = false end
+    c.deckChoice = (on and not c.pcHandheld) and true or false
     local was = c.enabled and true or false
     c.enabled = on and true or false
 
@@ -861,11 +830,11 @@ function Handheld.SetPCController(on, silent)
     local c = Cfg()
     if not c then return end
     c.pcController = on and true or false
-    -- PC Controller and Steam Deck can't be on together: PC Controller on turns
-    -- Handheld Mode off (back to the PC layout, ConsolePort stays on) and reloads
+    -- PC Controller, PC Handheld and Steam Deck can't be on together: PC Controller
+    -- on turns Handheld Mode off (back to the PC layout, ConsolePort stays on) and reloads
     if c.enabled then
         if c.pcController then
-            if not silent then Say("PC Controller on - Steam Deck (Handheld Mode) turned off.") end
+            if not silent then Say("PC Controller on - " .. (c.pcHandheld and "PC Handheld" or "Steam Deck") .. " turned off.") end
             Handheld.SetEnabled(false, silent)
         end
         return
@@ -880,6 +849,60 @@ function Handheld.SetPCController(on, silent)
         if changed then ReloadUI() end
     end
     return changed
+end
+
+-- PC Handheld: Steam Deck HUD + Deck layout + ConsolePort, but the PC UI scale.
+-- Same switch logic as Steam Deck (addons, Edit Mode layout, reload).
+function Handheld.SetPCHandheld(on, silent)
+    local c = Cfg()
+    if not c then return end
+    if on then
+        local wasDeck = c.enabled and not c.pcHandheld
+        c.pcHandheld = true
+        if c.enabled then
+            -- coming from Steam Deck: same layout, only the scale goes back to PC
+            if wasDeck then
+                if not silent then Say("PC Handheld on - Steam Deck turned off (PC UI scale).") end
+                c.deckChoice = false
+                Handheld.ApplyDataOnly()
+                if not silent and not InCombatLockdown() then ReloadUI() end
+            end
+            return
+        end
+        Handheld.SetEnabled(true, silent)
+    else
+        if c.enabled and c.pcHandheld then
+            Handheld.SetEnabled(false, silent)
+        else
+            c.pcHandheld = false
+        end
+    end
+end
+
+-- Steam Deck switch in the menu (Handheld Mode with the handheld scale)
+function Handheld.SetSteamDeck(on, silent)
+    local c = Cfg()
+    if not c then return end
+    if on then
+        if c.enabled and c.pcHandheld then
+            -- coming from PC Handheld: same layout, only the scale changes
+            c.pcHandheld = false
+            c.deckChoice = true
+            if not silent then Say("Steam Deck on - PC Handheld turned off (handheld UI scale).") end
+            Handheld.ApplyDataOnly()
+            if not silent and not InCombatLockdown() then ReloadUI() end
+            return
+        end
+        c.pcHandheld = false
+        Handheld.SetEnabled(true, silent)
+    else
+        Handheld.SetEnabled(false, silent)
+    end
+end
+
+function Handheld.TogglePCHandheld()
+    local c = Cfg()
+    if c then Handheld.SetPCHandheld(not (c.enabled and c.pcHandheld)) end
 end
 
 function Handheld.TogglePCController()

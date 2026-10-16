@@ -579,7 +579,8 @@ for _, info in ipairs(ACTION_BARS) do
             end
         end,
         saveOffset = function(frame, dx, dy)
-            EM.SaveSystemOffset(AB_SYSTEM, info.index, frame, dx, dy)
+            -- saved in H3z0 UI (not in Blizzard's Edit Mode)
+            if ns.BlizzPositions then ns.BlizzPositions.Save(frame, dx, dy) end
         end,
     })
 end
@@ -790,7 +791,7 @@ local function CreateHandle(el)
             end
             if dx and target and self.el.saveOffset then self.el.saveOffset(target, dx, dy) end
             -- re-attach the handle to the bar once Blizzard has moved it
-            C_Timer.After(0.3, function() self.target = nil end)
+            C_Timer.After(0.05, function() self.target = nil end)
             return
         end
         if not target or LM.dragging ~= target then return end
@@ -843,7 +844,7 @@ local function BlizzardSystemElements()
                     sys = sys,
                     frame = function() return f end,
                     saveOffset = function(frame, dx, dy)
-                        EM.SaveSystemOffset(sys, idx, frame, dx, dy)
+                        if ns.BlizzPositions then ns.BlizzPositions.Save(frame, dx, dy) end
                     end,
                 }
             end
@@ -1093,20 +1094,9 @@ function LM:Enter()
     if _G.H3z0UI and _G.H3z0UI.GUI and _G.H3z0UI.GUI.Hide then
         pcall(_G.H3z0UI.GUI.Hide, _G.H3z0UI.GUI)
     end
-    -- Blizzard frames are saved into "H3z0 PC" or "H3z0 Deck" (created from
-    -- the current layout the first time - looks exactly the same)
     local LSets = ns.LayoutSets
     if LSets then
-        local want = LSets.ModeLayoutName()
-        local info = LSets.GetLayouts()
-        local idx, created = LSets.EnsureLayout(want, info and info.activeLayout)
-        if idx and info and tonumber(info.activeLayout) ~= idx then
-            LSets.Activate(idx)
-        end
-        if created then
-            Say("Blizzard frames are now saved in the Edit Mode layout \"" .. want .. "\" (managed by H3z0 UI).")
-        end
-        Say("Editing the |cffFFFF00" .. (LSets.CurrentMode() == "deck" and "Deck" or "PC") .. "|r layout. Handheld Mode switches between PC and Deck.")
+        Say("Editing the |cffFFFF00" .. (LSets.CurrentMode() == "deck" and "Deck" or "PC") .. "|r layout. Positions are saved in H3z0 UI - Blizzard's Edit Mode layouts are not changed.")
     end
 
     self.active = true

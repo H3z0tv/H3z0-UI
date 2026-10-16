@@ -89,6 +89,12 @@ function H3z0UI:SlashCommandOpen(input)
             print("|cFF56D1FFH3z0 UI:|r Handheld module not loaded.")
         end
         return
+    elseif input and (input == "pchandheld" or input == "pcdeck") then
+        -- PC Handheld: Steam Deck layout + ConsolePort with the PC UI scale
+        if _G.H3z0UI_Handheld and _G.H3z0UI_Handheld.TogglePCHandheld then
+            _G.H3z0UI_Handheld.TogglePCHandheld()
+        end
+        return
     elseif input and (input == "controller" or input == "pad") then
         -- PC Controller: PC layout + ConsolePort (Action Combat Mode off)
         if _G.H3z0UI_Handheld and _G.H3z0UI_Handheld.TogglePCController then

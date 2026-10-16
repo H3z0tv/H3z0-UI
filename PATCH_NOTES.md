@@ -1,5 +1,10 @@
 # H3z0 UI - Patch Notes
 
+## 0.23.2 - PC Handheld, own layout storage, new default layout
+- **Layout Mode no longer touches Blizzard's Edit Mode.** Positions of Blizzard frames (action bars, Cooldown Manager, buffs, objective tracker, ...) are saved in the H3z0 UI profile (PC and Deck separately) and H3z0 UI places the frames itself. No more "H3z0 PC" / "H3z0 Deck" Edit Mode layouts are created or switched; Handheld Mode / PC Handheld only swap the addons. Export codes (v2) carry these positions; older codes still import the H3z0 frame positions.
+- **New default layout** for new installs (PC and Deck, Blizzard frames included). Existing setups are not changed; use Import to take it.
+- **PC Handheld** (H3z0 Features > Steam Deck + PC Controller, `/h3z0ui pchandheld`): the Steam Deck setup on PC - Steam Deck HUD and Deck frame positions and ConsolePort (Action Combat Mode off), but your normal PC UI scale. Only one of PC Controller, PC Handheld and Steam Deck can be on; switching between them reloads.
+
 ## 0.23.1 - Fixes and menu order
 - Menu order: **Nameplates** and **Party Frames** are their own pages in the sidebar (after H3z0 Features and after General & QoL), and **Portraits** is a tab in Unit Frames.
 - **What's New window**: opens once after each update with what's new and what's fixed (not on a fresh install). `/h3z0ui whatsnew` or H3z0 Features > Extras opens it again. Entries live in modules/qol/whatsnew_data.lua.

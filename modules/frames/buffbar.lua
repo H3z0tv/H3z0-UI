@@ -1075,21 +1075,10 @@ LayoutBuffIcons = function()
         end
     end
 
-    -- Update viewer size to match icon grid (for Edit Mode)
-    -- Wrap with suppression to prevent OnSizeChanged from triggering recursive layouts
-    if not InCombatLockdown() then
-        SuppressLayout()
-        BuffIconCooldownViewer:SetSize(H3z0UICore:PixelRound(totalWidth), H3z0UICore:PixelRound(totalHeight))
-        UnsuppressLayout()
-
-        -- Also resize Selection child if it exists
-        if BuffIconCooldownViewer.Selection then
-            BuffIconCooldownViewer.Selection:ClearAllPoints()
-            BuffIconCooldownViewer.Selection:SetPoint("TOPLEFT", BuffIconCooldownViewer, "TOPLEFT", 0, 0)
-            BuffIconCooldownViewer.Selection:SetPoint("BOTTOMRIGHT", BuffIconCooldownViewer, "BOTTOMRIGHT", 0, 0)
-            BuffIconCooldownViewer.Selection:SetFrameLevel(BuffIconCooldownViewer:GetFrameLevel())
-        end
-    end
+    -- The viewer itself is NOT resized any more: resizing Blizzard's viewer every time
+    -- the buff count changed made Blizzard lay it out again, which made us re-layout and
+    -- re-skin, over and over (icons jumping / changing look), and it tainted the viewer.
+    local _ = totalWidth and totalHeight
 
     isIconLayoutRunning = false
 end

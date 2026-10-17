@@ -920,7 +920,12 @@ local function BlizzardSystemElements()
                     or (S.DamageMeter ~= nil and sys == S.DamageMeter)
                     or lname:find("chat", 1, true) ~= nil
                     or lname:find("damage", 1, true) ~= nil
+                -- Extra Action / Zone Ability: the container is hidden and empty unless a
+                    -- button is active, so it gets a placeholder handle to move it anyway
+                local isExtra = (S.ExtraAbilities ~= nil and sys == S.ExtraAbilities)
+                    or lname:find("extra", 1, true) ~= nil
                 list[#list + 1] = {
+                    placeholderSize = isExtra and 64 or nil,
                     resizable = resizable,
                     saveSize = function(frame, w, h, left, top)
                         if ns.BlizzPositions and ns.BlizzPositions.SaveSize then
@@ -929,7 +934,7 @@ local function BlizzardSystemElements()
                     end,
                     key = key, label = tostring(name), group = "blizzard", ghost = true,
                     -- Cooldown Manager gets a handle even while it's hidden out of combat
-                    showHidden = (CDM ~= nil and sys == CDM),
+                    showHidden = (CDM ~= nil and sys == CDM) or isExtra,
                     cdmIndex = (CDM ~= nil and sys == CDM) and idx or nil,
                     sys = sys,
                     frame = function() return f end,
@@ -955,18 +960,26 @@ local function RefreshHandles()
         local ok, target = pcall(el.frame)
         target = ok and target or nil
         local h = LM.handles[el.key]
-        if target and target.IsShown and (target:IsShown() or el.showHidden) and (target:GetWidth() or 0) > 1 and target:GetCenter() then
+        local tooSmall = target and ((target:GetWidth() or 0) <= 1 or not target:IsShown())
+        local usePlaceholder = target and el.placeholderSize and tooSmall
+        if target and target.IsShown and (target:IsShown() or el.showHidden) and ((target:GetWidth() or 0) > 1 or usePlaceholder) and target:GetCenter() then
             if not h then
                 h = CreateHandle(el)
                 LM.handles[el.key] = h
             end
             h.el = el
-            if h.target ~= target then
+            if h.target ~= target or h.placeholder ~= (usePlaceholder and true or false) then
                 h:SetMovable(false)
                 h:ClearAllPoints()
-                h:SetPoint("TOPLEFT", target, "TOPLEFT", -1, 1)
-                h:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", 1, -1)
+                if usePlaceholder then
+                    h:SetSize(el.placeholderSize, el.placeholderSize)
+                    h:SetPoint("CENTER", target, "CENTER", 0, 0)
+                else
+                    h:SetPoint("TOPLEFT", target, "TOPLEFT", -1, 1)
+                    h:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", 1, -1)
+                end
                 h.target = target
+                h.placeholder = usePlaceholder and true or false
             end
             local lockText = el.locked and el.locked() or nil
             if h.grip then

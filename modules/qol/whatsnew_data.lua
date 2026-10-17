@@ -8,8 +8,9 @@
 local ADDON_NAME, ns = ...
 
 ns.WhatsNew = {
-    version = "0.23.6",
+    version = "0.23.7",
     new = {
+        "|cff34D399Streamer Mode|r (Action Bars > Master Settings, or /h3z0ui streamer): hides the yellow highlight that shows on an action button when you press it (press glow, active border, cast fill), so viewers can't see which keys you press.",
         "|cff34D399Resize the chat window and the damage meter|r in H3z0 UI Layout Mode: drag the corner grip at the bottom right of their handle. Sizes are saved in H3z0 UI (PC and Deck) and included in layout codes.",
         "|cff34D399PC Handheld|r (H3z0 Features > Steam Deck + PC Controller, /h3z0ui pchandheld): the Steam Deck layout and ConsolePort on PC, with your normal PC UI scale.",
         "Layout Mode now saves Blizzard frame positions (action bars, Cooldown Manager, buffs, ...) in H3z0 UI - Blizzard's Edit Mode layouts are no longer created or changed.",
@@ -17,7 +18,8 @@ ns.WhatsNew = {
         "M+ Timer: new |cff34D399H3z0 Pro|r layout - big timer, +3 / +2 / +1 bars with the time left above them, enemy forces with your current pull (orange), boss kill times, a death log on the deaths tooltip and enemy forces in unit tooltips. Skinning & Autohide > Skinning > H3z0 UI M+ Timer (Toggle Demo Mode to see it). Your timer is switched to it once - pick another layout there if you prefer.",
     },
     fixed = {
-        "Extra Action / Zone Ability button kept disappearing and couldn't be moved in Layout Mode: it now stays in Blizzard's own container (H3z0 UI only applies scale / hide artwork) and is moved with the Extra Abilities handle in Layout Mode. Your old position is carried over once.",
+        "Tracked Buffs kept changing look and jumping around while playing: H3z0 UI resized Blizzard's buff viewer on every buff change, which made both sides lay the icons out again and again. The viewer keeps its size now; H3z0 UI only arranges and skins the icons.",
+        "Extra Action / Zone Ability button kept disappearing and couldn't be moved in Layout Mode: it now stays in Blizzard's own container (H3z0 UI only applies scale / hide artwork) and is moved with the Extra Abilities handle in Layout Mode (a square placeholder when no extra button is active). Your old position is carried over once.",
         "\"GetAuraDataByIndex(): Auras cannot be accessed when secret while tainted by H3z0UI\" (hundreds of times, from the quest tracker): H3z0 UI no longer writes into or runs Blizzard's Objective Tracker, Tracked Bars or Talking Head code. The tracker's own height is set in Edit Mode now (the H3z0 \"Max Height\" only limits the background).",
         "Objective Tracker skin: completed objectives (e.g. Prey quests) looked unfinished because every line was painted in the text colour - completed / failed lines keep Blizzard's colours and tick now.",
         "Party Frames: ready check icons didn't show - answers are now read straight from the ready check itself (tick / cross / waiting on each portrait). /h3z0party ready previews them.",

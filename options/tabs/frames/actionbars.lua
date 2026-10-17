@@ -256,6 +256,14 @@ local function CreateActionBarsPage(parent)
         enableCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
 
+        local streamerCheck = GUI:CreateFormCheckbox(tabContent, "Streamer Mode (hide button press highlight)",
+            "streamerMode", global, function()
+                if _G.H3z0UI_ApplyStreamerMode then _G.H3z0UI_ApplyStreamerMode() end
+            end)
+        streamerCheck:SetPoint("TOPLEFT", PAD, y)
+        streamerCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        y = y - FORM_ROW
+
         local tipText = GUI:CreateLabel(tabContent,
             "H3z0 UI hooks into Blizzard action bars to skin them. Position and resize bars via Edit Mode (Blizzard minimum padding: 2px). If you need actionbar paging (stance/form swapping), want to use action bars as your CDM, or prefer more control - disable H3z0 UI Action Bars and use a dedicated addon (e.g., Bartender4, Dominos).",
             11, C.warning)

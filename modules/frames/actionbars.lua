@@ -1994,3 +1994,75 @@ local core = GetCore()
 if core then
     core.ActionBars = ActionBars
 end
+
+---------------------------------------------------------------------------
+-- STREAMER MODE: hide the yellow press / active highlight on action buttons
+-- (pushed glow, checked border, cast fill and targeting animation), so
+-- viewers don't see which keys are pressed. Only alpha is changed (allowed
+-- in and out of combat, no Blizzard state is written).
+---------------------------------------------------------------------------
+local STREAMER_BARS = {
+    "ActionButton", "MultiBarBottomLeftButton", "MultiBarBottomRightButton",
+    "MultiBarRightButton", "MultiBarLeftButton", "MultiBar5Button",
+    "MultiBar6Button", "MultiBar7Button", "StanceButton", "PetActionButton",
+}
+
+local function ForEachActionButton(fn)
+    for _, prefix in ipairs(STREAMER_BARS) do
+        for i = 1, 12 do
+            local b = _G[prefix .. i]
+            if b then fn(b) end
+        end
+    end
+    if _G.ExtraActionButton1 then fn(_G.ExtraActionButton1) end
+end
+
+local function StreamerRegions(b)
+    local list = {}
+    local function Add(r) if r and r.SetAlpha then list[#list + 1] = r end end
+    if b.GetPushedTexture then Add(b:GetPushedTexture()) end
+    if b.GetCheckedTexture then Add(b:GetCheckedTexture()) end
+    Add(b.PushedTexture)
+    Add(b.CheckedTexture)
+    Add(b.SpellCastAnimFrame)
+    Add(b.TargetReticleAnimFrame)
+    Add(b.InterruptDisplay)
+    return list
+end
+
+local streamerHooked = {}
+local function StreamerOn()
+    local s = GetGlobalSettings()
+    return s and s.streamerMode and true or false
+end
+
+local function ApplyStreamerMode()
+    local on = StreamerOn()
+    ForEachActionButton(function(b)
+        for _, r in ipairs(StreamerRegions(b)) do
+            pcall(r.SetAlpha, r, on and 0 or 1)
+            -- animations can show themselves again: keep them hidden while it's on
+            if not streamerHooked[r] and r.Show and r.GetObjectType and r:GetObjectType() == "Frame" then
+                streamerHooked[r] = true
+                hooksecurefunc(r, "Show", function(self)
+                    if StreamerOn() then self:SetAlpha(0) end
+                end)
+            end
+        end
+    end)
+end
+_G.H3z0UI_ApplyStreamerMode = ApplyStreamerMode
+
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
+    f:RegisterEvent("PET_BAR_UPDATE")
+    f:SetScript("OnEvent", function()
+        C_Timer.After(1, ApplyStreamerMode)
+    end)
+    -- re-apply after H3z0 UI re-skins the bars
+    if ActionBars.Refresh then
+        hooksecurefunc(ActionBars, "Refresh", function() C_Timer.After(0.1, ApplyStreamerMode) end)
+    end
+end

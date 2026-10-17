@@ -128,6 +128,7 @@ local function BuildPortraits(tabContent)
         b.Check("Use Frame Style", "enabled", fsdb, function() FS.SetEnabled(fsdb.enabled) end)
         b.Drop("Style", {
             { value = "round", text = "Round Portrait (ring beside the bar)" },
+            { value = "roundv2", text = "Round Portrait v2 (bar starts at the portrait, round end)" },
             { value = "square", text = "Docked Portrait (portrait inside the bar)" },
         }, "style", fsdb, RefreshUF)
         b.Check("Use on Player", "player", fsdb, RefreshUF)

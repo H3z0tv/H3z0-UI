@@ -1609,6 +1609,7 @@ local defaults = {
         -- Party Frames (H3z0 UI own party frames: portrait ring, name, health/power, auras)
         partyFrames = {
             enabled = true,
+            style = "classic",         -- "classic" | "v2" (bars start at the portrait, round end)
             hideBlizzard = true,       -- hide Blizzard's party frames while these are on
             showPlayer = false,        -- also show yourself in the list
             scale = 1.0,

@@ -37,7 +37,7 @@ local function DB()
     if s.target == nil then s.target = true end
     if s.focus == nil then s.focus = false end
     -- one set of settings shared by both styles
-    if s.style == nil then s.style = "round" end            -- "round" | "square"
+    if s.style == nil then s.style = "round" end            -- "round" | "roundv2" | "square"
     if s.height == nil then s.height = s.dockHeight or 37 end -- frame height, 0 = your own
     if s.pSize == nil then s.pSize = 0 end                   -- portrait size, 0 = fit the frame
     if s.ringThickness == nil then s.ringThickness = 1 end   -- ring / portrait border
@@ -220,7 +220,8 @@ local function ApplyRound(frame, unitKey, s)
     if frame.h3zSquare then frame.h3zSquare:Hide() end
     if frame.h3zTint then frame.h3zTint:Hide() end
     local r = GetRound(frame)
-    local size = PortraitSize(s, frame, frame:GetHeight() * 1.35 + (s.nameAbove and 8 or 0))
+    local size = PortraitSize(s, frame, (s.style == "roundv2") and (frame:GetHeight() * 1.6)
+        or (frame:GetHeight() * 1.35 + (s.nameAbove and 8 or 0)))
     local t = Thickness(s, frame)
     r:SetSize(size, size)
     r.inner:ClearAllPoints()
@@ -232,8 +233,17 @@ local function ApplyRound(frame, unitKey, s)
     r.tex:SetAllPoints(r.inner)
 
     local yOff = s.nameAbove and 6 or 0
+    local v2 = (s.style == "roundv2")
     r:ClearAllPoints()
-    if RIGHT_SIDE[unitKey] then
+    if v2 then
+        -- v2: the ring sits on the bar's end, the bar starts under the portrait
+        r:SetFrameLevel(frame:GetFrameLevel() + 6)
+        if RIGHT_SIDE[unitKey] then
+            r:SetPoint("CENTER", frame, "RIGHT", size * 0.18, 0)
+        else
+            r:SetPoint("CENTER", frame, "LEFT", -size * 0.18, 0)
+        end
+    elseif RIGHT_SIDE[unitKey] then
         r:SetPoint("LEFT", frame, "RIGHT", 4, yOff)
     else
         r:SetPoint("RIGHT", frame, "LEFT", -4, yOff)
@@ -242,11 +252,13 @@ local function ApplyRound(frame, unitKey, s)
 
     if s.nameAbove and frame.nameText then
         frame.nameText:ClearAllPoints()
+        -- v2: the portrait covers the bar's start, so the name starts after it
+        local push = v2 and (size * 0.32 + 2) or 1
         if RIGHT_SIDE[unitKey] then
-            frame.nameText:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -1, 3)
+            frame.nameText:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -push, 3)
             frame.nameText:SetJustifyH("RIGHT")
         else
-            frame.nameText:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 1, 3)
+            frame.nameText:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", push, 3)
             frame.nameText:SetJustifyH("LEFT")
         end
     end

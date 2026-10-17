@@ -161,6 +161,152 @@ local function PortraitGlow(frame, show)
     g:Show()
 end
 
+-- Frame Style v2: curved "(" and ")" brackets around both ends of a unit frame bar,
+-- drawn with short line segments (smooth at any size, no texture files)
+local BRACKET_SEGMENTS = 14
+local UNIT_OF = { player = "player", target = "target", focus = "focus", pet = "pet",
+    targettarget = "targettarget", focustarget = "focustarget",
+    boss1 = "boss1", boss2 = "boss2", boss3 = "boss3", boss4 = "boss4", boss5 = "boss5" }
+
+local function IsSecret(v) return issecretvalue and v ~= nil and issecretvalue(v) or false end
+
+local function UnitColor(unit)
+    if unit and UnitExists(unit) then
+        local okP, isPlayer = pcall(UnitIsPlayer, unit)
+        if okP and not IsSecret(isPlayer) then
+            if isPlayer then
+                local _, class = UnitClass(unit)
+                local c = class and not IsSecret(class) and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[class]
+                if c then return c.r, c.g, c.b end
+            else
+                local okR, reaction = pcall(UnitReaction, unit, "player")
+                local c = okR and reaction and not IsSecret(reaction) and FACTION_BAR_COLORS and FACTION_BAR_COLORS[reaction]
+                if c then return c.r, c.g, c.b end
+            end
+        end
+    end
+    return Accent()
+end
+
+-- Frame Style v2: the bar's outer end is fully round (pill end) and the black
+-- border follows the curve. Done with a half-circle mask (assets/h3z_roundend_*)
+-- clamped to the left / right, so everything else of the bar stays square (and is
+-- hidden under the portrait on the portrait side).
+local ROUND_R = "Interface\\AddOns\\" .. ADDON_NAME .. "\\assets\\h3z_roundend_r"
+local ROUND_L = "Interface\\AddOns\\" .. ADDON_NAME .. "\\assets\\h3z_roundend_l"
+local BACKDROP_PIECES = { "Center", "TopLeftCorner", "TopRightCorner", "BottomLeftCorner", "BottomRightCorner",
+    "TopEdge", "BottomEdge", "LeftEdge", "RightEdge" }
+
+local function MaskFor(owner, frame, side, inset, field)
+    local m = owner[field]
+    if not m then
+        m = owner:CreateMaskTexture()
+        owner[field] = m
+    end
+    local tex = (side == "RIGHT") and ROUND_R or ROUND_L
+    m:SetTexture(tex, "CLAMP", "CLAMP")
+    local h = math.max(2, (frame:GetHeight() or 20) - inset * 2)
+    m:ClearAllPoints()
+    if side == "RIGHT" then
+        m:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -inset, -inset)
+        m:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
+    else
+        m:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -inset)
+        m:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", inset, inset)
+    end
+    m:SetWidth(h / 2)
+    return m
+end
+
+local function CollectBarTextures(bar, list)
+    if not bar then return end
+    for _, r in ipairs({ bar:GetRegions() }) do
+        if r and r.IsObjectType and r:IsObjectType("Texture") then list[#list + 1] = r end
+    end
+    for _, c in ipairs({ bar:GetChildren() }) do
+        if c and c.IsObjectType and c:IsObjectType("StatusBar") then CollectBarTextures(c, list) end
+    end
+end
+
+local function SetMasked(tex, mask, on)
+    tex.h3zV2Masks = tex.h3zV2Masks or {}
+    if on then
+        if tex.h3zV2Masks[mask] then return end
+        if pcall(tex.AddMaskTexture, tex, mask) then tex.h3zV2Masks[mask] = true end
+    else
+        for m in pairs(tex.h3zV2Masks) do pcall(tex.RemoveMaskTexture, tex, m) end
+        wipe(tex.h3zV2Masks)
+    end
+end
+
+-- the soft shadow follows the round end too (else a faint square shows around it)
+local function ShapeShadow(frame, side, on)
+    local sh = frame.h3zMLShadow
+    if not (sh and sh.layers) then return end
+    for i, t in ipairs(sh.layers) do
+        if on then
+            local m = sh["h3zV2Mask" .. i]
+            if not m then
+                m = sh:CreateMaskTexture()
+                sh["h3zV2Mask" .. i] = m
+            end
+            m:SetTexture((side == "RIGHT") and ROUND_R or ROUND_L, "CLAMP", "CLAMP")
+            m:ClearAllPoints()
+            if side == "RIGHT" then
+                m:SetPoint("TOPRIGHT", t, "TOPRIGHT", 0, 0)
+                m:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", 0, 0)
+            else
+                m:SetPoint("TOPLEFT", t, "TOPLEFT", 0, 0)
+                m:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", 0, 0)
+            end
+            m:SetWidth(math.max(2, (frame:GetHeight() or 20) + i * 2) / 2)
+            SetMasked(t, m, true)
+        else
+            SetMasked(t, nil, false)
+        end
+    end
+end
+
+local function Brackets(frame, key, show)
+    if frame.h3zMLBrackets then frame.h3zMLBrackets:Hide() end   -- old line drawing
+    local side = (key == "target") and "LEFT" or "RIGHT"          -- the end away from the portrait
+    local done = frame.h3zV2Done or {}
+    frame.h3zV2Done = done
+    if not show then
+        for tex in pairs(done) do SetMasked(tex, nil, false) end
+        wipe(done)
+        ShapeShadow(frame, side, false)
+        return
+    end
+    ShapeShadow(frame, side, true)
+    -- outer shape: the frame's own background + border pieces
+    local outer = MaskFor(frame, frame, side, 0, "h3zV2Outer")
+    for _, k in ipairs(BACKDROP_PIECES) do
+        local t = frame[k]
+        if t and t.AddMaskTexture then SetMasked(t, outer, true); done[t] = true end
+    end
+    -- inner shape (inside the border): health / power bars and their fills
+    local hb = frame.healthBar
+    local inset = 1
+    if hb and hb:GetTop() and frame:GetTop() then
+        inset = math.max(0, frame:GetTop() - hb:GetTop())
+    end
+    for _, bar in ipairs({ frame.healthBar, frame.powerBar }) do
+        if bar then
+            local list = {}
+            CollectBarTextures(bar, list)
+            for _, t in ipairs(list) do
+                local owner = t:GetParent()
+                if owner and owner.CreateMaskTexture then
+                    local m = MaskFor(owner, frame, side, inset, "h3zV2Inner")
+                    SetMasked(t, m, true)
+                    done[t] = true
+                end
+            end
+        end
+    end
+end
+
 ---------------------------------------------------------------------------
 -- Apply
 ---------------------------------------------------------------------------
@@ -176,6 +322,12 @@ function ML.ApplyUnit(key)
     Sheen(frame.healthBar, on and s.sheen)
     Sheen(frame.powerBar, on and s.sheen)
     PortraitGlow(frame, on and s.glow)
+    -- Frame Style "Round Portrait v2": curved brackets at both bar ends
+    local FS = ns.FrameStyle
+    local fs = FS and FS.GetSettings and FS.GetSettings()
+    local v2 = fs and fs.enabled and fs.style == "roundv2" and frame.h3zStyled
+        and (key == "player" or key == "target" or key == "focus")
+    pcall(Brackets, frame, key, v2 and true or false)
 end
 
 local function ApplyMinimap(s)
@@ -294,7 +446,16 @@ end
 
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("PLAYER_ENTERING_WORLD")
-ev:SetScript("OnEvent", function()
+ev:RegisterEvent("PLAYER_TARGET_CHANGED")
+ev:RegisterEvent("PLAYER_FOCUS_CHANGED")
+ev:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_TARGET_CHANGED" then
+        pcall(ML.ApplyUnit, "target"); pcall(ML.ApplyUnit, "targettarget")
+        return
+    elseif event == "PLAYER_FOCUS_CHANGED" then
+        pcall(ML.ApplyUnit, "focus")
+        return
+    end
     C_Timer.After(2, function()
         Hook()
         ML.ApplyAll()

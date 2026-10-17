@@ -233,11 +233,79 @@ local function UpdateAuras(f)
     for i = n + 1, #icons do icons[i]:Hide() end
 end
 
+-- v2: the bars run under the portrait, so the frame itself is never made see-through
+-- (the bar would show through the face). Bars / text / auras fade, the portrait
+-- stays solid and gets a dark veil instead.
+local FADE = 0.45
+local function V2Parts(f)
+    local parts = { f.health, f.power, f.name, f.role, f.leader, f.levelBox }
+    if f.v2Border then parts[#parts + 1] = f.v2Border end
+    for _, ic in ipairs(f.auraIcons or {}) do parts[#parts + 1] = ic end
+    return parts
+end
+
+local function V2Veil(f)
+    if f.v2Veil then return f.v2Veil end
+    local v = CreateFrame("Frame", nil, f.v2Top or f)
+    v:EnableMouse(false)
+    v:SetFrameLevel((f.v2Top or f):GetFrameLevel() + 2)
+    local t = v:CreateTexture(nil, "OVERLAY")
+    t:SetColorTexture(0, 0, 0, 1)
+    t:SetAllPoints(v)
+    local m = v:CreateMaskTexture()
+    m:SetTexture(MASK_TEXTURE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    m:SetAllPoints(v)
+    t:AddMaskTexture(m)
+    f.v2Veil = v
+    return v
+end
+
+local function SetPart(part, inRange, secret, onA, offA)
+    if not part then return end
+    if secret then
+        if part.SetAlphaFromBoolean then part:SetAlphaFromBoolean(inRange, onA, offA) end
+    else
+        part:SetAlpha(inRange == false and offA or onA)
+    end
+end
+
+local function UpdateRangeV2(f, inRange, secret, active)
+    f:SetAlpha(1)
+    local veil = V2Veil(f)
+    veil:ClearAllPoints()
+    veil:SetAllPoints(f.portrait)
+    veil:Show()
+    if not active then
+        for _, p in ipairs(V2Parts(f)) do p:SetAlpha(1) end
+        veil:SetAlpha(0)
+        return
+    end
+    for _, p in ipairs(V2Parts(f)) do SetPart(p, inRange, secret, 1, FADE) end
+    SetPart(veil, inRange, secret, 0, 0.55)
+end
+
 local function UpdateRange(f)
     local s = GetSettings(); if not s then return end
-    if not s.rangeFade or testMode or f.displayUnit == "player" then f:SetAlpha(1) return end
+    local v2 = (s.style == "v2")
+    if not v2 then
+        if f.v2Veil then f.v2Veil:Hide() end
+        if f.h3zV2Faded then
+            f.h3zV2Faded = nil
+            for _, p in ipairs(V2Parts(f)) do p:SetAlpha(1) end
+        end
+    end
+    if not s.rangeFade or testMode or f.displayUnit == "player" then
+        f:SetAlpha(1)
+        if v2 then UpdateRangeV2(f, true, false, false) end
+        return
+    end
     local ok, inRange = pcall(UnitInRange, f.displayUnit)
     if not ok then f:SetAlpha(1) return end
+    if v2 then
+        f.h3zV2Faded = true
+        UpdateRangeV2(f, inRange, issecretvalue(inRange), true)
+        return
+    end
     if issecretvalue(inRange) then
         if f.SetAlphaFromBoolean then f:SetAlphaFromBoolean(inRange, 1, 0.45) end
     elseif inRange == false then
@@ -456,6 +524,112 @@ local function CreateMember(index)
     return f
 end
 
+
+---------------------------------------------------------------------------
+-- Style "Round Portrait v2": the bars start under the portrait, the far end is
+-- round with a black outline (same look as the Player frame's v2 style)
+---------------------------------------------------------------------------
+local ROUND_R = "Interface\\AddOns\\" .. ADDON_NAME .. "\\assets\\h3z_roundend_r"
+
+local function V2Mask(owner, field, ref, grow)
+    local m = owner[field]
+    if not m then
+        m = owner:CreateMaskTexture()
+        owner[field] = m
+    end
+    m:SetTexture(ROUND_R, "CLAMP", "CLAMP")
+    m:ClearAllPoints()
+    m:SetPoint("TOPRIGHT", ref, "TOPRIGHT", grow, grow)
+    m:SetPoint("BOTTOMRIGHT", ref, "BOTTOMRIGHT", grow, -grow)
+    m:SetWidth(math.max(2, (ref:GetHeight() or 10) + grow * 2) / 2)
+    return m
+end
+
+local function SetMask(tex, mask, on)
+    if not (tex and tex.AddMaskTexture) then return end
+    tex.h3zPFMasks = tex.h3zPFMasks or {}
+    if on then
+        if not tex.h3zPFMasks[mask] and pcall(tex.AddMaskTexture, tex, mask) then tex.h3zPFMasks[mask] = true end
+    else
+        for m in pairs(tex.h3zPFMasks) do pcall(tex.RemoveMaskTexture, tex, m) end
+        wipe(tex.h3zPFMasks)
+    end
+end
+
+local function ApplyPartyStyle(f, s, P, BW, gap)
+    local v2 = (s.style == "v2")
+    -- portrait + ring on a layer above the bars (v2) or back on the frame (classic)
+    if not f.v2Top then
+        f.v2Top = CreateFrame("Frame", nil, f)
+        f.v2Top:SetAllPoints(f)
+        f.v2Top:EnableMouse(false)
+    end
+    local parent = v2 and f.v2Top or f
+    f.v2Top:SetFrameLevel(f:GetFrameLevel() + 10)
+    f.ring:SetParent(parent)
+    f.portrait:SetParent(parent)
+    f.mask:SetParent(parent)
+    -- v2: solid dark disc behind the portrait, so the bar under it never shows through
+    -- (out of range the game often gives a faded or empty portrait)
+    if not f.v2Disc then
+        f.v2Disc = f.v2Top:CreateTexture(nil, "BORDER", nil, 7)
+        f.v2Disc:SetColorTexture(0.06, 0.06, 0.07, 1)
+        f.v2Disc:AddMaskTexture(f.mask)
+    end
+    f.v2Disc:ClearAllPoints()
+    f.v2Disc:SetAllPoints(f.portrait)
+    f.v2Disc:SetShown(v2)
+    f.levelBox:SetFrameLevel((v2 and f.v2Top:GetFrameLevel() or f:GetFrameLevel()) + 1)
+
+    local texList = {
+        f.health:GetStatusBarTexture(), f.healthBG,
+        f.power:GetStatusBarTexture(), f.powerBG,
+    }
+    if not v2 then
+        for _, t in ipairs(texList) do SetMask(t, nil, false) end
+        if f.v2Border then SetMask(f.v2Border, nil, false); f.v2Border:Hide() end
+        return
+    end
+
+    -- bars start at the portrait's centre and keep their right end where it was
+    local half = (P + 10) / 2
+    f.health:ClearAllPoints()
+    f.health:SetWidth(BW + half + gap)
+    f.health:SetPoint("LEFT", f.ring, "CENTER", 0, 2)
+    f.power:SetWidth(BW + half + gap)
+    -- name / role start after the portrait
+    local nameX = (s.showRole and 16) or 0
+    f.role:ClearAllPoints()
+    f.role:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", half + 2, 2)
+    f.name:ClearAllPoints()
+    f.name:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", half + 2 + nameX, 2)
+
+    -- block = health (+ power) ; round right end with a 1px black outline
+    if not f.v2Ref then
+        f.v2Ref = CreateFrame("Frame", nil, f)
+        f.v2Ref:EnableMouse(false)
+    end
+    local bottom = (s.showPower and f.power:IsShown()) and f.power or f.health
+    f.v2Ref:ClearAllPoints()
+    f.v2Ref:SetPoint("TOPLEFT", f.health, "TOPLEFT", 0, 0)
+    f.v2Ref:SetPoint("BOTTOMRIGHT", bottom, "BOTTOMRIGHT", 0, 0)
+    if not f.v2Border then
+        f.v2Border = f:CreateTexture(nil, "BACKGROUND", nil, -7)
+        f.v2Border:SetColorTexture(0, 0, 0, 1)
+    end
+    f.v2Border:ClearAllPoints()
+    f.v2Border:SetPoint("TOPLEFT", f.v2Ref, "TOPLEFT", -1, 1)
+    f.v2Border:SetPoint("BOTTOMRIGHT", f.v2Ref, "BOTTOMRIGHT", 1, -1)
+    f.v2Border:Show()
+    SetMask(f.v2Border, V2Mask(f, "v2OuterMask", f.v2Ref, 1), true)
+    local hm = V2Mask(f.health, "v2InnerMask", f.v2Ref, 0)
+    SetMask(f.health:GetStatusBarTexture(), hm, true)
+    SetMask(f.healthBG, hm, true)
+    local pm = V2Mask(f.power, "v2InnerMask", f.v2Ref, 0)
+    SetMask(f.power:GetStatusBarTexture(), pm, true)
+    SetMask(f.powerBG, pm, true)
+end
+
 local function StyleMember(f)
     local s = GetSettings(); if not s then return end
     local P = s.portraitSize or 46
@@ -519,6 +693,8 @@ local function StyleMember(f)
 
     local size = s.auraSize or 20
     for _, ic in ipairs(f.auraIcons) do ic:SetSize(size, size) end
+
+    ApplyPartyStyle(f, s, P, BW, gap)
 end
 
 ---------------------------------------------------------------------------

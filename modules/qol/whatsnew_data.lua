@@ -10,6 +10,8 @@ local ADDON_NAME, ns = ...
 ns.WhatsNew = {
     version = "0.23.8",
     new = {
+        "Frame Style: new style |cff34D399Round Portrait v2|r - the bar starts under the portrait ring and its other end is fully round, with the black border following the curve (Player / Target / Focus). Unit Frames > Portraits > Frame Style > Style.",
+        "Party Frames: new |cff34D399Style|r choice - Classic (as before) or Round Portrait v2 (bars start at the portrait, round end). Party Frames > Layout > Style.",
         "|cff34D399Modern Look|r (on by default): soft shadows, a subtle sheen on health / power / cast bars, a glow behind the round portraits and a cleaner minimap info bar. Unit Frames > Portraits, or /h3z0ui modern to compare.",
         "|cff34D399Streamer Mode|r (Action Bars > Master Settings, or /h3z0ui streamer): hides the yellow highlight that shows on an action button when you press it (press glow, active border, cast fill), so viewers can't see which keys you press.",
         "|cff34D399Resize the chat window and the damage meter|r in H3z0 UI Layout Mode: drag the corner grip at the bottom right of their handle. Sizes are saved in H3z0 UI (PC and Deck) and included in layout codes.",

@@ -66,6 +66,11 @@ local function BuildPartyFramesTab(tabContent)
     y = y - 38
 
     Section("Layout")
+    if pf.style == nil then pf.style = "classic" end
+    Place(GUI:CreateFormDropdown(tabContent, "Style", {
+        { value = "classic", text = "Classic (portrait beside the bars)" },
+        { value = "v2", text = "Round Portrait v2 (bars start at the portrait, round end)" },
+    }, "style", pf, Refresh))
     Slider("Scale", 0.5, 2.0, 0.05, "scale")
     Slider("Spacing", 0, 40, 1, "spacing")
     Check("Grow Upwards", "growUp")

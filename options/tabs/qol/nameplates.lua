@@ -76,7 +76,7 @@ end
 -- Plater: one-click import (Plater.ImportAndSwitchProfile creates/switches to its own profile,
 -- so the player's existing Plater profiles are not overwritten)
 ---------------------------------------------------------------------------
-StaticPopupDialogs["H3Z0UI_PLATER_IMPORT"] = {
+ns.Popups["H3Z0UI_PLATER_IMPORT"] = {
     text = "Import the H3z0 UI profile into Plater?\n\nPlater switches to a profile named \"" .. PLATER_PROFILE_NAME ..
            "\" (your other Plater profiles stay as they are) and reloads the UI.",
     button1 = ACCEPT,
@@ -221,7 +221,7 @@ Build = function(tabContent)
             Say("Plater is not installed or not loaded - install it first, or copy the string below.")
             return
         end
-        StaticPopup_Show("H3Z0UI_PLATER_IMPORT")
+        ns.ShowPopup("H3Z0UI_PLATER_IMPORT")
     end)
     importBtn:SetPoint("TOPLEFT", PAD, y)
     local openBtn = GUI:CreateButton(tabContent, "Open Plater options", 180, 28, function()

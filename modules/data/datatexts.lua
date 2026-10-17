@@ -978,7 +978,7 @@ Datatexts:Register("gold", {
                     local deleteCharKey = charKey
                     local btn = root:CreateButton(colorCode .. charKey .. "|r - " .. FormatGold(charMoney), function()
                         -- Confirm deletion
-                        StaticPopupDialogs["H3z0UI_GOLD_DELETE_CHAR"] = {
+                        ns.Popups["H3z0UI_GOLD_DELETE_CHAR"] = {
                             text = "Delete gold data for " .. deleteCharKey .. "?",
                             button1 = "Delete",
                             button2 = "Cancel",
@@ -990,7 +990,7 @@ Datatexts:Register("gold", {
                             whileDead = true,
                             hideOnEscape = true,
                         }
-                        StaticPopup_Show("H3z0UI_GOLD_DELETE_CHAR")
+                        ns.ShowPopup("H3z0UI_GOLD_DELETE_CHAR")
                     end)
 
                     -- Can't delete current character
@@ -1001,7 +1001,7 @@ Datatexts:Register("gold", {
 
                 root:CreateDivider()
                 root:CreateButton("|cffFF6666Reset All (Keep Current)|r", function()
-                    StaticPopupDialogs["H3z0UI_GOLD_RESET_ALL"] = {
+                    ns.Popups["H3z0UI_GOLD_RESET_ALL"] = {
                         text = "Delete gold data for ALL characters except current?",
                         button1 = "Reset All",
                         button2 = "Cancel",
@@ -1018,7 +1018,7 @@ Datatexts:Register("gold", {
                         whileDead = true,
                         hideOnEscape = true,
                     }
-                    StaticPopup_Show("H3z0UI_GOLD_RESET_ALL")
+                    ns.ShowPopup("H3z0UI_GOLD_RESET_ALL")
                 end)
             end)
         end

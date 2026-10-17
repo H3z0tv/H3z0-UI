@@ -3,6 +3,7 @@
 --- All settings stored in AceDB for profile export/import
 
 local ADDON_NAME, ns = ...
+local UpdateZoneTextDisplay   -- defined below (kept local, not a global)
 local H3z0UICore = ns.Addon
 local Helpers = ns.Helpers
 local LSM = LibStub("LibSharedMedia-3.0")

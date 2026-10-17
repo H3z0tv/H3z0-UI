@@ -24,7 +24,8 @@ local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
 ---------------------------------------------------------------------------
 local DEFAULTS = {
     enabled = true,
-    cursorAnchor = "TOP", offsetVertical = 4, offsetHorizontal = 0,
+    cursorAnchor = "TOP", offsetVertical = 18, offsetHorizontal = 0,
+    aimGap = 28,   -- extra space from the cursor while mouselooking (the cursor is your aim then)
     fontSize = 12, fontType = "Friz Quadrata TT", fontOutline = "OUTLINE",
     bgEnabled = false, bgColor = {0, 0, 0, 1}, bgAlpha = 50, bgPadding = 2,
     playerClassColor = true, playerShowLevel = true, playerLevelColor = true,
@@ -680,7 +681,17 @@ local function UpdatePosition()
     local anchor = Get("cursorAnchor") or "TOP"
     local point = ANCHOR_TO_POINT[anchor] or ANCHOR_TO_POINT.TOP
     local xOff = tonumber(Get("offsetHorizontal")) or 0
-    local yOff = tonumber(Get("offsetVertical")) or 4
+    local yOff = tonumber(Get("offsetVertical")) or 18
+
+    -- While mouselooking / Action Combat the cursor is the aim point in the middle
+    -- of the screen: move the name further away so it never covers the crosshair.
+    if IsMouselooking and IsMouselooking() then
+        local gap = tonumber(Get("aimGap")) or 28
+        if anchor:find("TOP") then yOff = yOff + gap end
+        if anchor:find("BOTTOM") then yOff = yOff - gap end
+        if anchor:find("LEFT") then xOff = xOff - gap end
+        if anchor:find("RIGHT") then xOff = xOff + gap end
+    end
 
     frame:ClearAllPoints()
     frame:SetPoint(point, UIParent, "BOTTOMLEFT", (x / scale) + xOff, (y / scale) + yOff)

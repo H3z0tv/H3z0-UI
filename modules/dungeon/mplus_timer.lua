@@ -77,6 +77,30 @@ local SLEEK_AFFIX_ICON_SPACING = 2
 
 local FONT_FLAGS = "OUTLINE"
 
+-- H3z0 Pro layout (big right-aligned timer, bars with the time above them)
+local PRO_BAR_WIDTH = 340
+local PRO_BAR_HEIGHT = 10      -- +3 / +2 / +1 bars
+local PRO_FORCES_HEIGHT = 12
+local PRO_FRAME_PADDING = 6
+local PRO_BAR_GAP = 4          -- gap between the +3 / +2 / +1 bars
+local PRO_FONT_TIMER = 34
+local PRO_FONT_KEY = 18
+local PRO_FONT_DETAILS = 16
+local PRO_FONT_BAR = 15
+local PRO_FONT_OBJECTIVE = 17
+local PRO_FONT_DEATHS = 15
+local PRO_COLORS = {
+    timerBar = { 0.59, 0.59, 0.59, 1 },
+    forces   = { 0.73, 0.62, 0.13, 1 },
+    pull     = { 1.00, 0.33, 0.08, 0.85 },
+    barBg    = { 0, 0, 0, 0.5 },
+    key      = { 0.69, 0.69, 0.69, 1 },
+    done     = "FF00FF24",
+    expired  = "FFFF2A2E",
+    success  = "FFFFD338",
+    pullText = "FFFF7A3D",
+}
+
 ---------------------------------------------------------------------------
 -- Module State
 ---------------------------------------------------------------------------
@@ -125,6 +149,11 @@ MPlusTimer.state = {
     -- Objectives (bosses)
     objectivesList = {},  -- { { name="Boss", time=nil or seconds, expectedTime=nil, differential=nil }, ... }
 
+    -- Current pull (enemy forces of the mobs in combat) and death log
+    currentPull = {},           -- [guid] = count or "DEAD"
+    deathLog = {},              -- { { time = s, name = "", class = "" }, ... }
+    deadNow = {},               -- [name] = true while that player is dead
+
     -- Pace tracking (Sleek mode)
     currentTargetTier = 3,      -- Which reward tier we're targeting (3=+3, 2=+2, 1=+1, 0=overtime)
     currentTargetTime = 0,      -- Time limit for current target tier
@@ -158,6 +187,9 @@ local defaultState = {
     forcesCompleted = false,
     forcesCompletionTime = nil,
     objectivesList = {},
+    currentPull = {},
+    deathLog = {},
+    deadNow = {},
     currentTargetTier = 3,
     currentTargetTime = 0,
     paceOffset = 0,
@@ -174,6 +206,7 @@ local DEFAULTS = {
     showDeaths = true,
     showAffixes = true,
     showObjectives = true,
+    showForcesTooltip = true,   -- enemy forces count in unit tooltips during a key
     scale = 1.0,
 }
 
@@ -189,6 +222,11 @@ end
 local function IsSleekMode()
     local settings = GetSettings()
     return settings.layoutMode == "sleek"
+end
+
+local function IsProMode()
+    local settings = GetSettings()
+    return settings.layoutMode == "pro"
 end
 
 local function GetPosition()
@@ -331,6 +369,17 @@ function MPlusTimer:CreateFrames()
             GameTooltip:AddLine(" ")
             GameTooltip:AddDoubleLine("Total Deaths:", tostring(MPlusTimer.state.deathCount), 1, 1, 1, 1, 1, 1)
             GameTooltip:AddDoubleLine("Time Lost:", FormatTime(MPlusTimer.state.deathTimeLost), 1, 1, 1, 1, 0.3, 0.3)
+            local log = MPlusTimer.state.deathLog or {}
+            if #log > 0 then
+                GameTooltip:AddLine(" ")
+                local first = math.max(1, #log - 19)
+                for i = first, #log do
+                    local d = log[i]
+                    local cc = d.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[d.class]
+                    local name = cc and string.format("|cff%02x%02x%02x%s|r", cc.r * 255, cc.g * 255, cc.b * 255, d.name) or d.name
+                    GameTooltip:AddDoubleLine(name, FormatTime(d.time), 1, 1, 1, 0.7, 0.7, 0.7)
+                end
+            end
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine("Each death adds 5 seconds to timer", 0.6, 0.6, 0.6)
             GameTooltip:Show()
@@ -541,6 +590,12 @@ function MPlusTimer:UpdateLayout()
 
     local font = GetGlobalFont()
     local settings = GetSettings()
+
+    if IsProMode() then
+        self:UpdateLayoutPro(font, settings)
+        return
+    end
+    self:ResetProAnchors(settings)
 
     if IsSleekMode() then
         self:UpdateLayoutSleek(font, settings)
@@ -1028,6 +1083,191 @@ function MPlusTimer:UpdateLayoutFull(font, settings)
     self.frames.root:SetHeight(yOffset)
 end
 
+---------------------------------------------------------------------------
+-- H3z0 Pro layout: minimal, right-aligned, the time left sits above each bar
+---------------------------------------------------------------------------
+
+-- Put back what the Pro layout moves, before another layout runs
+function MPlusTimer:ResetProAnchors(settings)
+    local f = self.frames
+    if f.root and f.root.h3z0uiBackdrop then f.root.h3z0uiBackdrop:Show() end
+    if f.dungeonText then f.dungeonText:Show() end
+    for _, bar in ipairs({ self.bars[1], self.bars[2], self.bars[3], self.bars.forces }) do
+        if bar and bar.text then
+            bar.text:ClearAllPoints()
+            bar.text:SetPoint("RIGHT", bar.bar, "RIGHT", -4, 0)
+            bar.text:SetJustifyH("RIGHT")
+            bar.text:SetFont(GetGlobalFont(), FONT_SIZE_BAR, FONT_FLAGS)
+        end
+    end
+    if f.dungeonText then f.dungeonText:SetWidth(0) end
+    if f.affixText then f.affixText:SetJustifyH("LEFT") end
+    if f.timerText then f.timerText:SetTextColor(1, 1, 1, 1) end
+    for i = 1, 8 do
+        if self.objectives[i] then self.objectives[i]:SetJustifyH("LEFT") end
+    end
+    if f.deathsFrame and settings.showDeaths then f.deathsFrame:Show() end
+    if f.objectives and settings.showObjectives then f.objectives:Show() end
+end
+
+function MPlusTimer:UpdateLayoutPro(font, settings)
+    local f = self.frames
+    local pad = PRO_FRAME_PADDING
+    local barWidth = PRO_BAR_WIDTH
+    local barHeight = PRO_BAR_HEIGHT
+    local forcesHeight = PRO_FORCES_HEIGHT
+
+    f.root:SetWidth(barWidth + pad * 2)
+    if f.sleekBar then f.sleekBar:Hide() end
+    if f.paceText then f.paceText:Hide() end
+    if f.affixIcons then f.affixIcons:Hide() end
+    f.dungeonText:Hide()                 -- no dungeon name in this layout
+
+    local y = pad
+
+    -- Deaths (top right, only once someone died)
+    if settings.showDeaths and (self.state.deathCount or 0) > 0 then
+        f.deathsFrame:ClearAllPoints()
+        f.deathsFrame:SetPoint("TOPRIGHT", f.root, "TOPRIGHT", -pad, -y)
+        f.deathsFrame:SetSize(140, PRO_FONT_DEATHS + 2)
+        f.deathsText:SetFont(font, PRO_FONT_DEATHS, FONT_FLAGS)
+        f.deathsFrame:Show()
+        y = y + PRO_FONT_DEATHS + 2
+    else
+        f.deathsFrame:Hide()
+    end
+
+    -- Big timer, right aligned
+    if settings.showTimer ~= false then
+        f.timerText:ClearAllPoints()
+        f.timerText:SetPoint("TOPRIGHT", f.root, "TOPRIGHT", -pad, -y)
+        f.timerText:SetFont(font, PRO_FONT_TIMER, FONT_FLAGS)
+        f.timerText:SetJustifyH("RIGHT")
+        f.timerText:Show()
+        y = y + PRO_FONT_TIMER + 2
+    else
+        f.timerText:Hide()
+    end
+
+    -- [level] affixes, right aligned, grey
+    f.affixText:ClearAllPoints()
+    f.affixText:SetPoint("TOPRIGHT", f.root, "TOPRIGHT", -pad, -y - 2)
+    f.affixText:SetFont(font, PRO_FONT_DETAILS, FONT_FLAGS)
+    f.affixText:SetJustifyH("RIGHT")
+    local hasAffixes = settings.showAffixes and (f.affixText:GetText() or "") ~= ""
+    if hasAffixes then f.affixText:Show() else f.affixText:Hide() end
+    f.keyText:ClearAllPoints()
+    if hasAffixes then
+        f.keyText:SetPoint("BOTTOMRIGHT", f.affixText, "BOTTOMLEFT", -4, 0)
+    else
+        f.keyText:SetPoint("TOPRIGHT", f.root, "TOPRIGHT", -pad, -y)
+    end
+    f.keyText:SetFont(font, PRO_FONT_KEY, FONT_FLAGS)
+    f.keyText:SetJustifyH("RIGHT")
+    f.keyText:Show()
+    y = y + PRO_FONT_KEY + 4
+
+    -- +3 / +2 / +1 bars, the time left above the end of each bar
+    y = y + PRO_FONT_BAR + 2
+    f.bars:Show()
+    f.bars:ClearAllPoints()
+    f.bars:SetPoint("TOPLEFT", f.root, "TOPLEFT", pad, -y)
+    f.bars:SetSize(barWidth, barHeight)
+
+    local frac1, frac2, frac3 = self:GetTimerBarFractions()
+    local usable = barWidth - PRO_BAR_GAP * 2
+    local widths = { [3] = usable * frac3, [2] = usable * frac2, [1] = usable * frac1 }
+    local x = 0
+    for _, i in ipairs({ 3, 2, 1 }) do
+        local bar = self.bars[i]
+        bar.frame:ClearAllPoints()
+        bar.frame:SetPoint("TOPLEFT", f.bars, "TOPLEFT", x, 0)
+        bar.frame:SetSize(math.max(4, widths[i]), barHeight)
+        bar.frame:Show()
+        bar.bar:SetPoint("TOPLEFT", 1, -1)
+        bar.bar:SetPoint("BOTTOMRIGHT", -1, 1)
+        bar.text:ClearAllPoints()
+        bar.text:SetPoint("BOTTOMRIGHT", bar.frame, "TOPRIGHT", 0, 2)
+        bar.text:SetFont(font, PRO_FONT_BAR, FONT_FLAGS)
+        bar.text:SetJustifyH("RIGHT")
+        x = x + widths[i] + PRO_BAR_GAP
+    end
+    y = y + barHeight + 5
+
+    -- Enemy forces bar, percent under it on the right
+    local forces = self.bars.forces
+    forces.frame:ClearAllPoints()
+    forces.frame:SetPoint("TOPLEFT", f.root, "TOPLEFT", pad, -y)
+    forces.frame:SetSize(barWidth, forcesHeight)
+    forces.frame:Show()
+    forces.bar:SetPoint("TOPLEFT", 1, -1)
+    forces.bar:SetPoint("BOTTOMRIGHT", -1, 1)
+    forces.text:ClearAllPoints()
+    forces.text:SetPoint("TOPRIGHT", forces.frame, "BOTTOMRIGHT", 0, -2)
+    forces.text:SetFont(font, PRO_FONT_BAR, FONT_FLAGS)
+    forces.text:SetJustifyH("RIGHT")
+    if forces.overlay then forces.overlay:SetHeight(forcesHeight - 2) end
+    y = y + forcesHeight + PRO_FONT_BAR + 8
+
+    -- Bosses, right aligned
+    if settings.showObjectives then
+        f.objectives:ClearAllPoints()
+        f.objectives:SetPoint("TOPRIGHT", f.root, "TOPRIGHT", -pad, -y)
+        f.objectives:SetSize(barWidth, 10)
+        f.objectives:Show()
+        local objY = 0
+        for i = 1, 8 do
+            local o = self.objectives[i]
+            o:ClearAllPoints()
+            o:SetPoint("TOPRIGHT", f.objectives, "TOPRIGHT", 0, -objY)
+            o:SetFont(font, PRO_FONT_OBJECTIVE, FONT_FLAGS)
+            o:SetJustifyH("RIGHT")
+            local t = o:GetText()
+            if t and t ~= "" then objY = objY + PRO_FONT_OBJECTIVE + 4 end
+        end
+        y = y + objY
+    else
+        f.objectives:Hide()
+    end
+
+    f.root:SetHeight(y + pad)
+    self:ApplyProStyle()
+end
+
+-- Colours of the Pro layout (runs after the H3z0 skin, which styles the other layouts)
+function MPlusTimer:ApplyProStyle()
+    if not IsProMode() or not self.frames.root then return end
+    local f = self.frames
+    local settings = GetSettings()
+    -- no panel behind the timer, just text and bars
+    if f.root.h3z0uiBackdrop then f.root.h3z0uiBackdrop:Hide() end
+    local function StyleBar(bar, color)
+        if not (bar and bar.frame) then return end
+        bar.frame:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        bar.frame:SetBackdropColor(unpack(PRO_COLORS.barBg))
+        bar.frame:SetBackdropBorderColor(0, 0, 0, 1)
+        bar.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+        bar.bar:SetStatusBarColor(unpack(color))
+        if bar.text then bar.text:SetTextColor(1, 1, 1, 1) end
+    end
+    for i = 1, 3 do StyleBar(self.bars[i], PRO_COLORS.timerBar) end
+    StyleBar(self.bars.forces, PRO_COLORS.forces)
+    if self.bars.forces and self.bars.forces.overlay then
+        self.bars.forces.overlay:SetVertexColor(unpack(PRO_COLORS.pull))
+    end
+    f.keyText:SetTextColor(unpack(PRO_COLORS.key))
+    f.affixText:SetTextColor(unpack(PRO_COLORS.key))
+    f.dungeonText:SetTextColor(unpack(PRO_COLORS.key))
+    f.deathsText:SetTextColor(1, 1, 1, 1)
+    for i = 1, 8 do
+        if self.objectives[i] then self.objectives[i]:SetTextColor(1, 1, 1, 1) end
+    end
+end
+
 function MPlusTimer:GetTimerBarFractions()
     -- Returns fractions for +1, +2, +3 bars
     -- Default: 20% for +1, 20% for +2, 60% for +3
@@ -1070,6 +1310,14 @@ function MPlusTimer:RenderTimer()
         timerStr = completionStr .. " / " .. FormatTime(self.state.timeLimit)
     end
 
+    local pro = IsProMode()
+    if pro then
+        if self.state.challengeCompleted then
+            timerStr = "|c" .. (self.state.completedOnTime and PRO_COLORS.success or PRO_COLORS.expired) .. timerStr .. "|r"
+        elseif self.state.timeLimit > 0 and self.state.timer > self.state.timeLimit then
+            timerStr = "|c" .. PRO_COLORS.expired .. timerStr .. "|r"
+        end
+    end
     self.frames.timerText:SetText(timerStr)
 
     -- Update pace text for Sleek mode
@@ -1121,6 +1369,14 @@ function MPlusTimer:RenderTimer()
             elseif timeRemaining < 0 then
                 timeText = ""
             end
+            if pro then
+                if self.state.challengeCompleted then
+                    local col = timeRemaining > 0 and PRO_COLORS.success or PRO_COLORS.expired
+                    timeText = "|c" .. col .. (timeRemaining > 0 and "" or "-") .. FormatTime(math.abs(timeRemaining)) .. "|r"
+                elseif timeRemaining < 0 and i == 1 then
+                    timeText = "|c" .. PRO_COLORS.expired .. timeText .. "|r"
+                end
+            end
             self.bars[i].text:SetText(timeText)
         end
     end
@@ -1139,7 +1395,10 @@ function MPlusTimer:RenderDeaths()
 
     if self.state.deathCount > 0 then
         local deathStr
-        if sleek then
+        if IsProMode() then
+            deathStr = string.format("|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_8:0|t %d  |cffff5555-%s|r",
+                self.state.deathCount, FormatTime(self.state.deathTimeLost))
+        elseif sleek then
             -- Sleek mode: compact format "3 -15s"
             deathStr = string.format("%d -%ds",
                 self.state.deathCount,
@@ -1163,7 +1422,12 @@ function MPlusTimer:RenderKeyDetails()
     local compact = IsCompactMode()
     local sleek = IsSleekMode()
 
-    if compact or sleek then
+    if IsProMode() then
+        if self.frames.dungeonText then self.frames.dungeonText:SetText(self.state.dungeonName or "") end
+        self.frames.keyText:SetText(string.format("[%d]", self.state.level))
+        self.frames.affixText:SetText(table.concat(self.state.affixes or {}, " - "))
+        return
+    elseif compact or sleek then
         -- Compact/Sleek mode: "+15 Dungeon Name" in dungeonText
         if self.frames.dungeonText then
             local headerText = string.format("+%d %s", self.state.level, self.state.dungeonName or "")
@@ -1219,7 +1483,24 @@ function MPlusTimer:RenderForces()
     -- Format: "45.32% (123/273)"
     local percentStr = string.format("%.2f%%", self.state.currentPercent * 100)
     local countStr = string.format("(%d/%d)", self.state.currentCount, self.state.totalCount)
-    bar.text:SetText(percentStr .. " " .. countStr)
+    if IsProMode() then
+        local text
+        if self.state.currentPercent >= 1 then
+            text = "|c" .. PRO_COLORS.done .. "100%"
+            if self.state.forcesCompletionTime then
+                text = text .. "  " .. FormatTime(self.state.forcesCompletionTime)
+            end
+            text = text .. "|r"
+        else
+            text = percentStr
+            if self.state.pullPercent > 0 then
+                text = text .. " |c" .. PRO_COLORS.pullText .. string.format("(+%.2f%%)", self.state.pullPercent * 100) .. "|r"
+            end
+        end
+        bar.text:SetText(text)
+    else
+        bar.text:SetText(percentStr .. " " .. countStr)
+    end
 
     -- Update pull overlay texture
     if bar.overlay then
@@ -1261,7 +1542,13 @@ function MPlusTimer:RenderObjectives()
             local indicator = obj.time and "|cFF66FF66+|r " or "|cFFAAAAAA-|r "  -- Green + or grey -
             local text = obj.name or "Unknown"
 
-            if sleek then
+            if IsProMode() then
+                -- Pro: "Boss 12:34" in green once killed, plain name before
+                text = text:gsub("%s+[Dd]efeated%s*$", "")
+                if obj.time then
+                    text = "|c" .. PRO_COLORS.done .. text .. "  " .. FormatTime(obj.time) .. "|r"
+                end
+            elseif sleek then
                 -- Sleek mode: Show differential and completion time
                 if obj.time then
                     -- Calculate expected time for this boss
@@ -1418,6 +1705,7 @@ function MPlusTimer:SetDeathCount(count, timeLost)
     self.state.deathCount = count or 0
     self.state.deathTimeLost = timeLost or 0
     self:RenderDeaths()
+    if IsProMode() then self:UpdateLayout() end
 end
 
 function MPlusTimer:SetForces(current, total)
@@ -1519,6 +1807,14 @@ function MPlusTimer:EnableDemoMode()
     })
 
     self.state.timer = 23 * 60 + 56  -- 23:56 elapsed (demo value)
+    self.state.forcesCompletionTime = nil
+    self:SetForces(262, 289)
+    self.state.pullCount, self.state.pullPercent = 9, 9 / 289
+    self.state.deathLog = {
+        { time = 412, name = UnitName("player") or "You", class = select(2, UnitClass("player")) },
+        { time = 960, name = "Healer", class = "PRIEST" },
+        { time = 1301, name = "Tank", class = "WARRIOR" },
+    }
 
     self:Show()
     self:StartTimerLoop()
@@ -1627,8 +1923,15 @@ function MPlusTimer:UpdateObjectives()
         if criteriaString and not isWeightedProgress then
             local obj = { name = criteriaString, time = nil }
             if completed then
-                -- Try to get completion time from scenario
-                obj.time = self.state.timer
+                -- keep the time saved when it was killed; otherwise work it out
+                -- from how long ago the scenario says it was completed
+                local prev = self.state.objectivesList[#objectives + 1]
+                if prev and prev.name == criteriaString and prev.time then
+                    obj.time = prev.time
+                else
+                    local now = select(2, GetWorldElapsedTime(1)) or self.state.timer or 0
+                    obj.time = math.max(0, now - (info.elapsed or 0))
+                end
             end
             table.insert(objectives, obj)
         end
@@ -1648,6 +1951,10 @@ function MPlusTimer:UpdateForces()
             local totalQuantity = info.totalQuantity
             if quantityString then
                 local current = tonumber(quantityString:match("(%d+)")) or 0
+                if totalQuantity and totalQuantity > 0 and current >= totalQuantity and not self.state.forcesCompletionTime then
+                    local now = select(2, GetWorldElapsedTime(1)) or self.state.timer or 0
+                    self.state.forcesCompletionTime = math.max(0, now - (info.elapsed or 0))
+                end
                 self:SetForces(current, totalQuantity or 100)
             end
             break
@@ -1669,6 +1976,115 @@ function MPlusTimer:CheckForChallengeMode()
     end
 end
 
+
+---------------------------------------------------------------------------
+-- Current pull: enemy forces of the mobs you are fighting right now
+---------------------------------------------------------------------------
+local function IsSecret(v)
+    return issecretvalue and issecretvalue(v) or false
+end
+
+-- Enemy forces a unit gives (game API on newer clients, MDT when installed)
+local function UnitForces(unit)
+    if C_ScenarioInfo and C_ScenarioInfo.GetUnitCriteriaProgressValues then
+        local ok, count = pcall(C_ScenarioInfo.GetUnitCriteriaProgressValues, unit)
+        if ok and count ~= nil and not IsSecret(count) and tonumber(count) then
+            return tonumber(count)
+        end
+    end
+    local mdt = _G.MDT
+    if mdt and mdt.GetEnemyForces then
+        local ok, guid = pcall(UnitGUID, unit)
+        if ok and guid and not IsSecret(guid) then
+            local npcID = tonumber((select(6, strsplit("-", guid))))
+            if npcID then
+                local ok2, count = pcall(mdt.GetEnemyForces, mdt, npcID)
+                if ok2 and tonumber(count) then return tonumber(count) end
+            end
+        end
+    end
+end
+
+function MPlusTimer:RecalcPull()
+    local sum = 0
+    for _, v in pairs(self.state.currentPull) do
+        if type(v) == "number" then sum = sum + v end
+    end
+    self.state.pullCount = sum
+    self.state.pullPercent = (self.state.totalCount or 0) > 0 and sum / self.state.totalCount or 0
+    self:RenderForces()
+end
+
+function MPlusTimer:AddToPull(unit)
+    if not (self.state.inChallenge and unit) then return end
+    if not (InCombatLockdown() and UnitExists(unit)) then return end
+    local ok, guid = pcall(UnitGUID, unit)
+    if not ok or not guid or IsSecret(guid) or self.state.currentPull[guid] then return end
+    local count = UnitForces(unit)
+    if not count or count <= 0 then return end
+    self.state.currentPull[guid] = count
+    self:RecalcPull()
+end
+
+function MPlusTimer:RemoveFromPull(guid)
+    if not guid or IsSecret(guid) or not self.state.currentPull[guid] then return end
+    self.state.currentPull[guid] = "DEAD"
+    self:RecalcPull()
+end
+
+function MPlusTimer:ResetPull()
+    wipe(self.state.currentPull)
+    if (self.state.pullCount or 0) > 0 then self:RecalcPull() end
+end
+
+---------------------------------------------------------------------------
+-- Death log (who died and when, for the deaths tooltip)
+---------------------------------------------------------------------------
+local PARTY_UNITS = { "player", "party1", "party2", "party3", "party4" }
+
+function MPlusTimer:ScanDeaths(record)
+    local st = self.state
+    for _, unit in ipairs(PARTY_UNITS) do
+        if UnitExists(unit) then
+            local okN, name = pcall(UnitName, unit)
+            if okN and name and not IsSecret(name) then
+                local okD, dead = pcall(UnitIsDeadOrGhost, unit)
+                local okF, feign = pcall(UnitIsFeignDeath, unit)
+                dead = okD and dead and not IsSecret(dead) and not (okF and feign and not IsSecret(feign))
+                if dead then
+                    if record and not st.deadNow[name] then
+                        local _, class = UnitClass(unit)
+                        table.insert(st.deathLog, { time = st.timer or 0, name = name, class = class })
+                    end
+                    st.deadNow[name] = true
+                else
+                    st.deadNow[name] = nil
+                end
+            end
+        end
+    end
+end
+
+---------------------------------------------------------------------------
+-- Enemy forces in unit tooltips (during a key)
+---------------------------------------------------------------------------
+local function AddForcesToTooltip(tooltip)
+    if tooltip ~= GameTooltip or not MPlusTimer.state.inChallenge then return end
+    local settings = GetSettings()
+    if settings.showForcesTooltip == false then return end
+    local count = UnitForces("mouseover")
+    local total = MPlusTimer.state.totalCount or 0
+    if count and count > 0 and total > 0 then
+        GameTooltip:AddLine(string.format("Forces: |cffffffff+%d  (%.2f%%)|r", count, count / total * 100), 0.73, 0.62, 0.13)
+    end
+end
+
+if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, AddForcesToTooltip)
+elseif GameTooltip and GameTooltip.HookScript then
+    pcall(GameTooltip.HookScript, GameTooltip, "OnTooltipSetUnit", AddForcesToTooltip)
+end
+
 ---------------------------------------------------------------------------
 -- Event Registration
 ---------------------------------------------------------------------------
@@ -1678,6 +2094,12 @@ local function OnEvent(self, event, arg1, ...)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         -- Initialize on addon load
         C_Timer.After(0.5, function()
+            -- 0.23.2: every existing setup moves to the H3z0 Pro layout once
+            local st = GetSettings()
+            if st and not st._proLayoutSet then
+                st._proLayoutSet = true
+                st.layoutMode = "pro"
+            end
             if IsEnabled() then
                 MPlusTimer:CreateFrames()
             end
@@ -1701,7 +2123,28 @@ local function OnEvent(self, event, arg1, ...)
 
     elseif event == "CHALLENGE_MODE_DEATH_COUNT_UPDATED" then
         local deaths, timeLost = C_ChallengeMode.GetDeathCount()
+        if MPlusTimer.state.inChallenge and (deaths or 0) > (MPlusTimer.state.deathCount or 0) then
+            MPlusTimer:ScanDeaths(true)
+        end
         MPlusTimer:SetDeathCount(deaths, timeLost)
+
+    elseif event == "UNIT_THREAT_LIST_UPDATE" then
+        MPlusTimer:AddToPull(arg1)
+
+    elseif event == "PLAYER_REGEN_ENABLED" or event == "ENCOUNTER_END" then
+        if MPlusTimer.state.inChallenge then
+            MPlusTimer:ResetPull()
+            MPlusTimer:ScanDeaths(false)
+        end
+
+    elseif event == "UNIT_DIED" then
+        if MPlusTimer.state.inChallenge then MPlusTimer:RemoveFromPull(arg1) end
+
+    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        if MPlusTimer.state.inChallenge and CombatLogGetCurrentEventInfo then
+            local _, sub, _, _, _, _, _, destGUID = CombatLogGetCurrentEventInfo()
+            if sub == "UNIT_DIED" then MPlusTimer:RemoveFromPull(destGUID) end
+        end
 
     elseif event == "SCENARIO_CRITERIA_UPDATE" or event == "SCENARIO_POI_UPDATE" then
         if MPlusTimer.state.inChallenge then
@@ -1727,6 +2170,13 @@ eventFrame:RegisterEvent("SCENARIO_CRITERIA_UPDATE")
 eventFrame:RegisterEvent("SCENARIO_POI_UPDATE")
 eventFrame:RegisterEvent("ZONE_CHANGED")
 eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+eventFrame:RegisterEvent("UNIT_THREAT_LIST_UPDATE")
+eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+eventFrame:RegisterEvent("ENCOUNTER_END")
+-- mob deaths: UNIT_DIED on newer clients, the combat log on older ones
+if not pcall(eventFrame.RegisterEvent, eventFrame, "UNIT_DIED") then
+    pcall(eventFrame.RegisterEvent, eventFrame, "COMBAT_LOG_EVENT_UNFILTERED")
+end
 
 ---------------------------------------------------------------------------
 -- Slash Command

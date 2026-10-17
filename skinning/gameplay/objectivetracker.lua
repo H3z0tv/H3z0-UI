@@ -168,6 +168,16 @@ local function HideScenarioStageArtwork()
     local stageBlock = scenario.StageBlock
     if not stageBlock then return end
 
+    -- Delves draw their title / tier on this banner (widgets): hiding it there
+    -- left an empty gap at the top of the Delves section. Keep it in delves.
+    local inDelve = (C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress())
+        or (C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve())
+    if inDelve then
+        if stageBlock.NormalBG then stageBlock.NormalBG:SetAlpha(1); stageBlock.NormalBG:Show() end
+        if stageBlock.FinalBG then stageBlock.FinalBG:SetAlpha(1) end
+        return
+    end
+
     -- Hide the banner artwork textures (safe to call repeatedly)
     if stageBlock.NormalBG then
         stageBlock.NormalBG:Hide()
@@ -956,6 +966,7 @@ local trackingEvents = {
     "SCENARIO_SPELL_UPDATE",
     "SCENARIO_COMPLETED",
     "SCENARIO_CRITERIA_SHOW_STATE_UPDATE",
+    "ZONE_CHANGED_NEW_AREA",
     -- World quest tracker
     -- (uses events already listed above)
 }
@@ -977,7 +988,10 @@ frame:SetScript("OnEvent", function(self, event)
         -- Quest selection changed, hide glow immediately (with tiny delay for POI to update)
         C_Timer.After(0.01, HidePOIButtonGlows)
         ScheduleBackdropUpdate()
-    elseif event == "SCENARIO_UPDATE" or event == "SCENARIO_COMPLETED" then
+    elseif event == "SCENARIO_UPDATE" or event == "SCENARIO_COMPLETED" or event == "ZONE_CHANGED_NEW_AREA" then
+        if event ~= "SCENARIO_UPDATE" then
+            C_Timer.After(1, function() if not InCombatLockdown() then HideScenarioStageArtwork(); RelayoutTracker() end end)
+        end
         -- Scenario started/ended, update width (may need to expand/shrink)
         C_Timer.After(0.2, function()
             local settings = GetSettings()

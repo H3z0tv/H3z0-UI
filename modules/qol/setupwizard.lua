@@ -836,8 +836,8 @@ local function CreateWizard()
 
         f.importPlater = MakeButton(page, "Import into Plater", 180, 30, true, ar, ag, ab, function()
             f:Hide()
-            if StaticPopupDialogs and StaticPopupDialogs["H3Z0UI_PLATER_IMPORT"] then
-                StaticPopup_Show("H3Z0UI_PLATER_IMPORT")
+            if ns.Popups and ns.Popups["H3Z0UI_PLATER_IMPORT"] then
+                ns.ShowPopup("H3Z0UI_PLATER_IMPORT")
             else
                 Say("Open Options > Nameplates and use \"Import into Plater\".")
             end

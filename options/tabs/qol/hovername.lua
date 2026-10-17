@@ -67,7 +67,7 @@ local function BuildHoverNameTab(tabContent)
     -- ENABLE
     Section("Enable/Disable Hover Name")
     Check("Hover Name Module", "enabled")
-    Info("Shows the name of players and NPCs next to your cursor while hovering them in the world. Based on HoverName by MorphieBlossom.", 28)
+    Info("Shows the name of players and NPCs next to your cursor while hovering them in the world.", 28)
     Info("Tip: set Tooltip > Tooltip Visibility > \"NPCs & Players\" to \"Always Hide\" if you only want this display.", 28)
 
     -- DISPLAY
@@ -80,6 +80,7 @@ local function BuildHoverNameTab(tabContent)
     }, "cursorAnchor")
     Slider("Vertical Offset", -200, 200, 1, "offsetVertical")
     Slider("Horizontal Offset", -200, 200, 1, "offsetHorizontal")
+    Slider("Gap While Aiming (mouselook)", 0, 150, 1, "aimGap")
     Slider("Font Size", 8, 30, 1, "fontSize")
     Dropdown("Font Type", Shared.GetFontList(), "fontType")
     Dropdown("Font Outline", {

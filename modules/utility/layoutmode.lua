@@ -489,7 +489,7 @@ function EM.CopyPresetToCustom()
     return true
 end
 
-StaticPopupDialogs["H3Z0UI_LAYOUT_COPY_PRESET"] = {
+ns.Popups["H3Z0UI_LAYOUT_COPY_PRESET"] = {
     text = "Your Edit Mode layout is a Blizzard preset (Modern/Classic), which can't be changed.\n\nCopy it to a custom layout managed by H3z0 UI so Layout Mode can move Blizzard frames (action bars, Cooldown Manager, ...)?",
     button1 = ACCEPT or "Accept",
     button2 = CANCEL or "Cancel",
@@ -503,7 +503,7 @@ function EM.SaveSystemOffset(systemType, systemIndex, frame, dx, dy)
     local layoutInfo, layout, reason = EM.GetActiveCustomLayout()
     if not layout then
         if reason == "preset" then
-            StaticPopup_Show("H3Z0UI_LAYOUT_COPY_PRESET")
+            ns.ShowPopup("H3Z0UI_LAYOUT_COPY_PRESET")
         else
             Say(reason or "Could not read your Edit Mode layout.")
         end
@@ -689,6 +689,16 @@ local function SettingsFor(el)
     if el.sys and S.AuraFrame and el.sys == S.AuraFrame then
         return { 3, 4 }                               -- General & QoL > Buff & Debuff
     end
+    if el.sys and S.ChatFrame and el.sys == S.ChatFrame then
+        return { 3, 5 }                               -- General & QoL > Chat
+    end
+    if el.sys and S.ExtraAbilities and el.sys == S.ExtraAbilities then
+        return { 7, 4 }                               -- Action Bars > Extra Buttons
+    end
+    if el.sys and ((S.TalkingHeadFrame and el.sys == S.TalkingHeadFrame)
+        or (S.StatusTrackingBar and el.sys == S.StatusTrackingBar)) then
+        return { 9, 1 }                               -- Skinning & Autohide > Autohide
+    end
     if el.cdmIndex ~= nil then
         local I = Enum and Enum.EditModeCooldownViewerSystemIndices or {}
         if el.cdmIndex == I.Essential then return { 5, 1 } end
@@ -701,7 +711,14 @@ local function OpenSettings(el)
     local where = SettingsFor(el)
     local GUI = _G.H3z0UI and _G.H3z0UI.GUI
     if not where then
-        Say(el.label .. " has no H3z0 UI settings (Blizzard frame). Its size options are in /h3z0ui blizzedit.")
+        -- short on-screen note instead of chat lines (no spam on repeated clicks)
+        local now = GetTime()
+        if el._noSetNote and now - el._noSetNote < 3 then return end
+        el._noSetNote = now
+        local msg = el.label .. ": no H3z0 UI settings - drag to move it."
+        if UIErrorsFrame and UIErrorsFrame.AddMessage then
+            UIErrorsFrame:AddMessage(msg, 1, 0.82, 0)
+        end
         return
     end
     if not (GUI and GUI.NavigateTo) then return end

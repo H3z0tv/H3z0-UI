@@ -802,7 +802,7 @@ local defaults = {
             fastAutoLoot = true,
             autoSelectGossip = false,  -- Auto-select single gossip options
             autoCombatLog = false,  -- Auto start/stop combat logging in M+ (opt-in)
-            autoDeleteConfirm = true,  -- Auto-fill DELETE confirmation text
+            autoDeleteConfirm = false, -- Auto-fill DELETE confirmation text (off: touching Blizzard popups can block item upgrades)
             -- Pet Warning (pet-spec classes: Hunter, Warlock, DK, Mage)
             petCombatWarning = true,    -- Show combat warning in instances when pet missing/passive
             petWarningOffsetX = 0,      -- Warning frame X offset from center
@@ -881,7 +881,7 @@ local defaults = {
         -- Custom M+ Timer Settings
         mplusTimer = {
             enabled = false,
-            layoutMode = "sleek",
+            layoutMode = "pro",
             showTimer = true,
             showBorder = true,
             showDeaths = true,
@@ -1639,7 +1639,8 @@ local defaults = {
             enabled = true,
             -- Display
             cursorAnchor = "TOP",              -- TOP/BOTTOM/LEFT/RIGHT/TOPLEFT/TOPRIGHT/BOTTOMLEFT/BOTTOMRIGHT
-            offsetVertical = 4,
+            offsetVertical = 18,
+            aimGap = 28,                       -- extra gap from the cursor while mouselooking
             offsetHorizontal = 0,
             fontSize = 12,
             fontType = "Friz Quadrata TT",

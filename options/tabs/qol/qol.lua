@@ -700,7 +700,7 @@ local function BuildGeneralTab(tabContent)
         y = y - FORM_ROW
 
         -- Auto Delete Confirmation
-        local autoDeleteCheck = GUI:CreateFormCheckbox(tabContent, "Auto-Fill DELETE Confirmation Text", "autoDeleteConfirm", generalDB)
+        local autoDeleteCheck = GUI:CreateFormCheckbox(tabContent, "Auto-Fill DELETE Text (can block Item Upgrade popups)", "autoDeleteConfirm", generalDB)
         autoDeleteCheck:SetPoint("TOPLEFT", PADDING, y)
         autoDeleteCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
         y = y - FORM_ROW

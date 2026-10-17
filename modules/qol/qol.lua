@@ -320,12 +320,8 @@ hooksecurefunc("StaticPopup_Show", function(which)
         if frame and frame.which == which and frame:IsShown() then
             local editBox = frame.editBox or _G["StaticPopup" .. i .. "EditBox"]
             if editBox then
+                -- only fill the text; the box's own OnTextChanged enables the button
                 editBox:SetText(DELETE_ITEM_CONFIRM_STRING or "DELETE")
-                -- Trigger OnTextChanged to enable the confirm button
-                local handler = editBox:GetScript("OnTextChanged")
-                if handler then
-                    handler(editBox)
-                end
                 -- Note: Cannot auto-click - DeleteCursorItem() is protected
             end
             break

@@ -299,6 +299,9 @@ local function ApplyMPlusTimerSkin()
     -- Store colors for refresh
     MPlusTimer.frames.root.h3z0uiSkinned = true
     MPlusTimer.frames.root.h3z0uiColors = colors
+
+    -- H3z0 Pro layout has its own minimal colours
+    if MPlusTimer.ApplyProStyle then MPlusTimer:ApplyProStyle() end
 end
 
 ---------------------------------------------------------------------------

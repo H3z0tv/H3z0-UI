@@ -4,6 +4,7 @@
 -- Falls back to LibCustomGlow for additional glow styles
 
 local _, ns = ...
+local StopGlow   -- defined below (kept local, not a global)
 local Helpers = ns.Helpers
 
 -- Get LibCustomGlow for fallback styles

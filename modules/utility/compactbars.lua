@@ -134,7 +134,7 @@ local function ModifySystems(systems)
     return true
 end
 
-StaticPopupDialogs["H3Z0UI_COMPACT_RELOAD"] = {
+ns.Popups["H3Z0UI_COMPACT_RELOAD"] = {
     text = "%s\n\nReload the UI now so the action bars update cleanly?",
     button1 = RELOADUI or "Reload UI",
     button2 = LATER or "Later",
@@ -150,7 +150,7 @@ local function Activate(layoutInfo, index, message)
         return false
     end
     if C_EditMode.SetActiveLayout then pcall(C_EditMode.SetActiveLayout, index) end
-    StaticPopup_Show("H3Z0UI_COMPACT_RELOAD", message)
+    ns.ShowPopup("H3Z0UI_COMPACT_RELOAD", message)
     return true
 end
 

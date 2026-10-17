@@ -3,6 +3,7 @@
     <!-- Shared helpers must load first - provides common utilities for all modules -->
     <Script file="client.lua"/>
     <Script file="utils.lua"/>
+    <Script file="popup.lua"/>
     <Script file="media.lua"/>
     <Script file="compatibility.lua"/>
     <Script file="main.lua"/>

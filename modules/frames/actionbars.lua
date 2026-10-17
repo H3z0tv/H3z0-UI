@@ -985,8 +985,8 @@ end
 -- Apply button lock - syncs LOCK_ACTIONBAR global from Blizzard's CVar
 -- NOTE: No longer overwrites Blizzard's CVar - H3z0UI options panel now syncs directly with it
 local function ApplyButtonLock()
-    local locked = GetCVar('lockActionBars') == '1'
-    LOCK_ACTIONBAR = locked and '1' or '0'
+    -- Blizzard keeps LOCK_ACTIONBAR in sync with the CVar itself; writing the
+    -- global from an addon would taint action button dragging, so only read it.
 end
 
 -- Usability indicator state tracking

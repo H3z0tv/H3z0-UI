@@ -107,12 +107,12 @@ function Share.Import(str, quiet)
     end
 
     if not quiet then
-        StaticPopup_Show("H3Z0UI_LAYOUT_IMPORTED")
+        ns.ShowPopup("H3Z0UI_LAYOUT_IMPORTED")
     end
     return true
 end
 
-StaticPopupDialogs["H3Z0UI_LAYOUT_IMPORTED"] = {
+ns.Popups["H3Z0UI_LAYOUT_IMPORTED"] = {
     text = "Layout imported (PC and Deck).\n\nReload the UI now to put every frame in place?",
     button1 = RELOADUI or "Reload UI",
     button2 = LATER or "Later",

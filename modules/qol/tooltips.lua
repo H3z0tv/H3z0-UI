@@ -669,27 +669,10 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         C_Timer.After(0.5, function()
             SetupTooltipHook()
 
-            -- Wrap MoneyFrame functions in pcall to suppress Blizzard secret value bug
-            if MoneyFrame_Update then
-                local originalMoneyFrameUpdate = MoneyFrame_Update
-                MoneyFrame_Update = function(...)
-                    pcall(originalMoneyFrameUpdate, ...)
-                end
-            end
-            if SetTooltipMoney then
-                local originalSetTooltipMoney = SetTooltipMoney
-                SetTooltipMoney = function(...)
-                    pcall(originalSetTooltipMoney, ...)
-                end
-            end
-
-            -- Wrap GameTooltip:SetSpellByID in pcall to suppress Blizzard PTRFeedback secret value bug
-            if GameTooltip and GameTooltip.SetSpellByID then
-                local originalSetSpellByID = GameTooltip.SetSpellByID
-                GameTooltip.SetSpellByID = function(...)
-                    pcall(originalSetSpellByID, ...)
-                end
-            end
+            -- NOTE: Blizzard functions (MoneyFrame_Update, SetTooltipMoney,
+            -- GameTooltip:SetSpellByID) are never replaced: replacing them taints
+            -- every popup / tooltip that uses them (e.g. the Item Upgrade confirm
+            -- showed ADDON_ACTION_FORBIDDEN "UpgradeItem()").
         end)
     elseif event == "MODIFIER_STATE_CHANGED" then
         OnModifierStateChanged()

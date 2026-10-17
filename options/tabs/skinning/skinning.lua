@@ -622,6 +622,7 @@ local function BuildSkinningTab(tabContent)
             { text = "Compact", value = "compact" },
             { text = "Full", value = "full" },
             { text = "Sleek", value = "sleek" },
+            { text = "H3z0 Pro", value = "pro" },
         }
         local layoutDropdown = GUI:CreateFormDropdown(tabContent, "Layout Mode", layoutOptions, "layoutMode", mplusTimer, function()
             local MPlusTimer = _G.H3z0UI_MPlusTimer
@@ -697,6 +698,13 @@ local function BuildSkinningTab(tabContent)
         h3z0uiMplusObjCheck:SetPoint("TOPLEFT", PAD, y)
         h3z0uiMplusObjCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
+
+        if mplusTimer.showForcesTooltip == nil then mplusTimer.showForcesTooltip = true end
+        local h3z0uiMplusTipCheck = GUI:CreateFormCheckbox(tabContent, "Enemy Forces in Tooltips", "showForcesTooltip", mplusTimer)
+        h3z0uiMplusTipCheck:SetPoint("TOPLEFT", PAD, y)
+        h3z0uiMplusTipCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        y = y - FORM_ROW
+
 
         -- Demo mode button
         local h3z0uiMplusDemoBtn = GUI:CreateButton(tabContent, "Toggle Demo Mode", 200, 28, function()

@@ -737,7 +737,7 @@ function Handheld.ApplyDeckSwitch(on)
     return changed
 end
 
-StaticPopupDialogs["H3Z0UI_DECK_RELOAD"] = {
+ns.Popups["H3Z0UI_DECK_RELOAD"] = {
     text = "Handheld Mode switched addons and the Edit Mode layout.\n\nReload the UI now?",
     button1 = RELOADUI or "Reload UI",
     button2 = LATER or "Later",
@@ -809,7 +809,7 @@ function Handheld.SetEnabled(on, silent, auto)
     Handheld.Apply()
     if LoadPositions() and _G.H3z0UI_RefreshUnitFrames then pcall(_G.H3z0UI_RefreshUnitFrames) end
     if needReload and auto then
-        StaticPopup_Show("H3Z0UI_DECK_RELOAD")
+        ns.ShowPopup("H3Z0UI_DECK_RELOAD")
     end
     -- silent (Setup Wizard): the wizard shows its own Reload button
 
@@ -856,22 +856,25 @@ end
 function Handheld.SetPCHandheld(on, silent)
     local c = Cfg()
     if not c then return end
+    -- The menu checkbox writes c.pcHandheld before calling this, so the current
+    -- state is read from c.enabled / c.deckChoice (Steam Deck), not from c.pcHandheld.
+    local deckOn = c.enabled and c.deckChoice and true or false
+    local pcHandheldOn = c.enabled and not c.deckChoice and true or false
     if on then
-        local wasDeck = c.enabled and not c.pcHandheld
         c.pcHandheld = true
-        if c.enabled then
+        if deckOn then
             -- coming from Steam Deck: same layout, only the scale goes back to PC
-            if wasDeck then
-                if not silent then Say("PC Handheld on - Steam Deck turned off (PC UI scale).") end
-                c.deckChoice = false
-                Handheld.ApplyDataOnly()
-                if not silent and not InCombatLockdown() then ReloadUI() end
-            end
+            if not silent then Say("PC Handheld on - Steam Deck turned off (PC UI scale).") end
+            c.deckChoice = false
+            Handheld.ApplyDataOnly()
+            if not silent and not InCombatLockdown() then ReloadUI() end
             return
         end
+        if pcHandheldOn then return end
         Handheld.SetEnabled(true, silent)
     else
-        if c.enabled and c.pcHandheld then
+        if pcHandheldOn then
+            c.pcHandheld = true            -- so SetEnabled knows which mode it leaves
             Handheld.SetEnabled(false, silent)
         else
             c.pcHandheld = false
@@ -902,7 +905,7 @@ end
 
 function Handheld.TogglePCHandheld()
     local c = Cfg()
-    if c then Handheld.SetPCHandheld(not (c.enabled and c.pcHandheld)) end
+    if c then Handheld.SetPCHandheld(not (c.enabled and c.pcHandheld and not c.deckChoice)) end
 end
 
 function Handheld.TogglePCController()

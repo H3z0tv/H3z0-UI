@@ -307,6 +307,63 @@ local function Brackets(frame, key, show)
     end
 end
 
+-- Rounded corners: four corner masks on the frame's background / border pieces
+-- (outer shape) and on every bar texture inside it (inner shape, inset by the
+-- border so the border curves with it). The shadow gets the same shape.
+local function RoundShadow(frame, radius, on)
+    local sh = frame.h3zMLShadow
+    if not (sh and sh.layers) then return end
+    local Round = ns.Round
+    for i, t in ipairs(sh.layers) do
+        if on then
+            local set = Round.CornerMasks(sh, t, radius + i, 0, "h3zRoundMasks" .. i)
+            Round.Mask(t, set, true)
+        else
+            Round.Mask(t, nil, false)
+        end
+    end
+end
+
+local function RoundFrame(frame, bars, show)
+    local Round = ns.Round
+    if not Round then return end
+    local done = frame.h3zRoundDone or {}
+    frame.h3zRoundDone = done
+    if not show then
+        for tex in pairs(done) do Round.Mask(tex, nil, false) end
+        wipe(done)
+        RoundShadow(frame, 0, false)
+        return
+    end
+    local radius = Round.Radius()
+    local fh = frame:GetHeight() or 20
+    radius = math.min(radius, math.max(1, fh / 2))
+    RoundShadow(frame, radius, true)
+    local outer = Round.CornerMasks(frame, frame, radius, 0, "h3zRoundOuter")
+    for _, k in ipairs(BACKDROP_PIECES) do
+        local t = frame[k]
+        if t and t.AddMaskTexture then Round.Mask(t, outer, true); done[t] = true end
+    end
+    for _, bar in ipairs(bars) do
+        if bar then
+            local inset = 0
+            if bar:GetTop() and frame:GetTop() then
+                inset = math.max(0, math.min(4, frame:GetTop() - bar:GetTop()))
+            end
+            local list = {}
+            CollectBarTextures(bar, list)
+            for _, t in ipairs(list) do
+                local owner = t:GetParent()
+                if owner and owner.CreateMaskTexture then
+                    local m = Round.CornerMasks(owner, frame, radius, inset, "h3zRoundInner")
+                    Round.Mask(t, m, true)
+                    done[t] = true
+                end
+            end
+        end
+    end
+end
+
 ---------------------------------------------------------------------------
 -- Apply
 ---------------------------------------------------------------------------
@@ -328,6 +385,9 @@ function ML.ApplyUnit(key)
     local v2 = fs and fs.enabled and fs.style == "roundv2" and frame.h3zStyled
         and (key == "player" or key == "target" or key == "focus")
     pcall(Brackets, frame, key, v2 and true or false)
+    -- rounded corners (not on v2 frames: they have their own round end)
+    local round = on and ns.Round and ns.Round.Enabled() and not v2
+    pcall(RoundFrame, frame, { frame.healthBar, frame.powerBar }, round and true or false)
 end
 
 local function ApplyMinimap(s)
@@ -351,6 +411,8 @@ local function ApplyMinimap(s)
     holder:SetFrameStrata("BACKGROUND")
     holder:SetFrameLevel(1)
     Shadow(holder, holder, on and square)
+    local roundOn = s.enabled and ns.Round and ns.Round.Enabled() and square
+    pcall(RoundShadow, holder, ((mm:GetWidth() or 200) + b * 2) * 22 / 256, (on and roundOn) and true or false)
 
     local dt = _G.H3z0UI_DatatextPanel
     if dt then
@@ -370,7 +432,16 @@ local function ApplyMinimap(s)
         local show = s.enabled and s.sheen
         dt.h3zMLSheen:SetShown(show)
         dt.h3zMLLine:SetShown(show)
+        pcall(RoundFrame, dt, {}, roundOn and true or false)
+        local set = dt.h3zRoundOuter
+        if set then
+            for _, t in ipairs({ dt.h3zMLSheen, dt.h3zMLLine, dt.bg, dt.borderLeft, dt.borderRight, dt.borderTop, dt.borderBottom }) do
+                ns.Round.Mask(t, set, roundOn and true or false)
+            end
+        end
     end
+    -- rounded square minimap (minimap.lua picks the mask)
+    if _G.H3z0UI_RefreshMinimapShape then pcall(_G.H3z0UI_RefreshMinimapShape) end
 end
 
 local function ApplyBars(s)
@@ -381,6 +452,7 @@ local function ApplyBars(s)
         if bar then
             Shadow(bar, bar, on and s.shadow)
             Sheen(bar.StatusBar, on and s.sheen)
+            pcall(RoundFrame, bar, { bar.StatusBar }, on and ns.Round and ns.Round.Enabled() or false)
         end
     end
     -- cast bars
@@ -390,6 +462,7 @@ local function ApplyBars(s)
             if type(cb) == "table" and cb.GetObjectType then
                 Shadow(cb, cb, on and s.shadow)
                 Sheen(cb.statusBar, on and s.sheen)
+                pcall(RoundFrame, cb, { cb.statusBar }, on and ns.Round and ns.Round.Enabled() or false)
             end
         end
     end

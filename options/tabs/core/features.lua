@@ -110,13 +110,33 @@ local function BuildPortraits(tabContent)
     local ML = ns.ModernLook
     local mldb = ML and ML.GetSettings and ML.GetSettings()
     if mldb then
-        local function RefreshML() if _G.H3z0UI_RefreshModernLook then _G.H3z0UI_RefreshModernLook() end end
+        local function RefreshML()
+            if _G.H3z0UI_RefreshModernLook then _G.H3z0UI_RefreshModernLook() end
+            if _G.H3z0UI_RefreshWindowSkins then _G.H3z0UI_RefreshWindowSkins() end
+        end
+        if ns.Round and ns.Round.Settings then ns.Round.Settings() end
         b.Section("Modern Look")
         b.Info("Soft shadows, a subtle sheen on the bars and a glow behind the portraits - on the unit frames, power and cast bars, minimap and info bar. Your settings stay as they are. /h3z0ui modern", 34)
         b.Check("Use Modern Look", "enabled", mldb, RefreshML)
         b.Check("Soft Shadows", "shadow", mldb, RefreshML)
         b.Check("Bar Sheen + Top Highlight", "sheen", mldb, RefreshML)
         b.Check("Portrait Glow (round portraits)", "glow", mldb, RefreshML)
+        b.Check("Rounded Corners (unit frames, bars, square minimap, windows)", "rounded", mldb, RefreshML)
+        b.Slider("Corner Radius", 2, 14, 1, "radius", mldb, RefreshML)
+    end
+
+    -- Window Skins (chat + damage meter)
+    local WS = ns.WindowSkins
+    local wsdb = WS and WS.GetSettings and WS.GetSettings()
+    if wsdb then
+        local function RefreshWS() if _G.H3z0UI_RefreshWindowSkins then _G.H3z0UI_RefreshWindowSkins() end end
+        b.Section("Window Skins")
+        b.Info("A dark, see-through window with soft rounded corners for the chat and Blizzard's damage meter: header strip, accent line and flat bars on the meter, an accent underline on the selected chat tab.", 34)
+        b.Check("Use Window Skins", "enabled", wsdb, RefreshWS)
+        b.Check("Chat", "chat", wsdb, RefreshWS)
+        b.Check("Damage Meter", "damageMeter", wsdb, RefreshWS)
+        b.Check("Damage Meter Header + Accent Line", "header", wsdb, RefreshWS)
+        b.Slider("Background Opacity", 0, 1, 0.05, "alpha", wsdb, RefreshWS)
     end
 
     -- Frame style (round / docked)

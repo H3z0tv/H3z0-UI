@@ -87,18 +87,25 @@ end
 --- MINIMAP SHAPE
 ---=================================================================================
 
+-- square minimap: plain square, or a rounded square with Modern Look > Rounded Corners
+local function SquareMask()
+    local R = ns and ns.Round
+    if R and R.Enabled and R.Enabled() then return R.ROUND_SQUARE end
+    return "Interface\\BUTTONS\\WHITE8X8"
+end
+
 local function SetMinimapShape(shape)
     if shape == "SQUARE" then
-        Minimap:SetMaskTexture("Interface\\BUTTONS\\WHITE8X8")
+        Minimap:SetMaskTexture(SquareMask())
         if mask then
-            mask:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+            mask:SetTexture(SquareMask())
         end
         _G.GetMinimapShape = function() return "SQUARE" end
         
         -- Handle HybridMinimap (Delves/scenarios)
         if HybridMinimap then
             HybridMinimap.MapCanvas:SetUseMaskTexture(false)
-            HybridMinimap.CircleMask:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+            HybridMinimap.CircleMask:SetTexture(SquareMask())
             HybridMinimap.MapCanvas:SetUseMaskTexture(true)
         end
         
@@ -180,7 +187,7 @@ local function UpdateBackdrop()
     
     -- Update mask based on shape
     if settings.shape == "SQUARE" then
-        mask:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+        mask:SetTexture(SquareMask())
     else
         mask:SetTexture("Interface\\MINIMAP\\UI-Minimap-Background")
     end
@@ -1578,6 +1585,14 @@ petBattleFrame:SetScript("OnEvent", function(self, event)
 end)
 
 -- Expose refresh globals for options panel (matches pattern used by all other modules)
+-- re-pick the square / rounded square mask (Modern Look > Rounded Corners)
+_G.H3z0UI_RefreshMinimapShape = function()
+    local settings = GetSettings()
+    if not settings or not settings.enabled or settings.shape ~= "SQUARE" then return end
+    SetMinimapShape(settings.shape)
+    if mask then UpdateBackdrop() end
+end
+
 _G.H3z0UI_RefreshMinimap = function()
     Minimap_Module:Refresh()
 end

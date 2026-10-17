@@ -8,8 +8,11 @@
 local ADDON_NAME, ns = ...
 
 ns.WhatsNew = {
-    version = "0.23.8",
+    version = "0.23.9",
     new = {
+        "|cff34D399Pick your look|r: the Setup Wizard starts with three preview cards - Classic, Modern and Modern v2. Each one sets the frame style, rounded corners, window skins and party frame style together. /h3z0ui setup to open it again.",
+        "|cff34D399Rounded Corners|r (on with Modern Look): unit frames, power and cast bars, the square minimap and its info bar get soft round corners, and the border and shadow follow the curve. Corner Radius slider in Unit Frames > Portraits > Modern Look.",
+        "|cff34D399Window Skins|r: the chat and Blizzard's damage meter get a dark, see-through rounded window. The damage meter gets a header strip, an accent line and flat bars; the selected chat tab gets an accent underline. Unit Frames > Portraits > Window Skins.",
         "Frame Style: new style |cff34D399Round Portrait v2|r - the bar starts under the portrait ring and its other end is fully round, with the black border following the curve (Player / Target / Focus). Unit Frames > Portraits > Frame Style > Style.",
         "Party Frames: new |cff34D399Style|r choice - Classic (as before) or Round Portrait v2 (bars start at the portrait, round end). Party Frames > Layout > Style.",
         "|cff34D399Modern Look|r (on by default): soft shadows, a subtle sheen on health / power / cast bars, a glow behind the round portraits and a cleaner minimap info bar. Unit Frames > Portraits, or /h3z0ui modern to compare.",

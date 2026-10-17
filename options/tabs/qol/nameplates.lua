@@ -213,6 +213,62 @@ Build = function(tabContent)
     end
 
     ---------------------------------------------------------------------
+    local NP = ns.H3zPlates
+    local npdb = NP and NP.GetSettings and NP.GetSettings()
+    if npdb then
+        local function Place(w, h)
+            w:SetPoint("TOPLEFT", PAD, y)
+            w:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - (h or FORM_ROW)
+            return w
+        end
+        local function RefreshNP() if _G.H3z0UI_RefreshPlates then _G.H3z0UI_RefreshPlates() end end
+        Section("H3z0 Nameplates")
+        Info("H3z0 UI's own nameplates: rounded bar, level | name, health and percent, cast bar, target arrows and Mythic colours (boss, mini boss, caster, melee, trivial, minus). Made to keep working in Mythic+ keys. Not used while Plater, Platynator or BetterBlizzPlates is loaded. /h3z0ui plates", 44)
+        for _, a in ipairs({ "Plater", "Platynator", "BetterBlizzPlates" }) do
+            if IsLoaded(a) then Info(a .. " is loaded - disable it to use H3z0 Nameplates.", 18, {1, 0.6, 0.2, 1}) end
+        end
+        Place(GUI:CreateFormCheckbox(tabContent, "Use H3z0 Nameplates", "enabled", npdb, RefreshNP))
+        Place(GUI:CreateFormDropdown(tabContent, "Font", NP.FONTS, "font", npdb, RefreshNP))
+        Place(GUI:CreateFormSlider(tabContent, "Width", 60, 300, 1, "width", npdb, RefreshNP))
+        Place(GUI:CreateFormSlider(tabContent, "Height", 6, 40, 1, "height", npdb, RefreshNP))
+        Place(GUI:CreateFormSlider(tabContent, "Name Size", 6, 20, 1, "nameSize", npdb, RefreshNP))
+        Place(GUI:CreateFormSlider(tabContent, "Health Text Size", 6, 20, 1, "textSize", npdb, RefreshNP))
+        Place(GUI:CreateFormSlider(tabContent, "Target Size", 1, 1.5, 0.05, "targetScale", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Show Level", "showLevel", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Show Health Value", "showHealth", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Show Health Percent", "showPercent", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Rounded Corners", "rounded", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Target Arrows", "arrows", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Threat Border (aggro / lost aggro)", "threat", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Style Friendly Nameplates (outside instances)", "friendly", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Cast Bar", "castbar", npdb, RefreshNP))
+        Place(GUI:CreateFormSlider(tabContent, "Cast Bar Height", 6, 24, 1, "castHeight", npdb, RefreshNP))
+        Place(GUI:CreateFormDropdown(tabContent, "Mythic Colours", {
+            { value = "instance", text = "In dungeons, raids and delves" },
+            { value = "always", text = "Always" },
+            { value = "off", text = "Off (hostile / neutral / friendly)" },
+        }, "mythicColors", npdb, RefreshNP))
+        Info("Colours", 20, C.text)
+        for _, c in ipairs({
+            { "boss", "Boss" }, { "miniboss", "Mini Boss / Lieutenant" }, { "caster", "Caster" }, { "melee", "Melee" },
+            { "trivial", "Trivial" }, { "minus", "Minus (small mobs)" }, { "rareElite", "Rare Elite" },
+            { "hostile", "Hostile" }, { "neutral", "Neutral" }, { "friendly", "Friendly" }, { "tapped", "Tapped" },
+            { "cast", "Cast" }, { "channel", "Channel" }, { "noInterrupt", "Can't Interrupt" }, { "interrupted", "Interrupted" },
+            { "aggro", "Threat: You Have Aggro" }, { "lostAggro", "Threat: Tank Lost Aggro" },
+        }) do
+            Place(GUI:CreateFormColorPicker(tabContent, c[2], c[1], npdb.colors, RefreshNP))
+        end
+        local resetBtn = GUI:CreateButton(tabContent, "Reset Colours", 140, 24, function()
+            for k, v in pairs(NP.DEFAULT_COLORS) do npdb.colors[k] = { v[1], v[2], v[3], v[4] } end
+            RefreshNP()
+            Rebuild()
+        end)
+        resetBtn:SetPoint("TOPLEFT", PAD, y)
+        y = y - 40
+    end
+
+    ---------------------------------------------------------------------
     Section("Plater")
     Info("H3z0 UI's Plater nameplate profile. If Plater is installed you can import it with one click; otherwise copy the string and use Plater > Profiles > Import.", 32)
     Status("Plater")

@@ -8,8 +8,9 @@
 local ADDON_NAME, ns = ...
 
 ns.WhatsNew = {
-    version = "0.23.9",
+    version = "0.24.0",
     new = {
+        "|cff34D399H3z0 Nameplates|r (Nameplates page, or /h3z0ui plates): H3z0 UI's own nameplates - rounded bar with health and percent, level | name above, cast bar with icon and time, target arrows, threat border and Mythic colours for boss, mini boss, caster, melee, trivial and minus mobs. Made to keep working in Mythic+ keys. Every colour can be changed. Also a choice in the Setup Wizard.",
         "|cff34D399Pick your look|r: the Setup Wizard starts with three preview cards - Classic, Modern and Modern v2. Each one sets the frame style, rounded corners, window skins and party frame style together. /h3z0ui setup to open it again.",
         "|cff34D399Rounded Corners|r (on with Modern Look): unit frames, power and cast bars, the square minimap and its info bar get soft round corners, and the border and shadow follow the curve. Corner Radius slider in Unit Frames > Portraits > Modern Look.",
         "|cff34D399Window Skins|r: the chat and Blizzard's damage meter get a dark, see-through rounded window. The damage meter gets a header strip, an accent line and flat bars; the selected chat tab gets an accent underline. Unit Frames > Portraits > Window Skins.",

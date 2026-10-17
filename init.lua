@@ -146,6 +146,12 @@ function H3z0UI:SlashCommandOpen(input)
             print("|cff34D399H3z0 UI:|r Streamer Mode " .. (g.streamerMode and "|cff00ff00ON|r - button press highlight hidden." or "|cffff5555OFF|r"))
         end
         return
+    elseif input and (input == "plates" or input == "nameplates") then
+        if _G.H3z0UI_TogglePlates then
+            local on = _G.H3z0UI_TogglePlates()
+            print("|cff34D399H3z0 UI:|r H3z0 Nameplates " .. (on and "|cff00ff00ON|r" or "|cffff5555OFF|r"))
+        end
+        return
     elseif input and (input == "whatsnew" or input == "news" or input == "changelog") then
         if _G.H3z0UI_ShowWhatsNew then _G.H3z0UI_ShowWhatsNew() end
         return

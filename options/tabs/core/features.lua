@@ -321,7 +321,7 @@ local function BuildExtras(tabContent)
     end)
 
     b.Section("Chat Commands")
-    b.Info("/h3z0ui layout  -  Layout Mode (also the Esc menu Edit Mode button)\n/h3z0ui blizzedit  -  Blizzard Edit Mode (size settings only)\n/h3z0ui cdm  -  Cooldown Manager not showing? check and repair\n/h3z0ui export  /  import  -  share a layout code\n/h3z0ui style  -  Frame Style on/off\n/h3z0ui modern  -  Modern Look on/off\n/h3z0ui bars  -  Compact Action Bars on/off\n/h3z0ui coords  -  Map coordinates on/off\n/h3z0ui controller  -  PC Controller on/off\n/h3z0ui pchandheld  -  PC Handheld on/off\n/h3z0ui deck  -  Handheld Mode on/off\n/h3z0ui streamer  -  Streamer Mode on/off\n/h3z0ui whatsnew  -  What's New window\n/h3z0ui setup  -  Setup Wizard", 226, C.text)
+    b.Info("/h3z0ui layout  -  Layout Mode (also the Esc menu Edit Mode button)\n/h3z0ui blizzedit  -  Blizzard Edit Mode (size settings only)\n/h3z0ui cdm  -  Cooldown Manager not showing? check and repair\n/h3z0ui export  /  import  -  share a layout code\n/h3z0ui style  -  Frame Style on/off\n/h3z0ui modern  -  Modern Look on/off\n/h3z0ui bars  -  Compact Action Bars on/off\n/h3z0ui coords  -  Map coordinates on/off\n/h3z0ui controller  -  PC Controller on/off\n/h3z0ui pchandheld  -  PC Handheld on/off\n/h3z0ui deck  -  Handheld Mode on/off\n/h3z0ui streamer  -  Streamer Mode on/off\n/h3z0ui plates  -  H3z0 Nameplates on/off\n/h3z0ui whatsnew  -  What's New window\n/h3z0ui setup  -  Setup Wizard", 226, C.text)
 
     b.Finish()
 end

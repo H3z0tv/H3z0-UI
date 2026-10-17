@@ -4,4 +4,5 @@
     <Script file="buffborders.lua"/>
     <Script file="minimap.lua"/>
     <Script file="windowskins.lua"/>
+    <Script file="nameplates.lua"/>
 </Ui>

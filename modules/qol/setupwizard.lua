@@ -80,6 +80,7 @@ end
 ---------------------------------------------------------------------------
 local NAMEPLATES = {
     { value = "none",      label = "No nameplate addon", desc = "Keep Blizzard's own nameplates.", addon = nil },
+    { value = "h3z0",      label = "H3z0 Nameplates",    desc = "Built in - rounded bars, cast bars and Mythic colours. Nothing to install.", addon = nil },
     { value = "plater",    label = "Plater",             desc = "H3z0 UI's Plater profile - one-click import.", addon = "Plater" },
     { value = "platynator", label = "Platynator",        desc = "H3z0 UI's Platynator profile - copy the string and import it.", addon = "Platynator" },
     { value = "bbp",       label = "BetterBlizzPlates",  desc = "H3z0 UI's BetterBlizzPlates profile - copy the string and import it.", addon = "BetterBlizzPlates" },
@@ -296,6 +297,8 @@ local function LoadState()
     state.lookPicked = false
     state.scale = s.scale or "compact"
     state.nameplates = s.nameplates or "none"
+    local npdb = ns.H3zPlates and ns.H3zPlates.GetSettings and ns.H3zPlates.GetSettings()
+    if npdb and npdb.enabled then state.nameplates = "h3z0" end
     state.features = {}
     for _, f in ipairs(FEATURES) do
         state.features[f.id] = f.get() and true or false
@@ -375,7 +378,17 @@ function Setup.Apply()
     -- 2. Nameplates (the strings themselves are imported from the Done page / Nameplates tab)
     local np
     for _, o in ipairs(NAMEPLATES) do if o.value == state.nameplates then np = o end end
-    if np and np.value ~= "none" then
+    local npdb = ns.H3zPlates and ns.H3zPlates.GetSettings and ns.H3zPlates.GetSettings()
+    if npdb then
+        local want = (state.nameplates == "h3z0")
+        if npdb.enabled ~= want then
+            npdb.enabled = want
+            if _G.H3z0UI_RefreshPlates then pcall(_G.H3z0UI_RefreshPlates) end
+        end
+    end
+    if np and np.value == "h3z0" then
+        result.lines[#result.lines + 1] = "Nameplates: H3z0 Nameplates (built in)"
+    elseif np and np.value ~= "none" then
         result.lines[#result.lines + 1] = "Nameplates: " .. np.label .. (IsLoaded(np.addon) and "" or "  (addon not installed yet)")
     else
         result.lines[#result.lines + 1] = "Nameplates: Blizzard default"
@@ -1059,7 +1072,7 @@ local function CreateWizard()
         f.npCards = {}
         local prev
         for _, o in ipairs(NAMEPLATES) do
-            local card = MakeCard(page, PAGE_W, 54, o.label, o.desc, ar, ag, ab, function()
+            local card = MakeCard(page, PAGE_W, 48, o.label, o.desc, ar, ag, ab, function()
                 state.nameplates = o.value
                 RefreshNameplatePage(f)
             end)

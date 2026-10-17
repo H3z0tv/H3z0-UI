@@ -8,8 +8,9 @@
 local ADDON_NAME, ns = ...
 
 ns.WhatsNew = {
-    version = "0.23.7",
+    version = "0.23.8",
     new = {
+        "|cff34D399Modern Look|r (on by default): soft shadows, a subtle sheen on health / power / cast bars, a glow behind the round portraits and a cleaner minimap info bar. Unit Frames > Portraits, or /h3z0ui modern to compare.",
         "|cff34D399Streamer Mode|r (Action Bars > Master Settings, or /h3z0ui streamer): hides the yellow highlight that shows on an action button when you press it (press glow, active border, cast fill), so viewers can't see which keys you press.",
         "|cff34D399Resize the chat window and the damage meter|r in H3z0 UI Layout Mode: drag the corner grip at the bottom right of their handle. Sizes are saved in H3z0 UI (PC and Deck) and included in layout codes.",
         "|cff34D399PC Handheld|r (H3z0 Features > Steam Deck + PC Controller, /h3z0ui pchandheld): the Steam Deck layout and ConsolePort on PC, with your normal PC UI scale.",

@@ -6,6 +6,7 @@
     <Script file="castbar.lua"/>
     <Script file="unitframes.lua"/>
     <Script file="framestyle.lua"/>
+    <Script file="modernlook.lua"/>
     <Script file="buffbar.lua"/>
     <Script file="raidbuffs.lua"/>
     <Script file="totems.lua"/>

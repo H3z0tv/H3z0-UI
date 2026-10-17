@@ -8,7 +8,7 @@
 local ADDON_NAME, ns = ...
 
 ns.WhatsNew = {
-    version = "0.23.5",
+    version = "0.23.6",
     new = {
         "|cff34D399Resize the chat window and the damage meter|r in H3z0 UI Layout Mode: drag the corner grip at the bottom right of their handle. Sizes are saved in H3z0 UI (PC and Deck) and included in layout codes.",
         "|cff34D399PC Handheld|r (H3z0 Features > Steam Deck + PC Controller, /h3z0ui pchandheld): the Steam Deck layout and ConsolePort on PC, with your normal PC UI scale.",
@@ -17,6 +17,8 @@ ns.WhatsNew = {
         "M+ Timer: new |cff34D399H3z0 Pro|r layout - big timer, +3 / +2 / +1 bars with the time left above them, enemy forces with your current pull (orange), boss kill times, a death log on the deaths tooltip and enemy forces in unit tooltips. Skinning & Autohide > Skinning > H3z0 UI M+ Timer (Toggle Demo Mode to see it). Your timer is switched to it once - pick another layout there if you prefer.",
     },
     fixed = {
+        "Extra Action / Zone Ability button kept disappearing and couldn't be moved in Layout Mode: it now stays in Blizzard's own container (H3z0 UI only applies scale / hide artwork) and is moved with the Extra Abilities handle in Layout Mode. Your old position is carried over once.",
+        "\"GetAuraDataByIndex(): Auras cannot be accessed when secret while tainted by H3z0UI\" (hundreds of times, from the quest tracker): H3z0 UI no longer writes into or runs Blizzard's Objective Tracker, Tracked Bars or Talking Head code. The tracker's own height is set in Edit Mode now (the H3z0 \"Max Height\" only limits the background).",
         "Objective Tracker skin: completed objectives (e.g. Prey quests) looked unfinished because every line was painted in the text colour - completed / failed lines keep Blizzard's colours and tick now.",
         "Party Frames: ready check icons didn't show - answers are now read straight from the ready check itself (tick / cross / waiting on each portrait). /h3z0party ready previews them.",
         "Switching Handheld Mode / PC Controller no longer creates or switches \"H3z0 PC\" / \"H3z0 Deck\" Edit Mode layouts - pick your own Edit Mode layout once with /h3z0ui blizzedit if needed.",

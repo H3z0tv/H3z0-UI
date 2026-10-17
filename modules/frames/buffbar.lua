@@ -1549,22 +1549,10 @@ function H3z0UI_BuffBar.Refresh()
     barState.lastCount = 0
     lastIconHash = ""  -- Force hash recalculation for icons
 
-    -- Update isHorizontal when settings change (e.g., orientation toggle)
-    -- Must be done outside combat to take effect
-    if BuffBarCooldownViewer and not InCombatLockdown() then
-        local settings = GetTrackedBarSettings()
-        local isVertical = (settings.orientation == "vertical")
-        local growFromBottom = (settings.growUp ~= false)
-
-        BuffBarCooldownViewer.isHorizontal = not isVertical
-        if isVertical then
-            BuffBarCooldownViewer.layoutFramesGoingRight = growFromBottom
-            BuffBarCooldownViewer.layoutFramesGoingUp = false
-        else
-            BuffBarCooldownViewer.layoutFramesGoingRight = true
-            BuffBarCooldownViewer.layoutFramesGoingUp = growFromBottom
-        end
-    end
+    -- Blizzard's viewer fields (isHorizontal / layoutFramesGoing*) are NOT written any
+    -- more: the Tracked Bars viewer reads auras, and values written by an addon taint
+    -- it ("Auras cannot be accessed when secret while tainted"). LayoutBuffBars below
+    -- arranges the bars in the chosen orientation / direction itself.
 
     LayoutBuffIcons()
     LayoutBuffBars()

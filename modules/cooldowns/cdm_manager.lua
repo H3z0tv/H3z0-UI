@@ -29,8 +29,8 @@ local function RemovePadding(viewer)
         if child:IsShown() then
             -- Store original position for sorting
             local point, relativeTo, relativePoint, x, y = child:GetPoint(1)
-            child.originalX = x or 0
-            child.originalY = y or 0
+            child.h3z0uiOriginalX = x or 0
+            child.h3z0uiOriginalY = y or 0
             table.insert(visibleChildren, child)
         end
     end
@@ -42,18 +42,18 @@ local function RemovePadding(viewer)
     if isHorizontal then
         -- Sort left to right, then top to bottom
         table.sort(visibleChildren, function(a, b)
-            if math.abs(a.originalY - b.originalY) < 1 then
-                return a.originalX < b.originalX
+            if math.abs(a.h3z0uiOriginalY - b.h3z0uiOriginalY) < 1 then
+                return a.h3z0uiOriginalX < b.h3z0uiOriginalX
             end
-            return a.originalY > b.originalY
+            return a.h3z0uiOriginalY > b.h3z0uiOriginalY
         end)
     else
         -- Sort top to bottom, then left to right
         table.sort(visibleChildren, function(a, b)
-            if math.abs(a.originalX - b.originalX) < 1 then
-                return a.originalY > b.originalY
+            if math.abs(a.h3z0uiOriginalX - b.h3z0uiOriginalX) < 1 then
+                return a.h3z0uiOriginalY > b.h3z0uiOriginalY
             end
-            return a.originalX < b.originalX
+            return a.h3z0uiOriginalX < b.h3z0uiOriginalX
         end)
     end
     

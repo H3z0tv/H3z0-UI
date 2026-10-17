@@ -991,7 +991,7 @@ local function CreateActionBarsPage(parent)
         y = y - 40
 
         -- Toggle Movers Button
-        local moverBtn = GUI:CreateButton(tabContent, "Toggle Position Movers", 200, 28, function()
+        local moverBtn = GUI:CreateButton(tabContent, "Move in Layout Mode", 200, 28, function()
             if _G.H3z0UI_ToggleExtraButtonMovers then
                 _G.H3z0UI_ToggleExtraButtonMovers()
             end
@@ -1000,7 +1000,7 @@ local function CreateActionBarsPage(parent)
         y = y - 35
 
         local moverTip = GUI:CreateLabel(tabContent,
-            "Click to show draggable movers. Drag to position, use sliders for fine-tuning.",
+            "Opens H3z0 UI Layout Mode - drag the Extra Abilities handle to move both buttons.",
             10, C.textMuted)
         moverTip:SetPoint("TOPLEFT", PAD, y)
         moverTip:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
@@ -1026,18 +1026,6 @@ local function CreateActionBarsPage(parent)
                 0.5, 2.0, 0.05, "scale", extraDB, RefreshExtraButtons)
             scaleSlider:SetPoint("TOPLEFT", PAD, y)
             scaleSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            local xOffsetSlider = GUI:CreateFormSlider(tabContent, "X Offset",
-                -200, 200, 1, "offsetX", extraDB, RefreshExtraButtons)
-            xOffsetSlider:SetPoint("TOPLEFT", PAD, y)
-            xOffsetSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            local yOffsetSlider = GUI:CreateFormSlider(tabContent, "Y Offset",
-                -200, 200, 1, "offsetY", extraDB, RefreshExtraButtons)
-            yOffsetSlider:SetPoint("TOPLEFT", PAD, y)
-            yOffsetSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
             y = y - FORM_ROW
 
             local hideArtCheck = GUI:CreateFormCheckbox(tabContent, "Hide Button Artwork",
@@ -1084,18 +1072,6 @@ local function CreateActionBarsPage(parent)
                 0.5, 2.0, 0.05, "scale", zoneDB, RefreshExtraButtons)
             scaleSlider:SetPoint("TOPLEFT", PAD, y)
             scaleSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            local xOffsetSlider = GUI:CreateFormSlider(tabContent, "X Offset",
-                -200, 200, 1, "offsetX", zoneDB, RefreshExtraButtons)
-            xOffsetSlider:SetPoint("TOPLEFT", PAD, y)
-            xOffsetSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-            y = y - FORM_ROW
-
-            local yOffsetSlider = GUI:CreateFormSlider(tabContent, "Y Offset",
-                -200, 200, 1, "offsetY", zoneDB, RefreshExtraButtons)
-            yOffsetSlider:SetPoint("TOPLEFT", PAD, y)
-            yOffsetSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
             y = y - FORM_ROW
 
             local hideArtCheck = GUI:CreateFormCheckbox(tabContent, "Hide Button Artwork",

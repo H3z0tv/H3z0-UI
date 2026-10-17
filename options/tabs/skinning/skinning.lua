@@ -863,7 +863,7 @@ local function BuildSkinningTab(tabContent)
         y = y - FORM_ROW
 
         if general.objectiveTrackerHeight == nil then general.objectiveTrackerHeight = 600 end
-        local objTrackerHeightSlider = GUI:CreateFormSlider(tabContent, "Max Height", 200, 1000, 10,
+        local objTrackerHeightSlider = GUI:CreateFormSlider(tabContent, "Max Height (background)", 200, 1000, 10,
             "objectiveTrackerHeight", general, function()
                 if _G.H3z0UI_RefreshObjectiveTracker then _G.H3z0UI_RefreshObjectiveTracker() end
             end)

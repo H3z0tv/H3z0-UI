@@ -152,11 +152,12 @@ local function SyncBlizzardHeight()
     local settings = GetSettings()
     local maxHeight = settings and settings.objectiveTrackerHeight or 600
 
-    -- Set Blizzard's internal height so truncation happens at our max
-    TrackerFrame.editModeHeight = maxHeight
-    if TrackerFrame.UpdateHeight then
-        TrackerFrame:UpdateHeight()
-    end
+    -- Blizzard's own height (editModeHeight / UpdateHeight) is NOT touched any more:
+    -- writing it from an addon tainted every tracker update, and Blizzard's scenario
+    -- code then failed on secret auras ("GetAuraDataByIndex ... tainted by H3z0UI").
+    -- The tracker's own height is set in Edit Mode (/h3z0ui blizzedit); our backdrop
+    -- still stops at maxHeight.
+    local _ = maxHeight
 end
 
 -- Hide scenario stage block artwork (dungeon banner) for narrower widths
@@ -426,14 +427,9 @@ local function SetFontObjects(names, path, size)
     return done
 end
 
-local function RelayoutTracker()
-    local manager = _G.ObjectiveTrackerManager
-    if manager and manager.UpdateAll then
-        pcall(manager.UpdateAll, manager)
-    elseif _G.ObjectiveTracker_Update then
-        pcall(_G.ObjectiveTracker_Update)
-    end
-end
+-- Blizzard's tracker update is never run from addon code (that taints the tracker);
+-- new font sizes show on the tracker's next own update (quest change, zone, reload).
+local function RelayoutTracker() end
 
 local function ApplyFontObjects(path, titleSize, textSize)
     local any = false
@@ -1020,7 +1016,7 @@ frame:SetScript("OnEvent", function(self, event)
         ScheduleBackdropUpdate()
     elseif event == "SCENARIO_UPDATE" or event == "SCENARIO_COMPLETED" or event == "ZONE_CHANGED_NEW_AREA" then
         if event ~= "SCENARIO_UPDATE" then
-            C_Timer.After(1, function() if not InCombatLockdown() then HideScenarioStageArtwork(); RelayoutTracker() end end)
+            C_Timer.After(1, function() if not InCombatLockdown() then HideScenarioStageArtwork() end end)
         end
         -- Scenario started/ended, update width (may need to expand/shrink)
         C_Timer.After(0.2, function()

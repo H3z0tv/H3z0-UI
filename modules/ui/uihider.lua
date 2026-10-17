@@ -426,8 +426,8 @@ end
             hooksecurefunc(TalkingHeadFrame, "PlayCurrent", function()
                 local s = GetSettings()
                 if s and s.muteTalkingHead and TalkingHeadFrame.voHandle then
+                    -- only stop the sound; Blizzard's own voHandle field is left alone
                     StopSound(TalkingHeadFrame.voHandle, 0)
-                    TalkingHeadFrame.voHandle = nil
                 end
             end)
         end

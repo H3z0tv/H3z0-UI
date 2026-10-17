@@ -1,5 +1,12 @@
 # H3z0 UI - Patch Notes
 
+## 0.23.6 - Taint clean-up
+- Fixed: "GetAuraDataByIndex(): Auras cannot be accessed when secret while tainted by 'H3z0UI'" (Blizzard_MawBuffs via the Scenario / quest tracker, hundreds of times). The Objective Tracker skin wrote Blizzard's `ObjectiveTrackerFrame.editModeHeight` and called `UpdateHeight()` / `ObjectiveTrackerManager:UpdateAll()` itself, so every later tracker update ran tainted and failed on secret auras. None of that is done any more: the tracker's height comes from Edit Mode (`/h3z0ui blizzedit`), the skin's "Max Height (background)" only limits the H3z0 background, and new tracker font sizes show on the tracker's next own update.
+- M+ Timer: Blizzard's scenario tracker is hidden with alpha only (no Hide() / ObjectiveTrackerFrame:Update() from addon code).
+- Tracked Bars: Blizzard's BuffBarCooldownViewer fields (isHorizontal, layoutFramesGoingRight/Up) are no longer written; H3z0 UI lays the bars out itself.
+- Fixed: the Extra Action / Zone Ability button flickered / kept disappearing. H3z0 UI reparented ExtraActionBarFrame / ZoneAbilityFrame into its own holders and re-anchored them on every Blizzard SetPoint, fighting Blizzard's Extra Ability container. They now stay in Blizzard's container (only scale and "Hide Button Artwork" are applied); position = the container, moved with the "Extra Abilities" handle in H3z0 UI Layout Mode (right-click opens Action Bars > Extra Buttons). The old holder position is migrated once; the X/Y offset sliders are gone and "Toggle Position Movers" became "Move in Layout Mode".
+- Talking Head mute: only stops the sound, Blizzard's voHandle field is left alone. Cooldown Manager sort data stored under H3z0-only keys.
+
 ## 0.23.5 - Resize chat / damage meter, quest completion, ready check
 - **Resize the chat window and the damage meter in Layout Mode**: their handles get a corner grip (bottom right). Drag it to resize; the top-left corner stays put. Sizes are stored in the H3z0 UI profile (profile.blizzSizes, PC and Deck separately) like the Blizzard frame positions, re-applied after login / Edit Mode updates, and exported in layout codes (blizzSizes).
 - Fixed: completed quest objectives (e.g. Prey quests) didn't look complete with the Objective Tracker skin. The skin painted every objective line in the chosen text colour; lines Blizzard marks Complete / Failed now keep Blizzard's colour and check.

@@ -459,15 +459,11 @@ local function ApplyExtraButtonSettings(buttonType)
     local offsetX = settings.offsetX or 0
     local offsetY = settings.offsetY or 0
 
-    -- Reparent to our holder and position
-    blizzFrame:SetParent(holder)
-    blizzFrame:ClearAllPoints()
-    blizzFrame:SetPoint("CENTER", holder, "CENTER", offsetX, offsetY)
-
-    -- Update holder size to match scaled frame
-    local width = (blizzFrame:GetWidth() or 64) * scale
-    local height = (blizzFrame:GetHeight() or 64) * scale
-    holder:SetSize(math.max(width, 64), math.max(height, 64))
+    -- The button stays inside Blizzard's Extra Ability container (no reparent, no
+    -- re-anchoring): pulling it into an H3z0 holder and snapping it back every time
+    -- Blizzard laid it out made it flicker / vanish. Its position is the container's,
+    -- moved in H3z0 UI Layout Mode.
+    local _ = offsetX + offsetY
 
     -- Hide artwork if enabled
     if settings.hideArtwork then
@@ -498,7 +494,26 @@ local hookingSetPoint = false
 
 -- Hook Blizzard frames to prevent them from repositioning
 local function HookExtraButtonPositioning()
-    -- Hook ExtraActionBarFrame
+    -- No longer re-anchors Blizzard's frames (see ApplyExtraButtonSettings).
+    -- Carry an old H3z0 holder position over to Layout Mode once.
+    local core = GetCore()
+    local p = core and core.db and core.db.profile
+    local BP = ns.BlizzPositions
+    local container = _G.ExtraAbilityContainer
+    if p and BP and container and container.system and not p._h3zExtraPosMigrated then
+        p._h3zExtraPosMigrated = true
+        local all = BP.GetAll() or {}
+        local mode = (ns.LayoutSets and ns.LayoutSets.CurrentMode()) or "pc"
+        local key = BP.Key(container.system, container.systemIndex)
+        local db = GetExtraButtonDB("extraActionButton")
+        local pos = db and db.position
+        if not (all[mode] and all[mode][key]) and pos and pos.point == "CENTER" and (pos.relPoint or "CENTER") == "CENTER" then
+            BP.Save(container, pos.x or 0, pos.y or 0)
+        end
+    end
+    if true then return end
+
+    -- (old code, unused)
     if ExtraActionBarFrame and not ExtraActionBarFrame._h3z0uiHooked then
         ExtraActionBarFrame._h3z0uiHooked = true
         hooksecurefunc(ExtraActionBarFrame, "SetPoint", function(self)
@@ -542,10 +557,10 @@ local function HookExtraButtonPositioning()
 end
 
 -- Show/hide mover overlays
+-- The Extra Action / Zone Ability buttons are moved in H3z0 UI Layout Mode now
+-- (Blizzard's "Extra Abilities" handle); the old H3z0 movers aren't used.
 local function ShowExtraButtonMovers()
-    extraButtonMoversVisible = true
-    if extraActionMover then extraActionMover:Show() end
-    if zoneAbilityMover then zoneAbilityMover:Show() end
+    extraButtonMoversVisible = false
 end
 
 local function HideExtraButtonMovers()
@@ -555,11 +570,7 @@ local function HideExtraButtonMovers()
 end
 
 local function ToggleExtraButtonMovers()
-    if extraButtonMoversVisible then
-        HideExtraButtonMovers()
-    else
-        ShowExtraButtonMovers()
-    end
+    if _G.H3z0UI_ToggleLayoutMode then _G.H3z0UI_ToggleLayoutMode() end
 end
 
 -- Initialize extra button holders

@@ -1761,9 +1761,10 @@ function MPlusTimer:Show()
         _G.H3z0UI_ApplyMPlusTimerSkin()
     end
 
-    -- Hide Blizzard's timer
+    -- Hide Blizzard's timer visually only (alpha): hiding it or running the tracker's
+    -- update from addon code taints Blizzard's objective tracker
     if ScenarioObjectiveTracker then
-        ScenarioObjectiveTracker:Hide()
+        ScenarioObjectiveTracker:SetAlpha(0)
     end
 end
 
@@ -1774,8 +1775,8 @@ function MPlusTimer:Hide()
     self:StopTimerLoop()
 
     -- Show Blizzard's timer again
-    if ScenarioObjectiveTracker and ObjectiveTrackerFrame then
-        ObjectiveTrackerFrame:Update()
+    if ScenarioObjectiveTracker then
+        ScenarioObjectiveTracker:SetAlpha(1)
     end
 end
 

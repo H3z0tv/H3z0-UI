@@ -124,7 +124,7 @@ local function ApplyFontSettings(button)
 
     -- Get font and outline from general settings
     local LSM = LibStub("LibSharedMedia-3.0", true)
-    local generalFont = "Fonts\\FRIZQT__.TTF"
+    local generalFont = (_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT)
     local generalOutline = "OUTLINE"
 
     local core = GetCore()

@@ -90,7 +90,7 @@ end
 -- square minimap: plain square, or a rounded square with Modern Look > Rounded Corners
 local function SquareMask()
     local R = ns and ns.Round
-    if R and R.Enabled and R.Enabled() then return R.ROUND_SQUARE end
+    if R and R.Enabled and R.Enabled() then return R.ROUND_SQUARE .. ".tga" end
     return "Interface\\BUTTONS\\WHITE8X8"
 end
 
@@ -1586,11 +1586,66 @@ end)
 
 -- Expose refresh globals for options panel (matches pattern used by all other modules)
 -- re-pick the square / rounded square mask (Modern Look > Rounded Corners)
+-- Keep the rounded mask on the map: if anything else (another addon, Blizzard) puts a
+-- different mask on the minimap afterwards, put ours back and remember who it was.
+local maskGuard = false
+local function WantedMask()
+    local settings = GetSettings()
+    if not (settings and settings.enabled and settings.shape == "SQUARE") then return nil end
+    local R = ns and ns.Round
+    if not (R and R.Enabled and R.Enabled()) then return nil end
+    return SquareMask()
+end
+if Minimap and Minimap.SetMaskTexture then
+    hooksecurefunc(Minimap, "SetMaskTexture", function(self, tex)
+        if maskGuard then return end
+        local want = WantedMask()
+        if want and tex ~= want then
+            Minimap.h3zForeignMask = tostring(tex)
+            Minimap.h3zForeignBy = debugstack and debugstack(3, 1, 0) or "?"
+            maskGuard = true
+            pcall(self.SetMaskTexture, self, want)
+            maskGuard = false
+        end
+    end)
+end
+-- apply once more after everything else has loaded
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent", function()
+        for _, delay in ipairs({ 3, 8 }) do
+            C_Timer.After(delay, function()
+                local want = WantedMask()
+                if want then
+                    maskGuard = true
+                    pcall(Minimap.SetMaskTexture, Minimap, want)
+                    maskGuard = false
+                    if mask then pcall(mask.SetTexture, mask, want) end
+                end
+            end)
+        end
+    end)
+end
+
 _G.H3z0UI_RefreshMinimapShape = function()
     local settings = GetSettings()
     if not settings or not settings.enabled or settings.shape ~= "SQUARE" then return end
     SetMinimapShape(settings.shape)
     if mask then UpdateBackdrop() end
+    -- the map only picks up a new mask on its next redraw: nudge the zoom once
+    local want = SquareMask()
+    if Minimap.h3zLastMask ~= want then
+        Minimap.h3zLastMask = want
+        local z = Minimap:GetZoom()
+        if z and Minimap.GetZoomLevels then
+            local other = (z > 0) and (z - 1) or (z + 1)
+            if other < Minimap:GetZoomLevels() then
+                Minimap:SetZoom(other)
+                Minimap:SetZoom(z)
+            end
+        end
+    end
 end
 
 _G.H3z0UI_RefreshMinimap = function()
@@ -1636,7 +1691,7 @@ local function CreateCoordsButton()
     b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
     b:SetBackdropColor(0, 0, 0, 0.7)
     b.text = b:CreateFontString(nil, "OVERLAY")
-    b.text:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    b.text:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), 9, "OUTLINE")
     b.text:SetPoint("CENTER", 0, 0)
     b.text:SetText("XY")
     b:SetAlpha(0)

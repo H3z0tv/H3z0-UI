@@ -146,6 +146,82 @@ function H3z0UI:SlashCommandOpen(input)
             print("|cff34D399H3z0 UI:|r Streamer Mode " .. (g.streamerMode and "|cff00ff00ON|r - button press highlight hidden." or "|cffff5555OFF|r"))
         end
         return
+    elseif input and (input == "round" or input == "rounddebug") then
+        local function P(k, v) print("|cff34D399H3z0 UI:|r " .. k .. ": " .. tostring(v)) end
+        local core = _G.H3z0UI and (_G.H3z0UI.H3z0UICore or _G.H3z0UI)
+        local prof = core and core.db and core.db.profile
+        local ml = prof and prof.modernLook or {}
+        local ws = prof and prof.windowSkins or {}
+        local mm = prof and prof.minimap or {}
+        P("Rounded Corners", ml.rounded)
+        P("Modern Look", ml.enabled)
+        P("Modern Action Buttons", ml.buttons)
+        P("Modern Cast Bars", ml.castbars)
+        P("Window Skins", ws.enabled)
+        P("Minimap shape", mm.shape)
+        P("Rounded helper loaded", _G.H3z0UI_RefreshWindowSkins ~= nil)
+        -- do the new texture files load? (new files need a full game restart, not just /reload)
+        local test = UIParent:CreateTexture()
+        for _, f in ipairs({ "h3z_circle", "h3z_corner_tl", "h3z_roundsquare", "h3z_roundend_r" }) do
+            test:SetTexture("Interface\\AddOns\\H3z0UI\\assets\\" .. f)
+            local id = test.GetTextureFileID and test:GetTextureFileID()
+            P("Texture " .. f, (id and id ~= 0) and ("loaded (" .. tostring(id) .. ")") or "NOT FOUND")
+        end
+        test:Hide()
+        local mmMask = Minimap and Minimap.h3zLastMask
+        P("Minimap mask", mmMask or "not set by H3z0 UI")
+        P("Minimap mask replaced by something else", Minimap and Minimap.h3zForeignMask or "no")
+        if Minimap and Minimap.h3zForeignBy then P("  replaced from", Minimap.h3zForeignBy) end
+        if _G.H3z0UI_DebugWindowSkins then P("Chat", _G.H3z0UI_DebugWindowSkins()) end
+        if _G.H3z0UI_DebugModernButtons then P("Buttons", _G.H3z0UI_DebugModernButtons()) end
+        if _G.H3z0UI_RefreshModernLook then _G.H3z0UI_RefreshModernLook() end
+        if _G.H3z0UI_RefreshWindowSkins then _G.H3z0UI_RefreshWindowSkins() end
+        if _G.H3z0UI_ApplyModernButtons then _G.H3z0UI_ApplyModernButtons() end
+        return
+    elseif input and input == "roundtest" then
+        -- three 160x160 squares, each rounded a different way: shows which way the client draws
+        local A = "Interface\\AddOns\\H3z0UI\\assets\\"
+        local f = _G.H3z0UI_RoundTest or CreateFrame("Frame", "H3z0UI_RoundTest", UIParent)
+        f:SetSize(560, 200)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("DIALOG")
+        f:Show()
+        local function Box(i, r, g, b, label)
+            local t = f["t" .. i] or f:CreateTexture(nil, "ARTWORK")
+            f["t" .. i] = t
+            t:SetColorTexture(r, g, b, 1)
+            t:SetSize(160, 160)
+            t:ClearAllPoints()
+            t:SetPoint("LEFT", f, "LEFT", (i - 1) * 190 + 10, 0)
+            local fs = f["l" .. i] or f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            f["l" .. i] = fs
+            fs:SetPoint("BOTTOM", t, "TOP", 0, 4)
+            fs:SetText(label)
+            return t
+        end
+        local t1 = Box(1, 0.9, 0.2, 0.2, "1: corner masks")
+        local t2 = Box(2, 0.2, 0.8, 0.3, "2: round square")
+        local t3 = Box(3, 0.2, 0.5, 1.0, "3: round end")
+        local R = _G.H3z0UI_RoundLib
+        if R and not f.done1 then
+            f.done1 = true
+            R.Mask(t1, R.CornerMasks(f, t1, 40, 0, "testMasks"), true)
+        end
+        if not f.m2 then
+            f.m2 = f:CreateMaskTexture()
+            f.m2:SetTexture(A .. "h3z_roundsquare", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            f.m2:SetAllPoints(t2)
+            t2:AddMaskTexture(f.m2)
+            f.m3 = f:CreateMaskTexture()
+            f.m3:SetTexture(A .. "h3z_roundend_r", "CLAMP", "CLAMP")
+            f.m3:SetPoint("TOPRIGHT", t3, "TOPRIGHT")
+            f.m3:SetPoint("BOTTOMRIGHT", t3, "BOTTOMRIGHT")
+            f.m3:SetWidth(80)
+            t3:AddMaskTexture(f.m3)
+        end
+        print("|cff34D399H3z0 UI:|r round test shown for 20 seconds - please take a screenshot.")
+        C_Timer.After(20, function() f:Hide() end)
+        return
     elseif input and (input == "plates" or input == "nameplates") then
         if _G.H3z0UI_TogglePlates then
             local on = _G.H3z0UI_TogglePlates()

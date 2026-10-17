@@ -121,7 +121,9 @@ local function BuildPortraits(tabContent)
         b.Check("Soft Shadows", "shadow", mldb, RefreshML)
         b.Check("Bar Sheen + Top Highlight", "sheen", mldb, RefreshML)
         b.Check("Portrait Glow (round portraits)", "glow", mldb, RefreshML)
-        b.Check("Rounded Corners (unit frames, bars, square minimap, windows)", "rounded", mldb, RefreshML)
+        b.Check("Modern Cast Bars (rounded bar, icon as its own tile)", "castbars", mldb, RefreshML)
+        b.Check("Modern Action Buttons (rounded tiles, shadow, rounded cooldown)", "buttons", mldb, RefreshML)
+        b.Check("Rounded Corners (unit frames, bars, buttons, square minimap, windows)", "rounded", mldb, RefreshML)
         b.Slider("Corner Radius", 2, 14, 1, "radius", mldb, RefreshML)
     end
 
@@ -136,7 +138,12 @@ local function BuildPortraits(tabContent)
         b.Check("Chat", "chat", wsdb, RefreshWS)
         b.Check("Damage Meter", "damageMeter", wsdb, RefreshWS)
         b.Check("Damage Meter Header + Accent Line", "header", wsdb, RefreshWS)
-        b.Slider("Background Opacity", 0, 1, 0.05, "alpha", wsdb, RefreshWS)
+        if wsdb.chatAlpha == nil then wsdb.chatAlpha = wsdb.alpha or 0.9 end
+        if wsdb.meterAlpha == nil then wsdb.meterAlpha = wsdb.alpha or 0.9 end
+        if wsdb.slotAlpha == nil then wsdb.slotAlpha = 1 end
+        b.Slider("Chat Opacity", 0, 1, 0.05, "chatAlpha", wsdb, RefreshWS)
+        b.Slider("Damage Meter Opacity", 0, 1, 0.05, "meterAlpha", wsdb, RefreshWS)
+        b.Info("Action button slots use the same slate colour; their opacity is Action Bars > Button Appearance > Backdrop Opacity.", 22)
     end
 
     -- Frame style (round / docked)

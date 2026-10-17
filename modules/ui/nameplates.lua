@@ -35,7 +35,8 @@ local BAR_TEX = ASSETS .. "H3z0UI_v2"
 local ARROW = ASSETS .. "h3z_np_arrow"
 
 NP.FONTS = {
-    { value = "h3z", text = "H3z0 (Poppins SemiBold)", path = ASSETS .. "Poppins-SemiBold.ttf" },
+    { value = "global", text = "H3z0 UI font (Default Font)", path = nil },
+    { value = "h3z", text = "Poppins SemiBold", path = ASSETS .. "Poppins-SemiBold.ttf" },
     { value = "bold", text = "Poppins Bold", path = ASSETS .. "Poppins-Bold.ttf" },
     { value = "medium", text = "Poppins Medium", path = ASSETS .. "Poppins-Medium.ttf" },
     { value = "expressway", text = "Expressway", path = ASSETS .. "Expressway.TTF" },
@@ -73,12 +74,24 @@ local function DB()
     p.h3zPlates = p.h3zPlates or {}
     local s = p.h3zPlates
     local defaults = {
-        enabled = false, width = 150, height = 16, font = "h3z", nameSize = 11, textSize = 10,
-        showLevel = true, showHealth = true, showPercent = true, castbar = true, castHeight = 12,
+        enabled = false, width = 150, height = 16, font = "global", nameSize = 11, textSize = 10,
+        showLevel = true, showHealth = true, showPercent = true, castbar = true, castHeight = 16,
         mythicColors = "instance", threat = true, arrows = true, friendly = true, rounded = true,
-        targetScale = 1.1,
+        targetScale = 1.1, matchPlayer = false, unitFrameColors = true,
     }
     for k, v in pairs(defaults) do if s[k] == nil then s[k] = v end end
+    -- rollback: the nameplates keep their own look (the unit frames take the nameplate colours instead)
+    if not s.matchRollback then
+        s.matchRollback = true
+        s.matchPlayer = false
+        s.unitFrameColors = true
+    end
+    -- first test build: bigger cast bar and the shared H3z0 UI font
+    if not s.migrated1 then
+        s.migrated1 = true
+        if s.castHeight == 12 then s.castHeight = 16 end
+        if s.font == "h3z" then s.font = "global" end
+    end
     s.colors = s.colors or {}
     for k, v in pairs(DEFAULT_COLORS) do
         if type(s.colors[k]) ~= "table" then s.colors[k] = { v[1], v[2], v[3], v[4] } end
@@ -106,8 +119,13 @@ local function Bool(v)
 end
 
 local function FontPath(key)
-    for _, f in ipairs(NP.FONTS) do if f.value == key then return f.path end end
-    return NP.FONTS[1].path
+    for _, f in ipairs(NP.FONTS) do if f.value == key and f.path then return f.path end end
+    local ui = _G.H3z0UI
+    if ui and ui.GetGlobalFont then
+        local ok, path = pcall(ui.GetGlobalFont, ui)
+        if ok and path then return path end
+    end
+    return ASSETS .. "Poppins-SemiBold.ttf"
 end
 
 local function Color(key)
@@ -174,12 +192,52 @@ local function SetHidden(region, hidden)
     end
 end
 
-local function HideBlizzard(uf, hidden)
+-- Blizzard's cast bar fades in with an animation (that doesn't go through SetAlpha),
+-- so cast bars are also kept at 0 while they show
+local function CastAlphaGuard(self)
+    if self.h3zNPHidden and self:GetAlpha() > 0 then self:SetAlpha(0) end
+end
+
+local function IsCastBar(f)
+    if not (f and f.IsObjectType and f:IsObjectType("StatusBar")) then return false end
+    if f.h3zNPOwn then return false end
+    return (f.Icon ~= nil or f.Spark ~= nil or f.Text ~= nil or f.BorderShield ~= nil or f.castID ~= nil)
+end
+
+local function SetCastHidden(bar, hidden)
+    pcall(SetHidden, bar, hidden)
+    if hidden and not bar.h3zNPGuard then
+        bar.h3zNPGuard = true
+        bar:HookScript("OnShow", CastAlphaGuard)
+        bar:HookScript("OnUpdate", CastAlphaGuard)
+    end
+end
+
+local function FindCastBars(frame, list, depth)
+    if not frame or frame.h3zNPOwn or depth > 3 then return end
+    for _, c in ipairs({ frame:GetChildren() }) do
+        if IsCastBar(c) then
+            list[#list + 1] = c
+        elseif not c.h3zNPOwn then
+            FindCastBars(c, list, depth + 1)
+        end
+    end
+end
+
+local function HideBlizzard(uf, hidden, castToo)
     if not uf then return end
     for _, k in ipairs(HIDE_KEYS) do
         local r = uf[k]
-        if type(r) == "table" and r.SetAlpha then pcall(SetHidden, r, hidden) end
+        if type(r) == "table" and r.SetAlpha and k ~= "castBar" and k ~= "CastBar" then pcall(SetHidden, r, hidden) end
     end
+    local bars = {}
+    for _, k in ipairs({ "castBar", "CastBar" }) do
+        if type(uf[k]) == "table" and uf[k].SetAlpha then bars[#bars + 1] = uf[k] end
+    end
+    local np = uf:GetParent()
+    FindCastBars(uf, bars, 0)
+    if np then FindCastBars(np, bars, 1) end
+    for _, b in ipairs(bars) do SetCastHidden(b, hidden and castToo) end
 end
 
 -- where Blizzard's own health bar sits, so ours lands in the same spot
@@ -219,12 +277,39 @@ local function Shape(plate)
     end
 end
 
+-- "Match Player Frame": the same bar texture and background as H3z0 UI's player frame
+local function PlayerLook()
+    local s = DB()
+    local tex, bg = BAR_TEX, { 0.17, 0.19, 0.22, 1 }
+    if not (s and s.matchPlayer) then return tex, bg end
+    local core = ns.Addon
+    local prof = core and core.db and core.db.profile
+    local uf = prof and prof.h3z0uiUnitFrames
+    local player = uf and uf.player
+    local general = uf and uf.general
+    local name = (player and player.texture ~= "" and player.texture) or (prof and prof.general and prof.general.texture)
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if name and LSM then tex = LSM:Fetch("statusbar", name, true) or tex end
+    if general and general.darkMode then
+        bg = general.darkModeBgColor or { 0.25, 0.25, 0.25, 1 }
+    else
+        bg = { 0.1, 0.1, 0.1, 0.9 }
+    end
+    return tex, bg
+end
+
 local function Layout(plate)
     local s = DB()
     if not s then return end
     local font = FontPath(s.font)
     local W, H = s.width, s.height
     local anchor = BlizzBar(plate.namePlate.UnitFrame) or plate.namePlate
+    local tex, bg = PlayerLook()
+    plate.hp:SetStatusBarTexture(tex)
+    plate.hpBg:SetColorTexture(bg[1], bg[2], bg[3], 1)
+    plate.cast:SetStatusBarTexture(tex)
+    plate.castLock:SetTexture(tex)
+    plate.castBg:SetColorTexture(bg[1], bg[2], bg[3], 1)
 
     plate.border:ClearAllPoints()
     plate.border:SetPoint("CENTER", anchor, "CENTER", 0, 0)
@@ -241,6 +326,14 @@ local function Layout(plate)
     plate.pctText:SetFont(font, s.textSize, "OUTLINE")
     plate.hpText:SetShown(s.showHealth)
     plate.pctText:SetShown(s.showPercent)
+    plate.hpText:ClearAllPoints()
+    if s.matchPlayer and s.showPercent then
+        plate.hpText:SetPoint("RIGHT", plate.pctText, "LEFT", -3, 0)
+        plate.hpText:SetJustifyH("RIGHT")
+    else
+        plate.hpText:SetPoint("LEFT", plate.border, "LEFT", 5, 0)
+        plate.hpText:SetJustifyH("LEFT")
+    end
 
     local ah = H + 4
     plate.arrowL:SetSize(ah * 2, ah)
@@ -261,7 +354,7 @@ local function Layout(plate)
     plate.castIcon:SetSize(CH, CH)
     plate.castIcon:ClearAllPoints()
     plate.castIcon:SetPoint("TOPRIGHT", plate.castBorder, "TOPLEFT", -2, 0)
-    local cfs = math.max(7, math.min(CH - 2, s.textSize))
+    local cfs = math.max(7, math.min(CH - 3, s.textSize + 2))
     plate.castText:SetFont(font, cfs, "OUTLINE")
     plate.castTime:SetFont(font, cfs, "OUTLINE")
     Shape(plate)
@@ -271,6 +364,7 @@ local function Create(namePlate)
     local p = CreateFrame("Frame", nil, namePlate)
     p:SetAllPoints(namePlate)
     p:EnableMouse(false)
+    p.h3zNPOwn = true
     p.namePlate = namePlate
 
     local Round = ns.Round
@@ -279,6 +373,7 @@ local function Create(namePlate)
     p.border:SetBorderColor(0, 0, 0, 0)
 
     p.hp = CreateFrame("StatusBar", nil, p.border)
+    p.hp.h3zNPOwn = true
     p.hp:SetStatusBarTexture(BAR_TEX)
     p.hp:SetMinMaxValues(0, 1)
     p.hp:SetValue(1)
@@ -310,6 +405,7 @@ local function Create(namePlate)
     p.castBorder:SetFillColor(0, 0, 0, 1)
     p.castBorder:SetBorderColor(0, 0, 0, 0)
     p.cast = CreateFrame("StatusBar", nil, p.castBorder)
+    p.cast.h3zNPOwn = true
     p.cast:SetStatusBarTexture(BAR_TEX)
     p.cast:SetMinMaxValues(0, 1)
     p.castBg = p.cast:CreateTexture(nil, "BACKGROUND")
@@ -353,7 +449,10 @@ local function UpdateHealth(p)
     pcall(p.hp.SetValue, p.hp, cur)
     if s.showHealth then
         local txt = Safe(AbbreviateNumbers, cur)
-        if txt == nil or not pcall(p.hpText.SetText, p.hpText, txt) then
+        local joined = s.matchPlayer and s.showPercent
+        if joined and txt ~= nil and pcall(p.hpText.SetFormattedText, p.hpText, "%s |", txt) then
+            -- "728K | 100%" on the right, like the player frame
+        elseif txt == nil or not pcall(p.hpText.SetText, p.hpText, txt) then
             if not pcall(p.hpText.SetFormattedText, p.hpText, "%d", cur) then p.hpText:SetText("") end
         end
     end
@@ -438,8 +537,8 @@ local function MythicType(u)
     return caster and "caster" or "melee"
 end
 
-local function UpdateColor(p)
-    local u = p.unit
+-- The nameplate colour of a unit (also used by the H3z0 unit frames: Player, Target, ...)
+function NP.ColorFor(u)
     local key
     if Bool(UnitIsTapDenied(u)) then
         key = "tapped"
@@ -447,9 +546,8 @@ local function UpdateColor(p)
         local _, class = UnitClass(u)
         local c = class and not S(class) and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[class]
         local enemy = Bool(UnitCanAttack("player", u))
-        if c and (enemy or Bool(UnitIsFriend("player", u))) then
-            p.hp:SetStatusBarColor(c.r, c.g, c.b)
-            return
+        if c and (enemy or Bool(UnitIsFriend("player", u)) or Bool(UnitIsUnit(u, "player"))) then
+            return c.r, c.g, c.b
         end
         key = enemy and "hostile" or "friendly"
     else
@@ -467,7 +565,11 @@ local function UpdateColor(p)
             if MythicColorsOn() then key = MythicType(u) or "hostile" end
         end
     end
-    p.hp:SetStatusBarColor(Color(key))
+    return Color(key)
+end
+
+local function UpdateColor(p)
+    p.hp:SetStatusBarColor(NP.ColorFor(p.unit))
 end
 
 local function UpdateBorder(p)
@@ -639,7 +741,7 @@ local function OnAdded(unit)
     local p = pool[np] or Create(np)
     p.unit = unit
     plates[unit] = p
-    HideBlizzard(np.UnitFrame, true)
+    HideBlizzard(np.UnitFrame, true, s.castbar)
     p.cast.plate = p
     p.cast:SetScript("OnUpdate", CastOnUpdate)
     Layout(p)
@@ -660,7 +762,7 @@ end
 local function RestoreAll()
     for unit in pairs(plates) do OnRemoved(unit) end
     for np in pairs(pool) do
-        if np.UnitFrame then HideBlizzard(np.UnitFrame, false) end
+        if np.UnitFrame then HideBlizzard(np.UnitFrame, false, false) end
     end
 end
 

@@ -23,7 +23,7 @@ local WS = {}
 ns.WindowSkins = WS
 
 local WHITE = "Interface\\Buttons\\WHITE8x8"
-local BAR_TEX = "Interface\\AddOns\\" .. ADDON_NAME .. "\\assets\\H3z0UI_v2"
+local BAR_TEX = "Interface\\Buttons\\WHITE8x8"     -- flat class-coloured bars
 local MAX_METERS = 5
 
 local function DB()
@@ -37,6 +37,19 @@ local function DB()
     if s.damageMeter == nil then s.damageMeter = true end
     if s.alpha == nil then s.alpha = 0.78 end
     if s.header == nil then s.header = true end
+    -- separate opacity for the chat, the damage meter and the action button slots
+    if s.chatAlpha == nil then s.chatAlpha = s.alpha or 0.9 end
+    if s.meterAlpha == nil then s.meterAlpha = s.alpha or 0.9 end
+    if s.slotAlpha == nil then s.slotAlpha = 1 end
+    if not s.fix1 then          -- 0.24.0: back on once
+        s.fix1 = true
+        s.enabled = true
+    end
+    if not s.slate1 then        -- 0.24.0: the flat slate look (solid panel, thin grey border)
+        s.slate1 = true
+        s.alpha = 0.9
+        s.header = false
+    end
     return s
 end
 WS.GetSettings = DB
@@ -50,16 +63,19 @@ local function Accent()
     return 0.204, 0.827, 0.6
 end
 
+-- flat slate windows: almost square corners, a solid dark slate fill and a thin grey border
 local function Radius()
     local R = ns.Round
-    if R and R.Enabled and R.Enabled() then return R.Radius() + 2 end
+    if R and R.Enabled and R.Enabled() then return 3 end
     return 1
 end
 
-local function StylePanel(panel, s)
+local function StylePanel(panel, s, alpha)
     panel:SetRadius(Radius())
-    panel:SetFillColor(0.035, 0.04, 0.055, s.alpha or 0.78)
-    panel:SetBorderColor(1, 1, 1, 0.07)
+    local R = ns.Round
+    local f, b = R.SLATE_FILL, R.SLATE_BORDER
+    panel:SetFillColor(f[1], f[2], f[3], alpha or s.alpha or 0.9)
+    panel:SetBorderColor(b[1], b[2], b[3], 1)
 end
 
 local function NewPanel(parent)
@@ -111,8 +127,18 @@ local function SkinChatTab(cf, on, selected)
     local name = cf:GetName()
     local tab = name and _G[name .. "Tab"]
     if not tab then return end
-    -- H3z0 UI's own tab boxes (chat.lua) give way to the underline
+    -- no tab boxes: H3z0 UI's (chat.lua) and Blizzard's tab textures are faded out
     if tab.__h3z0uiBackdrop then tab.__h3z0uiBackdrop:SetAlpha(on and 0 or 1) end
+    for _, r in ipairs({ tab:GetRegions() }) do
+        if r.IsObjectType and r:IsObjectType("Texture") and r ~= tab.glow and r ~= tab.h3zWSLine then
+            if on then
+                if r.h3zWSA == nil then r.h3zWSA = r:GetAlpha() end
+                r:SetAlpha(0)
+            elseif r.h3zWSA ~= nil then
+                r:SetAlpha(r.h3zWSA); r.h3zWSA = nil
+            end
+        end
+    end
     local line = tab.h3zWSLine
     if not line then
         if not on then return end
@@ -121,6 +147,17 @@ local function SkinChatTab(cf, on, selected)
         tab.h3zWSLine = line
     end
     local fs = tab.GetFontString and tab:GetFontString()
+    -- slate look: the selected tab's name in the accent colour, the others grey
+    if fs then
+        if on then
+            if selected then
+                local ar, ag, ab = Accent()
+                fs:SetTextColor(ar, ag, ab, 1)
+            else
+                fs:SetTextColor(0.62, 0.66, 0.7, 1)
+            end
+        end
+    end
     line:ClearAllPoints()
     if fs and fs:GetText() then
         line:SetPoint("BOTTOMLEFT", fs, "BOTTOMLEFT", -2, -5)
@@ -132,7 +169,7 @@ local function SkinChatTab(cf, on, selected)
     line:SetHeight(2)
     local r, g, b = Accent()
     line:SetVertexColor(r, g, b, 1)
-    line:SetShown(on and selected)
+    line:SetShown(false)
 end
 
 local function SkinChat(cf, s)
@@ -141,6 +178,14 @@ local function SkinChat(cf, s)
     if not on then
         if panel then panel:Hide() end
         if cf.__h3z0uiChatBackdrop then cf.__h3z0uiChatBackdrop:SetAlpha(1) end
+        if cf.__h3z0uiEditBoxBackdrop then cf.__h3z0uiEditBoxBackdrop:SetAlpha(1) end
+        local eb = _G[(cf:GetName() or "") .. "EditBox"]
+        if eb then
+            for _, r in ipairs({ eb:GetRegions() }) do
+                if r.h3zWSA ~= nil then r:SetAlpha(r.h3zWSA); r.h3zWSA = nil end
+            end
+            if eb.__h3z0uiChatBackdrop then eb.__h3z0uiChatBackdrop:SetAlpha(1) end
+        end
         SkinChatTab(cf, false, false)
         return
     end
@@ -151,21 +196,39 @@ local function SkinChat(cf, s)
         panel.sep:SetTexture(WHITE)
         cf.h3zWSPanel = panel
     end
-    panel:SetFrameStrata(cf:GetFrameStrata())
-    panel:SetFrameLevel(math.max(0, cf:GetFrameLevel() - 1))
+    -- lowest layer, so the tabs and the text always draw on top of it
+    panel:SetFrameStrata("BACKGROUND")
+    panel:SetFrameLevel(1)
     panel:ClearAllPoints()
-    panel:SetPoint("TOPLEFT", cf, "TOPLEFT", -8, 30)
+    -- the panel starts right under the tab row (tabs stay on top, readable); the combat log
+    -- also covers its filter bar (My actions / What happened to me?)
+    local top = 4
+    local qb = _G.CombatLogQuickButtonFrame_Custom
+    if cf == _G.ChatFrame2 and qb and qb:IsShown() then top = (qb:GetHeight() or 24) + 4 end
+    panel:SetPoint("TOPLEFT", cf, "TOPLEFT", -8, top)
     panel:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 8, -8)
-    StylePanel(panel, s)
+    StylePanel(panel, s, s.chatAlpha)
     local px = ns.Round.PixelSize(panel)
     panel.sep:ClearAllPoints()
-    panel.sep:SetPoint("TOPLEFT", cf, "TOPLEFT", -2, 4)
-    panel.sep:SetPoint("TOPRIGHT", cf, "TOPRIGHT", 2, 4)
+    panel.sep:SetPoint("TOPLEFT", cf, "TOPLEFT", -2, 2)
+    panel.sep:SetPoint("TOPRIGHT", cf, "TOPRIGHT", 2, 2)
     panel.sep:SetHeight(px)
-    panel.sep:SetVertexColor(1, 1, 1, 0.08)
+    panel.sep:SetVertexColor(0.24, 0.28, 0.32, 0)
     panel:Show()
     -- the glass backdrop from chat.lua would double the background
     if cf.__h3z0uiChatBackdrop then cf.__h3z0uiChatBackdrop:SetAlpha(0) end
+    -- typing box: no box at all, just "Say:" and what you type
+    local eb = _G[(cf:GetName() or "") .. "EditBox"]
+    if eb then
+        for _, r in ipairs({ eb:GetRegions() }) do
+            if r.IsObjectType and r:IsObjectType("Texture") then
+                if r.h3zWSA == nil then r.h3zWSA = r:GetAlpha() end
+                r:SetAlpha(0)
+            end
+        end
+        if eb.__h3z0uiChatBackdrop then eb.__h3z0uiChatBackdrop:SetAlpha(0) end
+    end
+    if cf.__h3z0uiEditBoxBackdrop then cf.__h3z0uiEditBoxBackdrop:SetAlpha(0) end
     local selected = (not IsDocked(cf)) or SelectedChat() == cf
     SkinChatTab(cf, true, selected)
 end
@@ -174,8 +237,24 @@ function WS.ApplyChat()
     local s = DB()
     if not s then return end
     for _, cf in ipairs(ChatFrames()) do
-        if not (cf.IsForbidden and cf:IsForbidden()) then pcall(SkinChat, cf, s) end
+        if not (cf.IsForbidden and cf:IsForbidden()) then
+            local ok, err = pcall(SkinChat, cf, s)
+            if not ok then WS.lastError = err end
+        end
     end
+end
+
+-- /h3z0ui round: what happens on ChatFrame1
+function WS.Debug()
+    local s = DB()
+    local cf = _G.ChatFrame1
+    if not (s and cf) then return "no settings / ChatFrame1" end
+    local ok, err = pcall(SkinChat, cf, s)
+    local p = cf.h3zWSPanel
+    return string.format("chat skin ok=%s err=%s panel=%s shown=%s visible=%s level=%s/%s alpha=%s size=%dx%d",
+        tostring(ok), tostring(err or WS.lastError), tostring(p ~= nil), tostring(p and p:IsShown()),
+        tostring(p and p:IsVisible()), tostring(p and p:GetFrameLevel()), tostring(cf:GetFrameLevel()),
+        tostring(p and p:GetEffectiveAlpha()), p and p:GetWidth() or 0, p and p:GetHeight() or 0)
 end
 
 ---------------------------------------------------------------------------
@@ -289,7 +368,7 @@ local function SkinMeter(win, s)
     panel:ClearAllPoints()
     panel:SetPoint("TOPLEFT", win, "TOPLEFT", -2, 2)
     panel:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", 2, -2)
-    StylePanel(panel, s)
+    StylePanel(panel, s, s.meterAlpha)
 
     -- header strip + accent line (rounded top corners follow the panel)
     local px = ns.Round.PixelSize(panel)
@@ -299,8 +378,12 @@ local function SkinMeter(win, s)
     panel.header:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, 0)
     panel.header:SetHeight(hh)
     panel.header:SetVertexColor(1, 1, 1, 0.045)
-    local masks = ns.Round.CornerMasks(panel, panel, Radius(), 0, "h3zWSMasks")
-    ns.Round.Mask(panel.header, masks, true)
+    -- inset by the corner so the faint strip stays inside the rounded top corners
+    local rr = Radius()
+    panel.header:ClearAllPoints()
+    panel.header:SetPoint("TOPLEFT", panel, "TOPLEFT", rr * 0.35, -1)
+    panel.header:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -rr * 0.35, -1)
+    panel.header:SetHeight(hh - 1)
     local r, g, b = Accent()
     panel.line:ClearAllPoints()
     panel.line:SetPoint("TOPLEFT", panel, "TOPLEFT", 1, -hh)
@@ -308,7 +391,7 @@ local function SkinMeter(win, s)
     panel.line:SetHeight(px)
     panel.line:SetVertexColor(r, g, b, 0.9)
     panel.header:SetShown(s.header)
-    panel.line:SetShown(s.header)
+    panel.line:SetShown(false)       -- no accent line under the header
     panel:Show()
 
     FadeBackground(win, true)
@@ -338,8 +421,10 @@ end
 function WS.ApplyAll()
     WS.ApplyChat()
     WS.ApplyDamageMeter()
+    if _G.H3z0UI_ApplyModernButtons then pcall(_G.H3z0UI_ApplyModernButtons) end
 end
 _G.H3z0UI_RefreshWindowSkins = WS.ApplyAll
+_G.H3z0UI_DebugWindowSkins = function() return WS.Debug() end
 
 ---------------------------------------------------------------------------
 -- Events / hooks

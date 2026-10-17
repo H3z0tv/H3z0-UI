@@ -3,6 +3,7 @@
 --
 -- A small step-by-step window that sets H3z0 UI up for the way the player plays:
 --   1. Look         - Classic / Modern / Modern v2 (preview cards: frame style, rounded corners, window skins)
+--   1b. Font        - the H3z0 UI font for everything (preview cards)
 --   2. Device       - PC (mouse + keyboard) or Steam Deck / Handheld (controller, compact HUD)
 --   3. Nameplates   - none / Plater / Platynator / BetterBlizzPlates (strings live in importstrings/)
 --   4. Features     - Bottom Bar, minimap, chat, unit frames, action bars, tooltips, ...
@@ -255,6 +256,8 @@ local function ApplyLook(value, result)
     if ml then
         ml.enabled = L.modern
         ml.rounded = L.rounded
+        ml.buttons = L.modern
+        ml.castbars = L.modern
     end
     local WS = ns.WindowSkins
     local ws = WS and WS.GetSettings and WS.GetSettings()
@@ -267,9 +270,43 @@ local function ApplyLook(value, result)
     if _G.H3z0UI_RefreshWindowSkins then pcall(_G.H3z0UI_RefreshWindowSkins) end
     if _G.H3z0UI_RefreshMinimapShape then pcall(_G.H3z0UI_RefreshMinimapShape) end
     if _G.H3z0UI_RefreshPartyFrames then pcall(_G.H3z0UI_RefreshPartyFrames) end
+    if _G.H3z0UI_ApplyModernButtons then pcall(_G.H3z0UI_ApplyModernButtons) end
 
     for _, o in ipairs(LOOKS) do
         if o.value == value then result.lines[#result.lines + 1] = "Look: " .. o.label end
+    end
+    result.needReload = true
+end
+
+---------------------------------------------------------------------------
+-- Step 2: the font (used by everything: frames, bars, chat, tooltips, nameplates, options)
+---------------------------------------------------------------------------
+local FONT_CHOICES = {
+    { name = "Poppins SemiBold", label = "Poppins SemiBold", desc = "Clean and round - the H3z0 UI default." },
+    { name = "Poppins Bold", label = "Poppins Bold", desc = "Heavier, easy to read on busy screens." },
+    { name = "Poppins Medium", label = "Poppins Medium", desc = "A lighter Poppins." },
+    { name = "Expressway", label = "Expressway", desc = "Narrow and sharp, fits more text." },
+    { name = "H3z0UI", label = "H3z0 Classic", desc = "The font H3z0 UI used before." },
+    { name = "Friz Quadrata TT", label = "Game Font", desc = "World of Warcraft's own font." },
+}
+
+local function FontFile(name)
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    return (LSM and LSM:Fetch("font", name, true)) or FONT
+end
+
+local function CurrentFont()
+    local p = Profile()
+    return (p and p.general and p.general.font) or "Poppins SemiBold"
+end
+
+local function ApplyFont(name, result)
+    local core = Core()
+    if core and core.SetAllFonts then pcall(core.SetAllFonts, core, name) end
+    if core and core.ApplyGlobalFont then pcall(core.ApplyGlobalFont, core) end
+    if _G.H3z0UI_RefreshPlates then pcall(_G.H3z0UI_RefreshPlates) end
+    for _, o in ipairs(FONT_CHOICES) do
+        if o.name == name then result.lines[#result.lines + 1] = "Font: " .. o.label end
     end
     result.needReload = true
 end
@@ -295,6 +332,8 @@ local function LoadState()
     state.device = device
     state.look = CurrentLook()
     state.lookPicked = false
+    state.font = CurrentFont()
+    state.fontPicked = false
     state.scale = s.scale or "compact"
     state.nameplates = s.nameplates or "none"
     local npdb = ns.H3zPlates and ns.H3zPlates.GetSettings and ns.H3zPlates.GetSettings()
@@ -318,6 +357,7 @@ function Setup.Apply()
 
     -- 0. Look (only when a card was clicked, so running the wizard again keeps your tweaks)
     if state.lookPicked then ApplyLook(state.look, result) end
+    if state.fontPicked then ApplyFont(state.font, result) end
 
     -- 1. Device
     p.handheld = p.handheld or {}
@@ -401,6 +441,7 @@ function Setup.Apply()
     s.scale = state.scale
     s.nameplates = state.nameplates
     s.look = state.look
+    s.font = state.font
     s.version = WIZARD_VERSION
     local g = Global()
     if g then g.setupShown = true end
@@ -744,6 +785,48 @@ local function DrawLookPreview(pv, look, ar, ag, ab)
     end
 end
 
+local function MakeFontCard(parent, w, h, o, ar, ag, ab, onClick)
+    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    b:SetSize(w, h)
+    b:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+    local file = FontFile(o.name)
+    local title = b:CreateFontString(nil, "OVERLAY")
+    title:SetFont(file, 15, "")
+    title:SetTextColor(0.95, 0.96, 0.98, 1)
+    title:SetPoint("TOPLEFT", 12, -10)
+    title:SetText(o.label)
+    local sample = b:CreateFontString(nil, "OVERLAY")
+    sample:SetFont(file, 12, "OUTLINE")
+    sample:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
+    local name = UnitName("player") or "Player"
+    sample:SetText("|cffffd10090|r | " .. name .. "    872K   100%")
+    local d = MakeText(b, 10, 0.6, 0.65, 0.7)
+    d:SetPoint("TOPLEFT", sample, "BOTTOMLEFT", 0, -6)
+    d:SetPoint("RIGHT", b, "RIGHT", -10, 0)
+    d:SetText(o.desc)
+    local tick = MakeText(b, 10, ar, ag, ab)
+    tick:SetPoint("TOPRIGHT", -10, -12)
+    function b:SetSelected(sel)
+        self.selected = sel and true or false
+        if sel then
+            self:SetBackdropColor(ar * 0.16 + 0.05, ag * 0.16 + 0.07, ab * 0.16 + 0.1, 1)
+            self:SetBackdropBorderColor(ar, ag, ab, 1)
+            tick:SetText("SELECTED")
+        else
+            self:SetBackdropColor(0.08, 0.11, 0.17, 1)
+            self:SetBackdropBorderColor(0.2, 0.25, 0.3, 1)
+            tick:SetText("")
+        end
+    end
+    b:SetScript("OnEnter", function(self)
+        if not self.selected then self:SetBackdropBorderColor(ar, ag, ab, 0.6) end
+    end)
+    b:SetScript("OnLeave", function(self) self:SetSelected(self.selected) end)
+    b:SetScript("OnClick", onClick)
+    b:SetSelected(false)
+    return b
+end
+
 local function MakeLookCard(parent, w, h, o, ar, ag, ab, onClick)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
     b:SetSize(w, h)
@@ -793,9 +876,10 @@ end
 -- The window
 ---------------------------------------------------------------------------
 local wizard
-local TOTAL_STEPS = 5
+local TOTAL_STEPS = 6
 local STEP_TITLES = {
     "Pick your look",
+    "Pick your font",
     "How do you play?",
     "Which nameplates do you want?",
     "Which features do you want?",
@@ -805,6 +889,10 @@ local STEP_TITLES = {
 
 local function RefreshLookPage(f)
     for value, card in pairs(f.lookCards) do card:SetSelected(state.look == value) end
+end
+
+local function RefreshFontPage(f)
+    for name, card in pairs(f.fontCards) do card:SetSelected(state.font == name) end
 end
 
 local function RefreshDevicePage(f)
@@ -907,13 +995,15 @@ local function ShowStep(f, step)
     f.next.label:SetText(step == TOTAL_STEPS and "Apply & finish" or "Next")
 
     if step == 1 then RefreshLookPage(f)
-    elseif step == 2 then RefreshDevicePage(f)
-    elseif step == 3 then RefreshNameplatePage(f)
-    elseif step == 4 then RefreshFeaturePage(f)
-    elseif step == 5 then RefreshExtrasPage(f) end
+    elseif step == 2 then RefreshFontPage(f)
+    elseif step == 3 then RefreshDevicePage(f)
+    elseif step == 4 then RefreshNameplatePage(f)
+    elseif step == 5 then RefreshFeaturePage(f)
+    elseif step == 6 then RefreshExtrasPage(f) end
 end
 
 local function CreateWizard()
+    FONT = FontFile(CurrentFont())       -- the wizard is written in the H3z0 UI font too
     local ar, ag, ab = GetAccent()
     local lr, lg, lb = ar + (1 - ar) * 0.3, ag + (1 - ag) * 0.3, ab + (1 - ab) * 0.3
 
@@ -984,7 +1074,7 @@ local function CreateWizard()
         page:Hide()
         return page
     end
-    f.pages = { NewPage(), NewPage(), NewPage(), NewPage(), NewPage(), NewPage() }
+    f.pages = { NewPage(), NewPage(), NewPage(), NewPage(), NewPage(), NewPage(), NewPage() }
 
     -- Page 1: look (preview cards)
     do
@@ -1010,9 +1100,30 @@ local function CreateWizard()
         note:SetText("Not sure? Pick one and press Next - nothing changes until the last step.")
     end
 
-    -- Page 2: device
+    -- Page 2: font (preview cards, each written in its own font)
     do
         local page = f.pages[2]
+        local intro = MakeText(page, 11, 0.85, 0.88, 0.92)
+        intro:SetPoint("TOPLEFT", 0, 0)
+        intro:SetWidth(PAGE_W)
+        intro:SetText("One font for all of H3z0 UI - unit frames, bars, chat, tooltips, nameplates and this window. Change it any time in General & QoL > Default Font Settings.")
+        f.fontCards = {}
+        local CW, CH, GAP = 265, 92, 10
+        for i, o in ipairs(FONT_CHOICES) do
+            local card = MakeFontCard(page, CW, CH, o, ar, ag, ab, function()
+                state.font = o.name
+                state.fontPicked = true
+                RefreshFontPage(f)
+            end)
+            local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
+            card:SetPoint("TOPLEFT", col * (CW + GAP), -36 - row * (CH + 8))
+            f.fontCards[o.name] = card
+        end
+    end
+
+    -- Page 3: device
+    do
+        local page = f.pages[3]
         local intro = MakeText(page, 11, 0.85, 0.88, 0.92)
         intro:SetPoint("TOPLEFT", 0, 0)
         intro:SetWidth(PAGE_W)
@@ -1062,9 +1173,9 @@ local function CreateWizard()
         f.screenInfo:SetPoint("BOTTOMLEFT", 0, 0)
     end
 
-    -- Page 2: nameplates
+    -- Page 4: nameplates
     do
-        local page = f.pages[3]
+        local page = f.pages[4]
         local intro = MakeText(page, 11, 0.85, 0.88, 0.92)
         intro:SetPoint("TOPLEFT", 0, 0)
         intro:SetWidth(PAGE_W)
@@ -1086,9 +1197,9 @@ local function CreateWizard()
         note:SetText("The profile is applied on the last screen. It never overwrites your other nameplate profiles.")
     end
 
-    -- Page 3: features
+    -- Page 5: features
     do
-        local page = f.pages[4]
+        local page = f.pages[5]
         local intro = MakeText(page, 11, 0.85, 0.88, 0.92)
         intro:SetPoint("TOPLEFT", 0, 0)
         intro:SetWidth(PAGE_W)
@@ -1105,9 +1216,9 @@ local function CreateWizard()
         end
     end
 
-    -- Page 4: extras
+    -- Page 6: extras
     do
-        local page = f.pages[5]
+        local page = f.pages[6]
         local intro = MakeText(page, 11, 0.85, 0.88, 0.92)
         intro:SetPoint("TOPLEFT", 0, 0)
         intro:SetWidth(PAGE_W)
@@ -1124,9 +1235,9 @@ local function CreateWizard()
         end
     end
 
-    -- Page 5: done
+    -- Page 7: done
     do
-        local page = f.pages[6]
+        local page = f.pages[7]
         f.doneTitle = MakeText(page, 14, lr, lg, lb, "OUTLINE")
         f.doneTitle:SetPoint("TOPLEFT", 0, 0)
         f.doneTitle:SetText("Your setup is applied")

@@ -379,7 +379,7 @@ local function GetAccent()
     return 0.204, 0.827, 0.6
 end
 
-local FONT = "Interface\\AddOns\\H3z0UI\\assets\\Expressway.TTF"
+local FONT = "Interface\\AddOns\\H3z0UI\\assets\\Poppins-SemiBold.ttf"
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 local setupPopup
 

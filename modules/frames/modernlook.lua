@@ -30,6 +30,13 @@ local function DB()
     if s.shadow == nil then s.shadow = true end
     if s.sheen == nil then s.sheen = true end
     if s.glow == nil then s.glow = true end
+    if s.castbars == nil then s.castbars = true end
+    if s.buttons == nil then s.buttons = true end
+    -- 0.24.0: rounded map / buttons / cast bars back on once (an older look choice could have turned them off)
+    if not s.roundFix1 then
+        s.roundFix1 = true
+        s.rounded, s.buttons, s.castbars = true, true, true
+    end
     return s
 end
 ML.GetSettings = DB
@@ -386,7 +393,7 @@ function ML.ApplyUnit(key)
         and (key == "player" or key == "target" or key == "focus")
     pcall(Brackets, frame, key, v2 and true or false)
     -- rounded corners (not on v2 frames: they have their own round end)
-    local round = on and ns.Round and ns.Round.Enabled() and not v2
+    local round = ns.Round and ns.Round.Enabled() and not v2
     pcall(RoundFrame, frame, { frame.healthBar, frame.powerBar }, round and true or false)
 end
 
@@ -411,8 +418,8 @@ local function ApplyMinimap(s)
     holder:SetFrameStrata("BACKGROUND")
     holder:SetFrameLevel(1)
     Shadow(holder, holder, on and square)
-    local roundOn = s.enabled and ns.Round and ns.Round.Enabled() and square
-    pcall(RoundShadow, holder, ((mm:GetWidth() or 200) + b * 2) * 22 / 256, (on and roundOn) and true or false)
+    local roundOn = ns.Round and ns.Round.Enabled() and square
+    pcall(RoundShadow, holder, ((mm:GetWidth() or 200) + b * 2) * 34 / 256, (on and roundOn) and true or false)
 
     local dt = _G.H3z0UI_DatatextPanel
     if dt then
@@ -431,7 +438,7 @@ local function ApplyMinimap(s)
         dt.h3zMLLine:SetHeight(1)
         local show = s.enabled and s.sheen
         dt.h3zMLSheen:SetShown(show)
-        dt.h3zMLLine:SetShown(show)
+        dt.h3zMLLine:SetShown(false)     -- no accent line on the info bar
         pcall(RoundFrame, dt, {}, roundOn and true or false)
         local set = dt.h3zRoundOuter
         if set then
@@ -442,6 +449,77 @@ local function ApplyMinimap(s)
     end
     -- rounded square minimap (minimap.lua picks the mask)
     if _G.H3z0UI_RefreshMinimapShape then pcall(_G.H3z0UI_RefreshMinimapShape) end
+end
+
+-- Modern cast bar (same look as H3z0 Nameplates): rounded black outline around the
+-- bar, the bar textures rounded inside it, the icon as its own rounded tile with a
+-- small gap, and the shadow only behind the bar.
+local function ModernCast(cb, on)
+    local Round = ns.Round
+    local sb = cb.statusBar
+    if not (Round and sb) then return end
+    local m = cb.h3zMC
+    if not on then
+        if m then
+            m.panel:Hide()
+            if m.iconPanel then m.iconPanel:Hide() end
+            for t in pairs(m.done) do Round.Mask(t, nil, false) end
+            wipe(m.done)
+            if sb.Border then sb.Border:SetAlpha(1) end
+            if cb.iconBorder then cb.iconBorder:SetAlpha(1) end
+        end
+        return
+    end
+    if not m then
+        m = { done = {} }
+        m.panel = Round.Panel(cb, 4)
+        cb.h3zMC = m
+    end
+    local h = sb:GetHeight() or 16
+    local r = Round.Enabled() and math.max(2, math.min(Round.Radius(), h / 2 + 1)) or 1
+    m.panel:SetFrameStrata(cb:GetFrameStrata())
+    m.panel:SetFrameLevel(math.max(0, sb:GetFrameLevel() - 1))
+    m.panel:ClearAllPoints()
+    m.panel:SetPoint("TOPLEFT", sb, "TOPLEFT", -1, 1)
+    m.panel:SetPoint("BOTTOMRIGHT", sb, "BOTTOMRIGHT", 1, -1)
+    m.panel:SetRadius(r)
+    m.panel:SetFillColor(0, 0, 0, 1)
+    m.panel:SetBorderColor(0, 0, 0, 0)
+    m.panel:Show()
+    if sb.Border then sb.Border:SetAlpha(0) end
+    local inner = Round.CornerMasks(sb, sb, math.max(1, r - 1), 0, "h3zMCInner")
+    local list = {}
+    CollectBarTextures(sb, list)
+    for _, t in ipairs(list) do
+        if t:GetParent() == sb then Round.Mask(t, inner, true); m.done[t] = true end
+    end
+    local icon, tex = cb.icon, cb.iconTexture
+    if icon and tex then
+        if not m.iconPanel then m.iconPanel = Round.Panel(icon, 4) end
+        m.iconPanel:SetFrameLevel(math.max(0, icon:GetFrameLevel() - 1))
+        m.iconPanel:ClearAllPoints()
+        m.iconPanel:SetAllPoints(icon)
+        m.iconPanel:SetRadius(r)
+        m.iconPanel:SetFillColor(0, 0, 0, 1)
+        m.iconPanel:SetBorderColor(0, 0, 0, 0)
+        m.iconPanel:Show()
+        if cb.iconBorder then cb.iconBorder:SetAlpha(0) end
+        local im = Round.SquareMask(icon, tex, 0, "h3zMCIconSq")
+        Round.Mask(tex, im, true)
+        m.done[tex] = true
+    end
+    -- the icon needs a little gap to read as its own tile (once, only when it was 0)
+    local H = ns.Helpers
+    local us = H and H.GetUnitSettings and cb.unitKey and H.GetUnitSettings(cb.unitKey)
+    local cs = us and us.castbar
+    if cs and not cs.h3zModernGap then
+        cs.h3zModernGap = true
+        if (cs.iconSpacing or 0) < 3 then
+            cs.iconSpacing = 3
+            if cb.UpdateCastbarElements then pcall(cb.UpdateCastbarElements, cb) end
+        end
+    end
+    return m.panel, r
 end
 
 local function ApplyBars(s)
@@ -460,9 +538,17 @@ local function ApplyBars(s)
     if type(cbs) == "table" then
         for _, cb in pairs(cbs) do
             if type(cb) == "table" and cb.GetObjectType then
-                Shadow(cb, cb, on and s.shadow)
                 Sheen(cb.statusBar, on and s.sheen)
-                pcall(RoundFrame, cb, { cb.statusBar }, on and ns.Round and ns.Round.Enabled() or false)
+                local modern = s.castbars
+                pcall(RoundFrame, cb, { cb.statusBar }, false)   -- older whole-frame rounding
+                local ok, panel, r = pcall(ModernCast, cb, modern and true or false)
+                if ok and panel then
+                    Shadow(cb, panel, on and s.shadow)
+                    pcall(RoundShadow, cb, (r or 4) + 1, ns.Round.Enabled())
+                else
+                    Shadow(cb, cb, on and s.shadow)
+                    pcall(RoundShadow, cb, 0, false)
+                end
             end
         end
     end
@@ -474,6 +560,7 @@ function ML.ApplyAll()
     for _, key in ipairs(UNIT_KEYS) do pcall(ML.ApplyUnit, key) end
     pcall(ApplyMinimap, s)
     pcall(ApplyBars, s)
+    if _G.H3z0UI_ApplyModernButtons then pcall(_G.H3z0UI_ApplyModernButtons) end
 end
 
 function ML.SetEnabled(on)

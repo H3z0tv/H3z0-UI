@@ -502,7 +502,7 @@ local function CreateBuffIcon(parent, index)
 
     -- Buff count text (e.g., "11/18")
     button.countText = button:CreateFontString(nil, "OVERLAY")
-    button.countText:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    button.countText:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), 10, "OUTLINE")
     button.countText:SetPoint("BOTTOM", button, "BOTTOM", 0, 2)
     button.countText:SetTextColor(1, 1, 1, 1)
     button.countText:Hide()
@@ -696,7 +696,7 @@ local function CreateMainFrame()
     -- Label text
     mainFrame.labelBar.text = mainFrame.labelBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     mainFrame.labelBar.text:SetPoint("CENTER", 0, 0)
-    mainFrame.labelBar.text:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    mainFrame.labelBar.text:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), 10, "OUTLINE")
     mainFrame.labelBar.text:SetText("Missing Buffs")
 
     -- Pre-create icon slots
@@ -841,7 +841,7 @@ UpdateDisplay = function()
                 -- Apply font settings
                 local countFontSize = countSettings.fontSize or 10
                 local countFontName = countSettings.font or "H3z0UI"
-                local countFontPath = STANDARD_TEXT_FONT
+                local countFontPath = (_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT)
                 if LSM then
                     countFontPath = LSM:Fetch("font", countFontName) or STANDARD_TEXT_FONT
                 end
@@ -885,7 +885,7 @@ UpdateDisplay = function()
     local labelBarHeight = fontSize + 8  -- Font size + padding
     local labelBarGap = 2
 
-    mainFrame.labelBar.text:SetFont(STANDARD_TEXT_FONT, fontSize, "OUTLINE")
+    mainFrame.labelBar.text:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), fontSize, "OUTLINE")
     mainFrame.labelBar.text:SetText("Missing Buffs")
 
     -- Resize frames based on orientation

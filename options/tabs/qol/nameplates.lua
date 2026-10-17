@@ -222,7 +222,10 @@ Build = function(tabContent)
             y = y - (h or FORM_ROW)
             return w
         end
-        local function RefreshNP() if _G.H3z0UI_RefreshPlates then _G.H3z0UI_RefreshPlates() end end
+        local function RefreshNP()
+            if _G.H3z0UI_RefreshPlates then _G.H3z0UI_RefreshPlates() end
+            if npdb.unitFrameColors and _G.H3z0UI_RefreshUnitFrames then pcall(_G.H3z0UI_RefreshUnitFrames) end
+        end
         Section("H3z0 Nameplates")
         Info("H3z0 UI's own nameplates: rounded bar, level | name, health and percent, cast bar, target arrows and Mythic colours (boss, mini boss, caster, melee, trivial, minus). Made to keep working in Mythic+ keys. Not used while Plater, Platynator or BetterBlizzPlates is loaded. /h3z0ui plates", 44)
         for _, a in ipairs({ "Plater", "Platynator", "BetterBlizzPlates" }) do
@@ -238,10 +241,14 @@ Build = function(tabContent)
         Place(GUI:CreateFormCheckbox(tabContent, "Show Level", "showLevel", npdb, RefreshNP))
         Place(GUI:CreateFormCheckbox(tabContent, "Show Health Value", "showHealth", npdb, RefreshNP))
         Place(GUI:CreateFormCheckbox(tabContent, "Show Health Percent", "showPercent", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Nameplate Colours on Unit Frames", "unitFrameColors", npdb, function()
+            RefreshNP()
+            if _G.H3z0UI_RefreshUnitFrames then pcall(_G.H3z0UI_RefreshUnitFrames) end
+        end))
         Place(GUI:CreateFormCheckbox(tabContent, "Rounded Corners", "rounded", npdb, RefreshNP))
         Place(GUI:CreateFormCheckbox(tabContent, "Target Arrows", "arrows", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Threat Border (aggro / lost aggro)", "threat", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Style Friendly Nameplates (outside instances)", "friendly", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Threat Border", "threat", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Friendly Nameplates", "friendly", npdb, RefreshNP))
         Place(GUI:CreateFormCheckbox(tabContent, "Cast Bar", "castbar", npdb, RefreshNP))
         Place(GUI:CreateFormSlider(tabContent, "Cast Bar Height", 6, 24, 1, "castHeight", npdb, RefreshNP))
         Place(GUI:CreateFormDropdown(tabContent, "Mythic Colours", {

@@ -739,7 +739,7 @@ local defaults = {
         -- General Settings
         general = {
             uiScale = 0.64,  -- Default UI scale for 1440p+ monitors
-            font = "H3z0UI",  -- Default font face
+            font = "Poppins SemiBold",  -- Default font face
             fontOutline = "OUTLINE",  -- Default font outline: "", "OUTLINE", "THICKOUTLINE"
             texture = "H3z0UI v5",  -- Default bar texture
             darkMode = false,
@@ -871,7 +871,7 @@ local defaults = {
                 show = true,
                 position = "BOTTOM",  -- TOP, BOTTOM, LEFT, RIGHT
                 fontSize = 10,
-                font = "H3z0UI",  -- Font name from LibSharedMedia
+                font = "Poppins SemiBold",  -- Font name from LibSharedMedia
                 color = { 1, 1, 1, 1 },  -- White default
                 offsetX = 0,
                 offsetY = 0,
@@ -1896,7 +1896,7 @@ local defaults = {
                 masterColorPowerText = false,             -- Apply class/reaction color to ALL power text
                 masterColorCastbarText = false,           -- Apply class/reaction color to ALL castbar text (spell + timer)
                 masterColorToTText = false,               -- Apply class/reaction color to ALL inline ToT text
-                font = "H3z0UI",
+                font = "Poppins SemiBold",
                 fontSize = 12,
                 fontOutline = "OUTLINE",                  -- NONE, OUTLINE, THICKOUTLINE
                 showTooltips = true,                      -- Show tooltips on unit frame mouseover
@@ -2663,7 +2663,7 @@ local defaults = {
         unitFrames = {
             enabled = true,
             General = {
-                Font = "H3z0UI",
+                Font = "Poppins SemiBold",
                 FontFlag = "OUTLINE",
                 FontShadows = {
                     Color = {0, 0, 0, 0},
@@ -3094,7 +3094,7 @@ local defaults = {
             height = 30,           -- Frame height
             fontSize = 16,         -- Font size for timer text
             useCustomFont = false, -- If false, use global addon font
-            font = "H3z0UI",       -- Font name (from LibSharedMedia)
+            font = "Poppins SemiBold",       -- Font name (from LibSharedMedia)
             useClassColorText = false,  -- If true, use player class color for text
             textColor = {1, 1, 1, 1},  -- White text
             -- Backdrop settings
@@ -3247,7 +3247,7 @@ local defaults = {
                 offsetX = 0,
                 offsetY = 0,
                 align = "LEFT",
-                font = "H3z0UI",
+                font = "Poppins SemiBold",
                 fontSize = 12,
                 monochrome = false,
                 outline = "OUTLINE",
@@ -3264,7 +3264,7 @@ local defaults = {
                 offsetX = 0,
                 offsetY = 0,
                 align = "RIGHT",
-                font = "H3z0UI",
+                font = "Poppins SemiBold",
                 fontSize = 12,
                 monochrome = false,
                 outline = "OUTLINE",
@@ -3278,7 +3278,7 @@ local defaults = {
                 offsetX = 0,
                 offsetY = 0,
                 align = "CENTER",
-                font = "H3z0UI",
+                font = "Poppins SemiBold",
                 fontSize = 12,
                 allCaps = false,
                 monochrome = false,
@@ -3319,7 +3319,7 @@ local defaults = {
             borderColor = {0, 0, 0, 1},  -- Black border (#90)
 
             -- Font Settings
-            font = "H3z0UI",
+            font = "Poppins SemiBold",
             fontSize = 13,
             fontOutline = "OUTLINE",  -- "OUTLINE" = Thin
 
@@ -3510,12 +3510,57 @@ local defaults = {
     },
 }
 
+--- Set every font setting of the profile (General font and each module's own font) to `name`.
+--- onlyFrom: only change settings that currently use that font. Returns how many were changed.
+function H3z0UICore:SetAllFonts(name, onlyFrom)
+    local LSM = LibStub("LibSharedMedia-3.0")
+    if not (self.db and self.db.profile and name) then return 0 end
+    local changed = 0
+    local function IsFontKey(k)
+        return type(k) == "string" and (k == "font" or k == "Font" or k:match("Font$") ~= nil)
+    end
+    local seen = {}
+    local function Walk(def, prof, depth)
+        if depth > 10 or type(prof) ~= "table" or seen[prof] then return end
+        seen[prof] = true
+        local keys = {}
+        if type(def) == "table" then for k in pairs(def) do keys[k] = true end end
+        for k in pairs(prof) do keys[k] = true end
+        for k in pairs(keys) do
+            local v = prof[k]
+            if type(v) == "table" then
+                Walk(type(def) == "table" and def[k] or nil, v, depth + 1)
+            elseif type(v) == "string" and IsFontKey(k) and LSM:IsValid("font", v) then
+                if (onlyFrom == nil or v == onlyFrom) and v ~= name then
+                    prof[k] = name
+                    changed = changed + 1
+                end
+            end
+        end
+    end
+    Walk(defaults.profile, self.db.profile, 0)
+    return changed
+end
+
 function H3z0UICore:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("H3z0UIDB", defaults, true)
     H3z0UI.db = self.db  -- Make database accessible to other H3z0UI modules
 
     -- 0.22: new installs start with H3z0 UI's default profile (existing users are left alone)
     self:ApplyDefaultProfileOnFirstRun()
+
+    -- 0.24: Poppins SemiBold is the H3z0 UI font everywhere; settings still on the old
+    -- default font move with it once (other fonts you picked are kept)
+    if not self.db.profile.fontMigrated024 then
+        self.db.profile.fontMigrated024 = true
+        pcall(self.SetAllFonts, self, "Poppins SemiBold", "H3z0UI")
+    end
+    -- once: bring every element onto the Default Font you picked (it used to change only the default)
+    if not self.db.profile.fontSynced024 then
+        self.db.profile.fontSynced024 = true
+        local g = self.db.profile.general
+        if g and g.font then pcall(self.SetAllFonts, self, g.font) end
+    end
 
     -- Migrate visibility settings to SHOW logic
     -- Old hideWhenX → new showX (semantic conversion)
@@ -5057,7 +5102,7 @@ end
         
 function H3z0UI:GetGlobalFont()
     local LSM = LibStub("LibSharedMedia-3.0")
-    local fontName = "H3z0UI"  -- Default fallback
+    local fontName = "Poppins SemiBold"  -- Default fallback
 
     -- Read font from user settings
     if H3z0UICore and H3z0UICore.db and H3z0UICore.db.profile and H3z0UICore.db.profile.general then
@@ -5065,6 +5110,12 @@ function H3z0UI:GetGlobalFont()
     end
 
     return LSM:Fetch("font", fontName) or [[Interface\AddOns\H3z0UI\assets\H3z0UI.ttf]]
+end
+
+-- Shortcut for modules: the H3z0 UI font file
+_G.H3z0UI_GetFont = function()
+    local ok, path = pcall(H3z0UI.GetGlobalFont, H3z0UI)
+    return ok and path or STANDARD_TEXT_FONT
 end
 
 function H3z0UI:GetGlobalTexture()
@@ -5182,7 +5233,7 @@ local function GetGlobalFontPath()
     if not H3z0UICore.db or not H3z0UICore.db.profile or not H3z0UICore.db.profile.general then
         return H3z0UI_FONT_PATH
     end
-    local fontName = H3z0UICore.db.profile.general.font or "H3z0UI"
+    local fontName = H3z0UICore.db.profile.general.font or "Poppins SemiBold"
     local fontPath = LSM:Fetch("font", fontName)
     return fontPath or H3z0UI_FONT_PATH
 end
@@ -5241,6 +5292,24 @@ function H3z0UICore:ApplyGlobalFont()
             local _, size, flags = fontObj:GetFont()
             if size then
                 fontObj:SetFont(fontPath, size, flags or "")
+            end
+        end
+    end
+
+    -- 0.24: every other Blizzard font object too (menus, buttons, unit names, system text, ...),
+    -- on clients with a Latin alphabet only (the bundled fonts have no Cyrillic / Asian letters)
+    local LATIN = { enUS = true, enGB = true, deDE = true, frFR = true, esES = true, esMX = true, itIT = true, ptBR = true }
+    if LATIN[GetLocale()] and type(GetFonts) == "function" then
+        local ok, list = pcall(GetFonts)
+        if ok and type(list) == "table" then
+            for _, entry in ipairs(list) do
+                local fontObj = type(entry) == "string" and _G[entry] or entry
+                if type(fontObj) == "table" and fontObj.GetFont and fontObj.SetFont then
+                    local okF, file, size, flags = pcall(fontObj.GetFont, fontObj)
+                    if okF and size and size > 0 and file ~= fontPath then
+                        pcall(fontObj.SetFont, fontObj, fontPath, size, flags or "")
+                    end
+                end
             end
         end
     end

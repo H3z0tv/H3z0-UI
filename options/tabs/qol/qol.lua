@@ -196,10 +196,39 @@ local function BuildGeneralTab(tabContent)
             fontList = {{value = "Friz Quadrata TT", text = "Friz Quadrata TT"}}
         end
 
-        local fontDropdown = GUI:CreateFormDropdown(tabContent, "Default Font", fontList, "font", db.general, RefreshAll)
+        -- picking the default font puts it on everything (every element's own font too)
+        local function UseEverywhere(quiet)
+            local core = ns.Addon
+            if not (core and core.SetAllFonts) then return end
+            local n = core:SetAllFonts(db.general.font)
+            if core.ApplyGlobalFont then pcall(core.ApplyGlobalFont, core) end
+            RefreshAll()
+            if _G.H3z0UI_RefreshPlates then pcall(_G.H3z0UI_RefreshPlates) end
+            if ns.ShowPopup then
+                ns.ShowPopup("H3Z0UI_FONT_RELOAD", db.general.font)
+            elseif not quiet then
+                print("|cff34D399H3z0 UI:|r " .. db.general.font .. " is now used everywhere (" .. (n or 0) .. " settings). /reload to update every frame.")
+            end
+        end
+        ns.Popups["H3Z0UI_FONT_RELOAD"] = {
+            text = "%s is now the font of all of H3z0 UI.\n\nReload now so every frame, bar and Blizzard window picks it up?",
+            button1 = "Reload",
+            button2 = "Later",
+            OnAccept = function()
+                local ui = _G.H3z0UI
+                if ui and ui.SafeReload then ui:SafeReload() else ReloadUI() end
+            end,
+        }
+        local fontDropdown = GUI:CreateFormDropdown(tabContent, "Default Font", fontList, "font", db.general, function() UseEverywhere() end)
         fontDropdown:SetPoint("TOPLEFT", PADDING, y)
         fontDropdown:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
         y = y - FORM_ROW
+
+        local everywhereBtn = GUI:CreateButton(tabContent, "Use this font everywhere", 200, 26, function() UseEverywhere() end)
+        everywhereBtn:SetPoint("TOPLEFT", PADDING, y)
+        local ewTip = GUI:CreateLabel(tabContent, "Picking a font above already does this; use the button if you changed single elements later.", 10, C.textMuted)
+        ewTip:SetPoint("LEFT", everywhereBtn, "RIGHT", 10, 0)
+        y = y - 36
 
         local outlineOptions = {
             {value = "", text = "None"},

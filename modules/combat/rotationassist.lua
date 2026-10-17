@@ -196,7 +196,7 @@ CreateIconFrame = function()
 
     -- Keybind text
     iconFrame.keybindText = iconFrame:CreateFontString(nil, "OVERLAY")
-    iconFrame.keybindText:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
+    iconFrame.keybindText:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), 13, "OUTLINE")
     iconFrame.keybindText:SetPoint("BOTTOMRIGHT", iconFrame, "BOTTOMRIGHT", -2, 2)
     iconFrame.keybindText:SetTextColor(1, 1, 1, 1)
     iconFrame.keybindText:SetShadowOffset(1, -1)

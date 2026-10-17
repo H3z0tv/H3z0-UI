@@ -494,6 +494,15 @@ local function GetHealthBarColor(unit, settings)
         return 0.5, 0.5, 0.5, 1
     end
 
+    -- Player / Target / Focus / ... in the same colours as H3z0 Nameplates (class, hostile,
+    -- neutral, friendly, tapped and the Mythic unit types)
+    local NP = ns.H3zPlates
+    local nps = NP and NP.GetSettings and NP.GetSettings()
+    if nps and nps.unitFrameColors and NP.ColorFor then
+        local ok, r, g, b = pcall(NP.ColorFor, unit)
+        if ok and r then return r, g, b, 1 end
+    end
+
     -- Get global settings from MAIN profile (not h3z0uiUnitFrames sub-table)
     local general = GetGeneralSettings()
 

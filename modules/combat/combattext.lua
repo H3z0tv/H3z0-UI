@@ -40,7 +40,7 @@ local function CreateTextFrame()
 
     local text = frame:CreateFontString(nil, "OVERLAY")
     text:SetPoint("CENTER", frame, "CENTER", 0, 0)
-    text:SetFont("Fonts\\FRIZQT__.TTF", 24, "OUTLINE")
+    text:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), 24, "OUTLINE")
     text:SetTextColor(0.204, 0.827, 0.6, 1)  -- H3z0UI mint accent
     text:SetJustifyH("CENTER")
     frame.text = text
@@ -126,7 +126,7 @@ local function ShowCombatText(message)
 
     -- Update font size
     local fontSize = settings.fontSize or 24
-    CombatTextState.textFrame.text:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+    CombatTextState.textFrame.text:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), fontSize, "OUTLINE")
 
     -- Determine and apply color based on message
     local color
@@ -238,7 +238,7 @@ _G.H3z0UI_PreviewCombatText = function(message)
 
     -- Update font size
     local fontSize = settings.fontSize or 24
-    CombatTextState.textFrame.text:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+    CombatTextState.textFrame.text:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), fontSize, "OUTLINE")
 
     -- Determine and apply color based on message
     local color

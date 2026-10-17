@@ -24,6 +24,11 @@ local function ApplyAccent(panel)
         panel.accentLine = panel:CreateTexture(nil, "ARTWORK")
     end
     local line = panel.accentLine
+    -- 0.24.0: accent lines are off by default (once; the option can turn it back on)
+    if not cfg.h3zNoAccent024 then
+        cfg.h3zNoAccent024 = true
+        cfg.accentLine = false
+    end
     if not cfg.accentLine then
         line:Hide()
         return

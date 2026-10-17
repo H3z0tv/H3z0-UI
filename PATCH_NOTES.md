@@ -1,9 +1,29 @@
 # H3z0 UI - Patch Notes
 
+## 0.24.1 - Slate look, one font for everything, rounded fixes
+New
+- One font for everything: Poppins SemiBold is the new default H3z0 UI font. The General font and every element with its own font option (unit frames, cast bars, action bars, minimap, info bars, M+ timer, nameplates, ...) use it, the options window and the Setup Wizard use it, and with "Apply to Blizzard UI" every Blizzard font object follows too (menus, buttons, unit names, system and quest text, tooltips, chat). Blizzard text only changes on English, German, French, Spanish, Italian and Portuguese clients, because the bundled fonts have no Cyrillic or Asian letters. Settings still on the old H3z0UI font move over once; fonts you picked yourself stay.
+- Setup Wizard: new step "Pick your font" with six cards, each written in its own font (Poppins SemiBold, Poppins Bold, Poppins Medium, Expressway, H3z0 Classic, game font). The choice goes to every font setting.
+- General & QoL > Default Font Settings: picking a Default Font puts it on everything right away and offers a reload; "Use this font everywhere" does the same later.
+- Slate look for the chat and the damage meter (Window Skins): one solid dark slate panel with a thin grey border and almost square corners. The chat panel starts under the tab row so the tab names stay readable, there are no tab boxes, the selected tab's name is in the accent colour, and the typing box has no background or border - only "Say:" and your text. The damage meter gets flat class-coloured bars.
+- Window Skins: separate sliders for Chat Opacity and Damage Meter Opacity.
+- Modern Action Buttons: every action button (main bars, extra bars, stance, pet) is a slate tile - thin slate border, dark slate slot in the same colour as the chat and damage meter, small rounded corners, rounded highlights and a rounded cooldown swipe. It follows Action Bars > Button Appearance: Show Backdrop and Backdrop Opacity for the slot, Show Button Borders for the border, Show Gloss and Gloss Opacity for the gloss, Icon Crop for the icon. Slots are switched on once at the chat's opacity so the bars match the chat right away. Nothing is changed in combat.
+- Modern Cast Bars: the player, target, focus and boss cast bars get the H3z0 Nameplates look - a rounded black outline, the bar rounded inside it, and the spell icon as its own rounded tile with a small gap.
+- Unit frames in nameplate colours (Nameplates page > "Nameplate Colours on Unit Frames", on by default): Player, Target, Focus, target of target, pet and boss health bars use exactly the H3z0 Nameplates colours - class colours for players, hostile red, neutral yellow, friendly green, grey when tapped, and the Mythic colours (boss, mini boss, caster, melee, ...) for enemies in dungeons. Changing a colour on the Nameplates page changes it on the unit frames too.
+- H3z0 Nameplates cast bar: never wider than the health bar (icon inside that width), 16 px high with a bigger spell name, rounded like the health bar. Blizzard's own nameplate cast bar is now kept hidden while H3z0 Nameplates are on.
+- Rounded Corners, Modern Action Buttons, Modern Cast Bars and Window Skins no longer depend on the Modern Look switch (Modern Look now only adds shadows, sheen and glow). They are switched on once with this version; the Classic look in the wizard still turns them off on purpose.
+- New chat commands: /h3z0ui round (shows whether rounded corners, modern buttons / cast bars and window skins are on, the minimap shape and mask, and applies them again) and /h3z0ui roundtest (three test squares for 20 seconds).
+
+Fixed
+- Rounded corners only rounded three corners: the game applies at most three masks to one texture. The four corners are now made with two end masks, and square things (action buttons, cast bar icons) use one rounded-square mask.
+- The rounded square minimap stayed square. The mask is given to the map with its full file name, applied again after loading, and if anything else puts a different mask on the minimap afterwards H3z0 UI puts the rounded one back. Note: the Leatrix Plus square minimap option does this - turn it off, or let H3z0 UI put the rounded shape back.
+- The options window header: the Panel Scale slider no longer runs into the close button with wider fonts; long labels on the Nameplates page were shortened.
+- Removed the green accent lines: the line on top of the minimap info bar, the line under the damage meter header and the Bottom Bar accent line (off once for existing setups; Bottom Bar settings > Accent Line brings it back).
+
 ## 0.24.0 - H3z0 Nameplates
 - New: H3z0 Nameplates, H3z0 UI's own nameplate look (Nameplates page > H3z0 Nameplates, /h3z0ui plates, or the new "H3z0 Nameplates" card in the Setup Wizard). Off until you turn it on.
 - Health bar with rounded corners and a thin black border, current health on the left and the percentage on the right, "level | name" above the bar (level in difficulty colour, + for elites, R for rares, ?? for bosses). Font: Poppins SemiBold by default, Poppins Bold / Medium, Expressway or the game font.
-- Cast bar under the health bar with icon, spell name and remaining time. Casts are yellow, channels green, casts that can't be interrupted turn grey, and an interrupt flashes red with "Interrupted".
+- Cast bar under the health bar, never wider than the health bar (icon on the left inside that width), 16 px high with a bigger spell name and the remaining time, rounded like the health bar. Blizzard's own nameplate cast bar is hidden while it is on (it fades in with an animation, so it is kept hidden while it shows). Casts are yellow, channels green, casts that can't be interrupted turn grey, and an interrupt flashes red with "Interrupted".
 - Target: white border, slightly bigger (Target Size slider) and arrows on both sides.
 - Mythic colours (in dungeons, raids and delves by default, or always / off): boss, mini boss / lieutenant, caster, melee, trivial, minus and rare elite each get their own bar colour. The type is worked out from the mob's level, classification and mana, so no NPC lists are needed and it works for new dungeons too. Outside of that: hostile red, neutral yellow, friendly green, class colours for players, grey when tapped.
 - Threat border: red when you have aggro as a non-tank, orange when you are the tank and lost aggro.
@@ -239,8 +259,7 @@ removed; the rescan/skin step stays.
 
 ## 0.21 - Steam Deck unit frame layout
 Steam Deck / Handheld Mode now also swaps the unit frames (player, target, focus, pet, target of target, boss) to a
-compact 1280x800 layout: size, position, border, name/health text, aura/absorb/castbar switches. The values were read
-from an exported EllesmereUI profile string (EllesmereUI is not needed or used) and live in
+compact 1280x800 layout: size, position, border, name/health text, aura/absorb/castbar switches. The values live in
 modules/qol/handheld_layout.lua. Turning Handheld Mode off restores your own values. Switch it in
 Options > General & QoL > Steam Deck > "Use the Steam Deck unit frame layout". Frames/castbars that the layout turns
 on or off need a /reload. Not copied: portraits above the frame, textures, fonts, class-power bars.

@@ -123,7 +123,7 @@ local function GetFontPath(fontName)
         local path = LSM:Fetch("font", fontName)
         if path then return path end
     end
-    return "Fonts\\FRIZQT__.TTF"
+    return (_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT)
 end
 
 ---------------------------------------------------------------------------
@@ -148,7 +148,7 @@ local function CreateTimerFrame()
 
     local text = frame:CreateFontString(nil, "OVERLAY")
     text:SetPoint("CENTER", frame, "CENTER", 0, 0)
-    text:SetFont("Fonts\\FRIZQT__.TTF", 16, "OUTLINE")
+    text:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), 16, "OUTLINE")
     text:SetTextColor(1, 1, 1, 1)
     text:SetJustifyH("CENTER")
     text:SetJustifyV("MIDDLE")

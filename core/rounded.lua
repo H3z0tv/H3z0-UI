@@ -22,12 +22,23 @@ local ADDON_NAME, ns = ...
 
 local R = {}
 ns.Round = R
+_G.H3z0UI_RoundLib = R      -- for the /h3z0ui roundtest check
 
 local ASSETS = "Interface\\AddOns\\" .. ADDON_NAME .. "\\assets\\"
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 local CIRCLE = ASSETS .. "h3z_circle"
 local RINGS = { 4, 6, 8, 10, 12 }
 R.ROUND_SQUARE = ASSETS .. "h3z_roundsquare"
+R.TILE = ASSETS .. "h3z_tile"
+-- one slate colour for every skinned surface (chat, damage meter, action button slots)
+R.SLATE_FILL = { 0.075, 0.095, 0.12 }
+R.SLATE_BORDER = { 0.25, 0.29, 0.33 }
+function R.SlateAlpha()
+    local core = ns.Addon
+    local ws = core and core.db and core.db.profile and core.db.profile.windowSkins
+    return (ws and ws.slotAlpha) or 1
+end                 -- rounded square with small corners (buttons, icons)
+R.MAP_MASK = ASSETS .. "h3z_mapmask"          -- .blp: the minimap only takes BLP mask files
 
 local CORNER_TEX = {
     TOPLEFT = ASSETS .. "h3z_corner_tl",
@@ -54,13 +65,17 @@ function R.Settings()
     local s = p.modernLook
     if s.rounded == nil then s.rounded = true end
     if s.radius == nil then s.radius = 6 end
+    if not s.roundFix1 then          -- same one-time fix as Modern Look (whichever runs first)
+        s.roundFix1 = true
+        s.rounded, s.buttons, s.castbars = true, true, true
+    end
     return s
 end
 
 function R.Enabled()
     local s = R.Settings()
     if not s then return false end
-    return (s.enabled ~= false) and s.rounded and true or false
+    return s.rounded and true or false
 end
 
 function R.Radius()
@@ -81,27 +96,61 @@ R.PixelSize = PixelSize
 ---------------------------------------------------------------------------
 -- Corner masks
 ---------------------------------------------------------------------------
+-- The client applies at most three masks to one texture, so the four corners are
+-- done with TWO masks: a left end (top-left + bottom-left) and a right end. Each end
+-- texture holds two quarter circles whose radius is 1/k of its height; the k that
+-- gives the radius closest to the one asked for is picked (k = 2 is a full pill end).
+local END_K = { 2, 4, 8 }
+local function EndFor(h, radius)
+    local want = h / math.max(1, radius)
+    local best, diff = END_K[1], math.huge
+    for _, k in ipairs(END_K) do
+        local d = math.abs(k - want)
+        if d < diff then best, diff = k, d end
+    end
+    return best
+end
+
 function R.CornerMasks(owner, target, radius, inset, key)
     key = key or "h3zRoundMasks"
     local set = owner[key]
     if not set then
-        set = {}
-        for _, c in ipairs(CORNERS) do
-            local m = owner:CreateMaskTexture()
-            m:SetTexture(CORNER_TEX[c], "CLAMP", "CLAMP")
-            set[c] = m
-        end
+        set = { LEFT = owner:CreateMaskTexture(), RIGHT = owner:CreateMaskTexture() }
         owner[key] = set
     end
     inset = inset or 0
-    local r = math.max(1, (radius or 6) - inset)
-    for c, m in pairs(set) do
-        m:ClearAllPoints()
-        local x = (c == "TOPLEFT" or c == "BOTTOMLEFT") and inset or -inset
-        local y = (c == "TOPLEFT" or c == "TOPRIGHT") and -inset or inset
-        m:SetPoint(c, target, c, x, y)
-        m:SetSize(r, r)
+    local h = (target.GetHeight and target:GetHeight()) or 0
+    if h <= 0 then h = (radius or 6) * 4 end
+    h = math.max(2, h - inset * 2)
+    local k = EndFor(h, math.max(1, (radius or 6) - inset))
+    local w = h / k
+    set.LEFT:SetTexture(ASSETS .. "h3z_end_l" .. k, "CLAMP", "CLAMP")
+    set.RIGHT:SetTexture(ASSETS .. "h3z_end_r" .. k, "CLAMP", "CLAMP")
+    set.LEFT:ClearAllPoints()
+    set.LEFT:SetPoint("TOPLEFT", target, "TOPLEFT", inset, -inset)
+    set.LEFT:SetPoint("BOTTOMLEFT", target, "BOTTOMLEFT", inset, inset)
+    set.LEFT:SetWidth(w)
+    set.RIGHT:ClearAllPoints()
+    set.RIGHT:SetPoint("TOPRIGHT", target, "TOPRIGHT", -inset, -inset)
+    set.RIGHT:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", -inset, inset)
+    set.RIGHT:SetWidth(w)
+    return set
+end
+
+-- One mask for square things (buttons, icons): a rounded square stretched over the target
+function R.SquareMask(owner, target, inset, key)
+    key = key or "h3zSquareMask"
+    local set = owner[key]
+    if not set then
+        local m = owner:CreateMaskTexture()
+        m:SetTexture(R.TILE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        set = { ALL = m }
+        owner[key] = set
     end
+    inset = inset or 0
+    set.ALL:ClearAllPoints()
+    set.ALL:SetPoint("TOPLEFT", target, "TOPLEFT", inset, -inset)
+    set.ALL:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", -inset, inset)
     return set
 end
 

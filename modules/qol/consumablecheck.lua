@@ -296,12 +296,12 @@ local function CreateConsumableButton(parent, index, buttonType, iconID, isClick
 
     button.timeText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     button.timeText:SetPoint("BOTTOM", button, "TOP", 0, 2)
-    button.timeText:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    button.timeText:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), 9, "OUTLINE")
     button.timeText:SetTextColor(1, 1, 1, 1)
 
     button.countText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     button.countText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
-    button.countText:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    button.countText:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), 10, "OUTLINE")
     button.countText:SetTextColor(1, 1, 1, 1)
 
     if isClickable then

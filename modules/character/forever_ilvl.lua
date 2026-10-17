@@ -27,7 +27,8 @@ local avgText
 local function Font(fs, size)
     local path = STANDARD_TEXT_FONT
     local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
-    if LSM then path = LSM:Fetch("font", "H3z0UI", true) or path end
+    if _G.H3z0UI_GetFont then path = _G.H3z0UI_GetFont() or path
+    elseif LSM then path = LSM:Fetch("font", "Poppins SemiBold", true) or path end
     fs:SetFont(path, size, "OUTLINE")
 end
 

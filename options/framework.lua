@@ -276,9 +276,23 @@ end
 local FONT_PATH = LSM:Fetch("font", "H3z0UI") or [[Interface\AddOns\H3z0UI\assets\H3z0UI.ttf]]
 GUI.FONT_PATH = FONT_PATH
 
--- Helper for future configurability
+-- The options window follows the H3z0 UI font (General > Font)
 local function GetFontPath()
     return FONT_PATH
+end
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:SetScript("OnEvent", function()
+        local ui = _G.H3z0UI
+        if ui and ui.GetGlobalFont then
+            local ok, path = pcall(ui.GetGlobalFont, ui)
+            if ok and path then
+                FONT_PATH = path
+                GUI.FONT_PATH = path
+            end
+        end
+    end)
 end
 
 ---------------------------------------------------------------------------
@@ -4114,18 +4128,16 @@ function GUI:CreateMainFrame()
     -- Panel Scale (compact inline: label + editbox + slider)
     local scaleContainer = CreateFrame("Frame", nil, titleBar)
     scaleContainer:SetSize(160, 20)
-    scaleContainer:SetPoint("RIGHT", frame, "TOPRIGHT", -46, CTRL_Y)
+    scaleContainer:SetPoint("RIGHT", frame, "TOPRIGHT", -52, CTRL_Y)
     classToggle:SetPoint("RIGHT", scaleContainer, "LEFT", -16, 0)
     accentLabel:SetPoint("RIGHT", classToggle, "LEFT", -16, 0)
 
     local scaleLabel = scaleContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     SetFont(scaleLabel, 10, "", C.textMuted)
     scaleLabel:SetText("Panel Scale:")
-    scaleLabel:SetPoint("LEFT", scaleContainer, "LEFT", 0, 0)
 
     local scaleEditBox = CreateFrame("EditBox", nil, scaleContainer, "BackdropTemplate")
     scaleEditBox:SetSize(38, 16)
-    scaleEditBox:SetPoint("LEFT", scaleLabel, "RIGHT", 5, 0)
     local px = H3z0UICore:GetPixelSize(scaleEditBox)
     scaleEditBox:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -4142,7 +4154,11 @@ function GUI:CreateMainFrame()
 
     local scaleSlider = CreateFrame("Slider", nil, scaleContainer, "BackdropTemplate")
     scaleSlider:SetSize(70, 12)
-    scaleSlider:SetPoint("LEFT", scaleEditBox, "RIGHT", 5, 0)
+    -- laid out from the right edge so a wider font can never push the slider into the close button
+    scaleSlider:SetPoint("RIGHT", scaleContainer, "RIGHT", 0, 0)
+    scaleEditBox:SetPoint("RIGHT", scaleSlider, "LEFT", -6, 0)
+    scaleLabel:SetPoint("RIGHT", scaleEditBox, "LEFT", -6, 0)
+    scaleContainer:SetWidth(math.ceil((scaleLabel:GetStringWidth() or 70) + 6 + 38 + 6 + 70))
     scaleSlider:SetOrientation("HORIZONTAL")
     scaleSlider:SetMinMaxValues(0.8, 1.5)
     scaleSlider:SetValueStep(0.05)

@@ -16,7 +16,6 @@ local function CreateGeneralQoLPage(parent)
         {name = "HUD Visibility", builder = ns.H3z0UI_HUDVisibilityOptions.BuildHUDVisibilityTab},
         {name = "Cursor & Crosshair", builder = ns.H3z0UI_CrosshairOptions.BuildCrosshairTab},
         {name = "Buff & Debuff", builder = ns.H3z0UI_BuffDebuffOptions.BuildBuffDebuffTab},
-        {name = "Chat", builder = ns.H3z0UI_ChatOptions.BuildChatTab},
         {name = "Tooltip", builder = ns.H3z0UI_TooltipsOptions.BuildTooltipTab},
         {name = "Hover Name", builder = ns.H3z0UI_HoverNameOptions.BuildHoverNameTab},
         {name = "Character Pane", builder = ns.H3z0UI_CharacterOptions.BuildCharacterPaneTab},

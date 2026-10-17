@@ -151,8 +151,10 @@ local function GetFontList()
             -- Only allow fonts from WoW defaults, H3z0UI, or SharedMedia
             local isWoWFont = pathLower:find("^fonts\\") ~= nil or pathLower:find("^fonts/") ~= nil
             local isSharedMediaFont = pathLower:find("sharedmedia") ~= nil
+                or pathLower:find("h3z0ui") ~= nil      -- H3z0 UI's own fonts (Poppins, Expressway, ...)
 
-            if (isWoWFont or isSharedMediaFont) and path ~= "" then
+            -- every registered font is offered (game, H3z0 UI, SharedMedia and other addons' fonts)
+            if path ~= "" then
                 -- Pre-warm the font by actually applying it (forces WoW to load the font file)
                 local success = pcall(function()
                     fontPrewarmFrame.text:SetFont(path, 12, "")

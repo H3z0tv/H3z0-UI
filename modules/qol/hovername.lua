@@ -26,7 +26,7 @@ local DEFAULTS = {
     enabled = true,
     cursorAnchor = "TOP", offsetVertical = 18, offsetHorizontal = 0,
     aimGap = 28,   -- extra space from the cursor while mouselooking (the cursor is your aim then)
-    fontSize = 12, fontType = "Friz Quadrata TT", fontOutline = "OUTLINE",
+    fontSize = 12, fontType = "Poppins SemiBold", fontOutline = "OUTLINE",
     bgEnabled = false, bgColor = {0, 0, 0, 1}, bgAlpha = 50, bgPadding = 2,
     playerClassColor = true, playerShowLevel = true, playerLevelColor = true,
     playerShowTarget = true, playerShowStatus = true, playerShowGuildName = false,
@@ -477,7 +477,7 @@ local function ResolveFontPath()
     local name = Get("fontType")
     local path
     if LSM and name then path = LSM:Fetch("font", name, true) end
-    return path or "Fonts\\FRIZQT__.TTF"
+    return path or (_G.H3z0UI_GetFont and _G.H3z0UI_GetFont()) or "Fonts\\FRIZQT__.TTF"
 end
 
 local function UpdateFonts()

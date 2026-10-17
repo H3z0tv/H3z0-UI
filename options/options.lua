@@ -152,8 +152,10 @@ local function GetFontList()
             -- Only allow fonts from WoW defaults, H3z0UI, or SharedMedia
             local isWoWFont = pathLower:find("^fonts\\") ~= nil or pathLower:find("^fonts/") ~= nil
             local isSharedMediaFont = pathLower:find("sharedmedia") ~= nil
+                or pathLower:find("h3z0ui") ~= nil      -- H3z0 UI's own fonts (Poppins, Expressway, ...)
 
-            if (isWoWFont or isSharedMediaFont) and path ~= "" then
+            -- every registered font is offered (game, H3z0 UI, SharedMedia and other addons' fonts)
+            if path ~= "" then
                 -- Pre-warm the font by actually applying it (forces WoW to load the font file)
                 local success = pcall(function()
                     fontPrewarmFrame.text:SetFont(path, 12, "")
@@ -411,6 +413,7 @@ function GUI:InitializeOptions()
     GUI:AddTab(frame, "Party Frames", ns.H3z0UI_PartyFramesOptions.CreatePartyFramesPage)
     GUI:AddTab(frame, "Cooldown Manager", ns.H3z0UI_NCDMOptions.CreateCDMSetupPage)
     GUI:AddTab(frame, "Unit Frames", ns.H3z0UI_UnitFramesOptions.CreateUnitFramesPage)
+    GUI:AddTab(frame, "Chat", ns.H3z0UI_ChatOptions.CreateChatPage)
     GUI:AddTab(frame, "Action Bars", ns.H3z0UI_ActionBarsOptions.CreateActionBarsPage)
     GUI:AddTab(frame, "Minimap", ns.H3z0UI_MinimapPageOptions.CreateMinimapPage)
     GUI:AddTab(frame, "Skinning & Autohide", ns.H3z0UI_AutohidesOptions.CreateAutohidesPage)

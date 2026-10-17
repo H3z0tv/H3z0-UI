@@ -79,6 +79,10 @@ local function BuildPartyFramesTab(tabContent)
     Slider("Health Bar Height", 6, 30, 1, "healthHeight")
     Slider("Power Bar Height", 2, 14, 1, "powerHeight")
     Slider("Font Size", 8, 18, 1, "fontSize")
+    if pf.nameFontSize == nil then pf.nameFontSize = 0 end
+    if pf.healthFontSize == nil then pf.healthFontSize = 0 end
+    Slider("Name Font Size (0 = Font Size)", 0, 24, 1, "nameFontSize")
+    Slider("Health Text Size (0 = Font Size)", 0, 24, 1, "healthFontSize")
 
     Section("Elements")
     Check("Show Power Bar", "showPower")

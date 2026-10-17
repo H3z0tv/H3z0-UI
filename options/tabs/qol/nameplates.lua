@@ -241,6 +241,10 @@ Build = function(tabContent)
         Place(GUI:CreateFormCheckbox(tabContent, "Show Level", "showLevel", npdb, RefreshNP))
         Place(GUI:CreateFormCheckbox(tabContent, "Show Health Value", "showHealth", npdb, RefreshNP))
         Place(GUI:CreateFormCheckbox(tabContent, "Show Health Percent", "showPercent", npdb, RefreshNP))
+        Info("Teammates inside dungeons / raids: the game locks friendly nameplates there, so they can't get the H3z0 look. H3z0 UI can switch Blizzard's own settings while you are inside (and back when you leave):", 34)
+        local function RefreshInst() if _G.H3z0UI_ApplyInstanceFriendly then _G.H3z0UI_ApplyInstanceFriendly() end end
+        Place(GUI:CreateFormCheckbox(tabContent, "Teammates in Class Colours (instances)", "instClassColors", npdb, RefreshInst))
+        Place(GUI:CreateFormCheckbox(tabContent, "Teammates as Names Only (instances)", "instNamesOnly", npdb, RefreshInst))
         Place(GUI:CreateFormCheckbox(tabContent, "Nameplate Colours on Unit Frames", "unitFrameColors", npdb, function()
             RefreshNP()
             if _G.H3z0UI_RefreshUnitFrames then pcall(_G.H3z0UI_RefreshUnitFrames) end

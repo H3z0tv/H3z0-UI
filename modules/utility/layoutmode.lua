@@ -664,10 +664,10 @@ local SETTINGS = {
     party = { 4, 1 }, raidtab = { 4, 1 },
     powerbar = { 5, 5, "Primary Class Resource Bar" },
     secondarypowerbar = { 5, 5, "Secondary Class Resource Bar" },
-    totems = { 7, 5 },
+    totems = { 8, 5 },
     combattimer = { 3, 1, "Combat Timer" },
-    mplus = { 9, 2, "H3z0 UI M+ Timer" },
-    minimap = { 8, 1 },
+    mplus = { 10, 2, "H3z0 UI M+ Timer" },
+    minimap = { 9, 1 },
     coords = { 1, 5 },
     panel_bottombar = { 1, 2 },
 }
@@ -676,28 +676,28 @@ for unit, sub in pairs(UF_SUB) do
     SETTINGS["cb_" .. unit] = { 6, sub, "Castbar" }
 end
 for _, k in ipairs({ "ab1", "ab2", "ab3", "ab4", "ab5", "ab6", "ab7", "ab8", "abStance", "abPet" }) do
-    SETTINGS[k] = { 7, 3 }
+    SETTINGS[k] = { 8, 3 }
 end
 
 local function SettingsFor(el)
     if SETTINGS[el.key] then return SETTINGS[el.key] end
-    if el.key:match("^panel_") then return { 8, 2 } end
+    if el.key:match("^panel_") then return { 9, 2 } end
     local S = Enum and Enum.EditModeSystem or {}
     if el.sys and S.ObjectiveTracker and el.sys == S.ObjectiveTracker then
-        return { 9, 2, "Objective Tracker" }          -- Skinning & Autohide > Skinning
+        return { 10, 2, "Objective Tracker" }          -- Skinning & Autohide > Skinning
     end
     if el.sys and S.AuraFrame and el.sys == S.AuraFrame then
         return { 3, 4 }                               -- General & QoL > Buff & Debuff
     end
     if el.sys and S.ChatFrame and el.sys == S.ChatFrame then
-        return { 3, 5 }                               -- General & QoL > Chat
+        return { 7, 1 }                               -- Chat
     end
     if el.sys and S.ExtraAbilities and el.sys == S.ExtraAbilities then
-        return { 7, 4 }                               -- Action Bars > Extra Buttons
+        return { 8, 4 }                               -- Action Bars > Extra Buttons
     end
     if el.sys and ((S.TalkingHeadFrame and el.sys == S.TalkingHeadFrame)
         or (S.StatusTrackingBar and el.sys == S.StatusTrackingBar)) then
-        return { 9, 1 }                               -- Skinning & Autohide > Autohide
+        return { 10, 1 }                               -- Skinning & Autohide > Autohide
     end
     if el.cdmIndex ~= nil then
         local I = Enum and Enum.EditModeCooldownViewerSystemIndices or {}

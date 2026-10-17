@@ -74,7 +74,7 @@ local function BuildImportExportTab(tabContent)
     local y = -10
     local PAD = 10
 
-    GUI:SetSearchContext({tabIndex = 13, tabName = "Import", subTabIndex = 1, subTabName = "Import/Export"})
+    GUI:SetSearchContext({tabIndex = 14, tabName = "Import", subTabIndex = 1, subTabName = "Import/Export"})
 
     local info = GUI:CreateLabel(tabContent, "Import and export H3z0 UI profiles", 11, C.textMuted)
     info:SetPoint("TOPLEFT", PAD, y)
@@ -239,7 +239,7 @@ local function BuildH3z0UIStringsTab(tabContent)
     local PAD = 10
     local BOX_HEIGHT = 70
 
-    GUI:SetSearchContext({tabIndex = 13, tabName = "Import", subTabIndex = 2, subTabName = "H3z0 UI's Strings"})
+    GUI:SetSearchContext({tabIndex = 14, tabName = "Import", subTabIndex = 2, subTabName = "H3z0 UI's Strings"})
 
     local info = GUI:CreateLabel(tabContent, "H3z0 UI's personal import strings - select all and copy", 11, C.textMuted)
     info:SetPoint("TOPLEFT", PAD, y)

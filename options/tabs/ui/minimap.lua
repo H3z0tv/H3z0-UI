@@ -259,7 +259,7 @@ local function BuildMinimapTab(tabContent)
     local db = Shared.GetDB()
 
     -- Set search context for auto-registration
-    GUI:SetSearchContext({tabIndex = 8, tabName = "Minimap", subTabIndex = 1, subTabName = "Minimap"})
+    GUI:SetSearchContext({tabIndex = 9, tabName = "Minimap", subTabIndex = 1, subTabName = "Minimap"})
 
     -- Early return if database not ready
     if not db then
@@ -544,7 +544,7 @@ BuildDatatextTab = function(tabContent)
     local db = Shared.GetDB()
 
     -- Set search context for auto-registration
-    GUI:SetSearchContext({tabIndex = 8, tabName = "Minimap", subTabIndex = 2, subTabName = "Datatext"})
+    GUI:SetSearchContext({tabIndex = 9, tabName = "Minimap", subTabIndex = 2, subTabName = "Datatext"})
 
     -- Early return if database not ready
     if not db then

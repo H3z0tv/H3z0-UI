@@ -1,6 +1,6 @@
 --[[
     H3z0UI Options - Chat Tab
-    BuildChatTab for General & QoL page
+    Own sidebar page "Chat" (between Unit Frames and Action Bars): Chat + Look & Hide
 ]]
 
 local ADDON_NAME, ns = ...
@@ -18,7 +18,7 @@ local function BuildChatTab(tabContent)
     local db = Shared.GetDB()
 
     -- Set search context for auto-registration
-    GUI:SetSearchContext({tabIndex = 3, tabName = "General & QoL", subTabIndex = 5, subTabName = "Chat"})
+    GUI:SetSearchContext({tabIndex = 7, tabName = "Chat", subTabIndex = 1, subTabName = "Chat"})
 
     -- Refresh callback
     local function RefreshChat()
@@ -274,7 +274,72 @@ local function BuildChatTab(tabContent)
     tabContent:SetHeight(math.abs(y) + 50)
 end
 
+---------------------------------------------------------------------------
+-- Look & Hide: the chat window skin and "Hide Chat When Idle"
+---------------------------------------------------------------------------
+local function BuildChatLookTab(tabContent)
+    local y = -10
+    local FORM_ROW = 32
+    local PADDING = Shared.PADDING
+    GUI:SetSearchContext({tabIndex = 7, tabName = "Chat", subTabIndex = 2, subTabName = "Look & Hide"})
+
+    local WS = ns.WindowSkins
+    local ws = WS and WS.GetSettings and WS.GetSettings()
+    if not ws then return end
+    if ws.chatIdleFade == nil then ws.chatIdleFade = false end
+    if ws.chatIdleDelay == nil then ws.chatIdleDelay = 10 end
+    if ws.chatIdleAlpha == nil then ws.chatIdleAlpha = 0 end
+    local function Refresh() if _G.H3z0UI_RefreshWindowSkins then _G.H3z0UI_RefreshWindowSkins() end end
+
+    local function Section(title)
+        GUI:SetSearchSection(title)
+        local h = GUI:CreateSectionHeader(tabContent, title)
+        h:SetPoint("TOPLEFT", PADDING, y)
+        y = y - h.gap
+    end
+    local function Info(text, h)
+        local l = GUI:CreateLabel(tabContent, text, 10, C.textMuted)
+        l:SetPoint("TOPLEFT", PADDING, y)
+        l:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+        l:SetJustifyH("LEFT")
+        y = y - (h or 20)
+    end
+    local function Place(w)
+        w:SetPoint("TOPLEFT", PADDING, y)
+        w:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+        y = y - FORM_ROW
+    end
+
+    Section("Chat Window Skin")
+    Info("The slate look: one dark panel behind the chat with a thin grey border, readable tab names and a typing box without background. (Also in Unit Frames > Portraits > Window Skins.)", 34)
+    Place(GUI:CreateFormCheckbox(tabContent, "Use Window Skins", "enabled", ws, Refresh))
+    Place(GUI:CreateFormCheckbox(tabContent, "Skin the Chat", "chat", ws, Refresh))
+    Place(GUI:CreateFormSlider(tabContent, "Chat Opacity", 0, 1, 0.05, "chatAlpha", ws, Refresh))
+
+    Section("Hide Chat When Idle")
+    Info("The whole chat window (background, tabs, text and buttons) fades away when nothing happens, and comes back on a new message, when you move the mouse over it or press Enter.", 34)
+    Place(GUI:CreateFormCheckbox(tabContent, "Hide Chat When Idle", "chatIdleFade", ws, Refresh))
+    Place(GUI:CreateFormSlider(tabContent, "Hide After (seconds)", 2, 60, 1, "chatIdleDelay", ws, Refresh))
+    Place(GUI:CreateFormSlider(tabContent, "Opacity While Hidden", 0, 0.8, 0.05, "chatIdleAlpha", ws, Refresh))
+    Info("Message Fade (on the Chat tab) only fades old lines of text; this hides the window itself.", 22)
+
+    tabContent:SetHeight(math.abs(y) + 50)
+end
+
+-- Own sidebar page between Unit Frames and Action Bars
+local function CreateChatPage(parent)
+    local scroll, content = Shared.CreateScrollableContent(parent)
+    GUI:CreateSubTabs(content, {
+        {name = "Chat", builder = BuildChatTab},
+        {name = "Look & Hide", builder = BuildChatLookTab},
+    })
+    content:SetHeight(600)
+    return scroll
+end
+
 -- Export
 ns.H3z0UI_ChatOptions = {
-    BuildChatTab = BuildChatTab
+    BuildChatTab = BuildChatTab,
+    BuildChatLookTab = BuildChatLookTab,
+    CreateChatPage = CreateChatPage,
 }

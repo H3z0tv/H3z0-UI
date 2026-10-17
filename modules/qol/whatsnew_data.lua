@@ -8,8 +8,9 @@
 local ADDON_NAME, ns = ...
 
 ns.WhatsNew = {
-    version = "0.24.1",
+    version = "0.24.2",
     new = {
+        "|cff34D399Character and Inspect v2|r: your homeland as the background, name + title and spec in class colour, compact slots with item level and \"Add enchant\" / \"Add gem\" hints, a big Item Level block, Attributes and Enhancements with bars, and the H3z0 UI logo. General & QoL > Character Pane > Style (Classic still there).",
         "|cff34D399One font for everything|r: Poppins SemiBold is the H3z0 UI font for unit frames, bars, chat, tooltips, nameplates, Blizzard's menus and the options window. Pick another in the Setup Wizard (new \"Pick your font\" step) or General & QoL > Default Font Settings - it goes on everything at once.",
         "|cff34D399Slate look|r for the chat and the damage meter: one solid dark panel with a thin grey border, readable tab names, no tab boxes and a typing box with no background - only \"Say:\". Separate opacity sliders for chat and damage meter. Unit Frames > Portraits > Window Skins.",
         "|cff34D399Modern Action Buttons|r: slate tiles in the same colour as the chat, small rounded corners, rounded cooldown swipe. Controlled by Action Bars > Button Appearance (Backdrop, Borders, Gloss, Icon Crop).",

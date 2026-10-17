@@ -18,7 +18,7 @@ local function BuildCharacterPaneTab(tabContent)
     local db = Shared.GetDB()
 
     -- Set search context for auto-registration
-    GUI:SetSearchContext({tabIndex = 3, tabName = "General & QoL", subTabIndex = 8, subTabName = "Character Pane"})
+    GUI:SetSearchContext({tabIndex = 3, tabName = "General & QoL", subTabIndex = 7, subTabName = "Character Pane"})
 
     local char = db and db.character
     if not char then return end
@@ -50,6 +50,26 @@ local function BuildCharacterPaneTab(tabContent)
     enableInfo:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
     enableInfo:SetJustifyH("LEFT")
     y = y - 20
+
+    -- Style: v2 (modern) or classic
+    if char.style == nil then char.style = "v2" end
+    local styleDrop = GUI:CreateFormDropdown(tabContent, "Style", {
+        { value = "v2", text = "v2 - modern (race background, item level + enchant hints, logo)" },
+        { value = "classic", text = "Classic (item names and enchants listed)" },
+    }, "style", char, function()
+        if _G.H3z0UI_RefreshCharacterV2 then pcall(_G.H3z0UI_RefreshCharacterV2) end
+        GUI:ShowConfirmation({
+            title = "Reload Recommended",
+            message = "The character and inspect panes switch style completely after a reload.",
+            acceptText = "Reload Now",
+            cancelText = "Later",
+            isDestructive = false,
+            onAccept = function() H3z0UI:SafeReload() end,
+        })
+    end)
+    styleDrop:SetPoint("TOPLEFT", PADDING, y)
+    styleDrop:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+    y = y - FORM_ROW
 
     -- Section Header
     local header = GUI:CreateSectionHeader(tabContent, "Character Pane Settings")

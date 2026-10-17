@@ -78,6 +78,7 @@ local function DB()
         showLevel = true, showHealth = true, showPercent = true, castbar = true, castHeight = 16,
         mythicColors = "instance", threat = true, arrows = true, friendly = true, rounded = true,
         targetScale = 1.1, matchPlayer = false, unitFrameColors = true,
+        instClassColors = true, instNamesOnly = false,
     }
     for k, v in pairs(defaults) do if s[k] == nil then s[k] = v end end
     -- rollback: the nameplates keep their own look (the unit frames take the nameplate colours instead)
@@ -204,12 +205,69 @@ local function IsCastBar(f)
     return (f.Icon ~= nil or f.Spark ~= nil or f.Text ~= nil or f.BorderShield ~= nil or f.castID ~= nil)
 end
 
+-- every piece of Blizzard's cast bar (fill, spark, icon, text, shield, interrupt flash ...) is
+-- faded too: the interrupt flash animates the bar itself, so hiding only the bar isn't enough
+local function FadeCastPieces(frame, hidden, depth)
+    depth = depth or 0
+    if depth > 3 then return end
+    -- the flashes are alpha animations that would show a piece again: stop them while hidden
+    if hidden and frame.GetAnimationGroups then
+        for _, ag in ipairs({ frame:GetAnimationGroups() }) do
+            if ag.IsPlaying and ag:IsPlaying() then pcall(ag.Stop, ag) end
+        end
+    end
+    for _, r in ipairs({ frame:GetRegions() }) do
+        if r.SetAlpha then
+            if hidden then
+                if r.h3zNPA == nil then r.h3zNPA = r:GetAlpha() end
+                r:SetAlpha(0)
+            elseif r.h3zNPA ~= nil then
+                r:SetAlpha(r.h3zNPA); r.h3zNPA = nil
+            end
+        end
+    end
+    for _, c in ipairs({ frame:GetChildren() }) do
+        if c.SetAlpha and not c.h3zNPOwn then
+            if hidden then
+                if c.h3zNPA == nil then c.h3zNPA = c:GetAlpha() end
+                c:SetAlpha(0)
+            elseif c.h3zNPA ~= nil then
+                c:SetAlpha(c.h3zNPA); c.h3zNPA = nil
+            end
+            FadeCastPieces(c, hidden, depth + 1)
+        end
+    end
+    if frame.GetStatusBarTexture then
+        local t = frame:GetStatusBarTexture()
+        if t and t.SetAlpha then
+            if hidden then t:SetAlpha(0) elseif t.h3zNPA ~= nil then t:SetAlpha(t.h3zNPA); t.h3zNPA = nil end
+        end
+    end
+end
+
+local function CastPiecesGuard(self)
+    if self.h3zNPHidden then pcall(FadeCastPieces, self, true) end
+end
+
+local function CastPiecesTick(self, elapsed)
+    if not self.h3zNPHidden then return end
+    self.h3zNPTick = (self.h3zNPTick or 0) + (elapsed or 0)
+    if self.h3zNPTick < 0.05 then return end
+    self.h3zNPTick = 0
+    pcall(FadeCastPieces, self, true)
+end
+
 local function SetCastHidden(bar, hidden)
     pcall(SetHidden, bar, hidden)
+    pcall(FadeCastPieces, bar, hidden)
     if hidden and not bar.h3zNPGuard then
         bar.h3zNPGuard = true
         bar:HookScript("OnShow", CastAlphaGuard)
+        bar:HookScript("OnShow", CastPiecesGuard)
         bar:HookScript("OnUpdate", CastAlphaGuard)
+        bar:HookScript("OnUpdate", CastPiecesTick)
+        -- the interrupt / finish flashes re-show pieces: fade them again when a cast event arrives
+        if bar.HookScript and bar:HasScript("OnEvent") then bar:HookScript("OnEvent", CastPiecesGuard) end
     end
 end
 
@@ -700,18 +758,33 @@ local function UpdateCast(p)
     p.castIcon:Show()
 end
 
-local function CastInterrupted(p)
+-- interrupt in the same bar and style as the cast: full red bar, "Interrupted: <name>"
+-- (the interrupter in class colour when the game tells who it was)
+local function InterrupterName(guid)
+    if not guid or S(guid) or guid == "" or not GetPlayerInfoByGUID then return nil end
+    local ok, _, class, _, _, _, name = pcall(GetPlayerInfoByGUID, guid)
+    if not ok or not name or S(name) then return nil end
+    local c = class and not S(class) and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[class]
+    if c then return string.format("|cff%02x%02x%02x%s|r", math.floor(c.r * 255), math.floor(c.g * 255), math.floor(c.b * 255), name) end
+    return name
+end
+
+local function CastInterrupted(p, _, _, interruptedBy)
     local s = DB()
-    if not s.castbar or not p.castBorder:IsShown() then return end
+    if not s.castbar then return end
     p.castDuration, p.castStart, p.castEnd = nil, nil, nil
     p.cast:SetMinMaxValues(0, 1)
     p.cast:SetValue(1)
     p.cast:SetStatusBarColor(Color("interrupted"))
     p.castLock:SetAlpha(0)
-    p.castText:SetText(INTERRUPTED or "Interrupted")
+    local who = InterrupterName(interruptedBy)
+    local label = INTERRUPTED or "Interrupted"
+    p.castText:SetText(who and (label .. ": " .. who) or label)
     p.castTime:SetText("")
-    p.interruptedUntil = GetTime() + 0.7
-    C_Timer.After(0.75, function()
+    p.castBorder:Show()
+    p.castIcon:Show()
+    p.interruptedUntil = GetTime() + 0.9
+    C_Timer.After(0.95, function()
         if p.unit then
             p.interruptedUntil = nil
             UpdateCast(p)
@@ -801,8 +874,9 @@ local UNIT_EVENTS = {
     UNIT_SPELLCAST_START = function(p) UpdateCast(p) end,
     UNIT_SPELLCAST_DELAYED = function(p) UpdateCast(p) end,
     UNIT_SPELLCAST_STOP = function(p) UpdateCast(p) end,
+    UNIT_SPELLCAST_SUCCEEDED = function(p) UpdateCast(p) end,
     UNIT_SPELLCAST_FAILED = function(p) UpdateCast(p) end,
-    UNIT_SPELLCAST_INTERRUPTED = function(p) CastInterrupted(p) end,
+    UNIT_SPELLCAST_INTERRUPTED = function(p, ...) CastInterrupted(p, ...) end,
     UNIT_SPELLCAST_CHANNEL_START = function(p) UpdateCast(p) end,
     UNIT_SPELLCAST_CHANNEL_UPDATE = function(p) UpdateCast(p) end,
     UNIT_SPELLCAST_CHANNEL_STOP = function(p) UpdateCast(p) end,
@@ -818,7 +892,7 @@ for _, e in ipairs({ "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "PLAYER
     "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "PLAYER_SPECIALIZATION_CHANGED" }) do
     pcall(ev.RegisterEvent, ev, e)
 end
-ev:SetScript("OnEvent", function(_, event, unit)
+ev:SetScript("OnEvent", function(_, event, unit, ...)
     if event == "NAME_PLATE_UNIT_ADDED" then
         pcall(OnAdded, unit)
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
@@ -833,6 +907,73 @@ ev:SetScript("OnEvent", function(_, event, unit)
         if not unit or S(unit) then return end
         local p = plates[unit]
         local fn = p and UNIT_EVENTS[event]
-        if fn then pcall(fn, p) end
+        if fn then pcall(fn, p, ...) end
     end
 end)
+
+
+---------------------------------------------------------------------------
+-- Friendly nameplates inside dungeons / raids / delves
+-- The game locks friendly nameplates in instances (no addon can restyle them), so
+-- H3z0 UI only flips Blizzard's own settings there: class colours and, if wanted,
+-- names only. Your own values come back when you leave the instance.
+---------------------------------------------------------------------------
+local INST_CVARS = {
+    instClassColors = { name = "ShowClassColorInFriendlyNameplate", on = "1" },
+    instNamesOnly   = { name = "nameplateShowOnlyNames", on = "1" },
+}
+local instSaved = nil      -- cvar -> value before entering the instance
+local instPending = false
+
+local function GetCV(n)
+    if C_CVar and C_CVar.GetCVar then return C_CVar.GetCVar(n) end
+    return GetCVar and GetCVar(n)
+end
+local function SetCV(n, v)
+    if C_CVar and C_CVar.SetCVar then return pcall(C_CVar.SetCVar, n, v) end
+    return pcall(SetCVar, n, v)
+end
+
+local function ApplyInstanceFriendly()
+    if InCombatLockdown() then instPending = true return end
+    instPending = false
+    local s = DB()
+    if not s then return end
+    local inside = InGroupContent()
+    if inside then
+        for key, cv in pairs(INST_CVARS) do
+            if s[key] and GetCV(cv.name) ~= nil then
+                instSaved = instSaved or {}
+                if instSaved[cv.name] == nil then instSaved[cv.name] = GetCV(cv.name) end
+                if GetCV(cv.name) ~= cv.on then SetCV(cv.name, cv.on) end
+            elseif instSaved and instSaved[cv.name] ~= nil then
+                SetCV(cv.name, instSaved[cv.name]); instSaved[cv.name] = nil
+            end
+        end
+    elseif instSaved then
+        for n, v in pairs(instSaved) do SetCV(n, v) end
+        instSaved = nil
+    end
+    -- remember across a reload / crash inside the instance
+    s.instSaved = instSaved
+end
+NP.ApplyInstanceFriendly = ApplyInstanceFriendly
+_G.H3z0UI_ApplyInstanceFriendly = ApplyInstanceFriendly
+
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    f:RegisterEvent("PLAYER_REGEN_ENABLED")
+    f:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then
+            if instPending then ApplyInstanceFriendly() end
+            return
+        end
+        if event == "PLAYER_ENTERING_WORLD" and instSaved == nil then
+            local s = DB()
+            if s and type(s.instSaved) == "table" then instSaved = s.instSaved end
+        end
+        C_Timer.After(1, ApplyInstanceFriendly)
+    end)
+end

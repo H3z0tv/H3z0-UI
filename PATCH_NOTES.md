@@ -1,5 +1,14 @@
 # H3z0 UI - Patch Notes
 
+## 0.24.2 - Character and Inspect v2
+New
+- Character pane and Inspect pane "v2" (new default style; General & QoL > Character Pane > Style, Classic still available):
+- Background: the character's homeland - the game's race backgrounds (class art when a race has none), darkened at the edges so the slots and stats stay readable. Inspect shows the inspected player's homeland.
+- Header: the name in class colour with the title next to it, and under it "Lv 90", the spec icon and "Spec Class" in class colour.
+- Item slots: compact - the item level in the item's quality colour beside each icon with a quality-coloured line under it, and a hint only when something is missing ("Add enchant" in red, "Add 1 gem" in green). Gems stay as small icons.
+- Stats: an Item Level block at the top (equipped / overall, big, in class colour), and Attributes / Enhancements with centred headers between class-coloured lines, soft class-coloured strips behind the values and tall see-through bars for Crit, Haste, Mastery and Versatility.
+- The H3z0 UI logo in the bottom-right corner.
+
 ## 0.24.1 - Slate look, one font for everything, rounded fixes
 New
 - One font for everything: Poppins SemiBold is the new default H3z0 UI font. The General font and every element with its own font option (unit frames, cast bars, action bars, minimap, info bars, M+ timer, nameplates, ...) use it, the options window and the Setup Wizard use it, and with "Apply to Blizzard UI" every Blizzard font object follows too (menus, buttons, unit names, system and quest text, tooltips, chat). Blizzard text only changes on English, German, French, Spanish, Italian and Portuguese clients, because the bundled fonts have no Cyrillic or Asian letters. Settings still on the old H3z0UI font move over once; fonts you picked yourself stay.
@@ -12,6 +21,14 @@ New
 - Unit frames in nameplate colours (Nameplates page > "Nameplate Colours on Unit Frames", on by default): Player, Target, Focus, target of target, pet and boss health bars use exactly the H3z0 Nameplates colours - class colours for players, hostile red, neutral yellow, friendly green, grey when tapped, and the Mythic colours (boss, mini boss, caster, melee, ...) for enemies in dungeons. Changing a colour on the Nameplates page changes it on the unit frames too.
 - H3z0 Nameplates cast bar: never wider than the health bar (icon inside that width), 16 px high with a bigger spell name, rounded like the health bar. Blizzard's own nameplate cast bar is now kept hidden while H3z0 Nameplates are on.
 - Rounded Corners, Modern Action Buttons, Modern Cast Bars and Window Skins no longer depend on the Modern Look switch (Modern Look now only adds shadows, sheen and glow). They are switched on once with this version; the Classic look in the wizard still turns them off on purpose.
+- Party Frames Round Portrait v2 now match the Player frame: the H3z0 UI font, a white name above the bar, a taller health bar with "614K | 100%" on the right inside it, the nameplate colours (class colours for players), and the Player frame's bar texture and dark background, the round end (now always fully round - it was sized before the bar had its height), a thin class-coloured ring sized from the bar like the Player frame (1.6 x the bar height) and the soft portrait glow (Modern Look > Portrait Glow). Classic style is unchanged.
+- Options: Chat has its own page in the sidebar, between Unit Frames and Action Bars (it was a tab under General & QoL). Tab "Chat" has all the chat settings, tab "Look & Hide" the chat window skin and the new Hide Chat When Idle. Search and Layout Mode right-click open the right pages.
+- New: Hide Chat When Idle (Chat > Look & Hide): the whole chat window - background, tabs, text and buttons - fades away after a few seconds without activity and comes back on a new message, when you move the mouse over it or press Enter. Settings: Hide After (seconds) and Opacity While Hidden.
+- Party Frames: new "Name Font Size" and "Health Text Size" sliders (Party Frames > Layout; 0 = use Font Size), and the level badge on the portrait is off by default (switched off once; "Show Level" brings it back).
+- Font lists: every font dropdown (Hover Name, unit frames, action bars, ...) now offers all registered fonts - the H3z0 UI fonts (Poppins, Expressway) and fonts from other addons were missing.
+- Hover Name follows the H3z0 UI font by default and is included in "Use this font everywhere" (it was missed before); it is moved onto your Default Font once.
+- H3z0 Nameplates: an interrupt now shows in the H3z0 cast bar in the same style as the cast - full red bar and "Interrupted: <name>" with the interrupter in class colour. Blizzard's own cast bar no longer flashes up for the interrupt (all of its pieces and flash animations stay hidden while H3z0 Nameplates are on).
+- Teammates' nameplates inside dungeons, raids and delves: the game locks friendly nameplates there, so they can't get the H3z0 look. H3z0 UI now switches Blizzard's own settings while you are inside and puts yours back when you leave: class colours (on by default) and, if you want, names only (Nameplates page > "Teammates in Class Colours" / "Teammates as Names Only").
 - New chat commands: /h3z0ui round (shows whether rounded corners, modern buttons / cast bars and window skins are on, the minimap shape and mask, and applies them again) and /h3z0ui roundtest (three test squares for 20 seconds).
 
 Fixed

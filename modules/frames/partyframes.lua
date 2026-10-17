@@ -25,7 +25,12 @@ local layoutPending = false
 local issecretvalue = issecretvalue or function() return false end
 
 local function GetSettings()
-    return Helpers.GetModuleDB("partyFrames")
+    local s = Helpers.GetModuleDB("partyFrames")
+    if s and not s.levelOff0241 then
+        s.levelOff0241 = true
+        s.showLevel = false
+    end
+    return s
 end
 
 local function ClassColor(unit)
@@ -33,6 +38,32 @@ local function ClassColor(unit)
     local c = ok and class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
     if c then return c.r, c.g, c.b end
     return 0.8, 0.8, 0.8
+end
+
+-- Round Portrait v2 party frames match the H3z0 Player frame: same font, white name,
+-- "614K | 100%" in the bar, nameplate colours, the player frame's bar texture and background
+local function IsV2(s) return s and s.style == "v2" end
+
+local function NPColor(unit)
+    local NP = ns.H3zPlates
+    if NP and NP.ColorFor then
+        local ok, r, g, b = pcall(NP.ColorFor, unit)
+        if ok and r then return r, g, b end
+    end
+    return nil
+end
+
+local function PlayerFrameTexture()
+    local core = ns.Addon
+    local prof = core and core.db and core.db.profile
+    local uf = prof and prof.h3z0uiUnitFrames
+    local name = uf and uf.player and uf.player.texture
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if name and name ~= "" and LSM then
+        local path = LSM:Fetch("statusbar", name, true)
+        if path then return path end
+    end
+    return Helpers.GetGeneralTexture()
 end
 
 local function Abbrev(value)
@@ -52,7 +83,9 @@ local function UpdateName(f)
     local unit = f.displayUnit
     local name = UnitName(unit)
     f.name:SetText(name or "")
-    if s.classColorName then
+    if IsV2(s) then
+        f.name:SetTextColor(1, 1, 1)          -- white like the Player frame name
+    elseif s.classColorName then
         f.name:SetTextColor(ClassColor(unit))
     else
         f.name:SetTextColor(1, 1, 1)
@@ -96,10 +129,14 @@ local function UpdateRing(f)
     local s = GetSettings(); if not s then return end
     if UnitIsUnit(f.displayUnit, "target") then
         f.ring:SetVertexColor(1, 1, 1)
-    elseif s.classColorRing then
+    elseif s.classColorRing or IsV2(s) then
         f.ring:SetVertexColor(ClassColor(f.displayUnit))
     else
         f.ring:SetVertexColor(0.45, 0.3, 0.2)
+    end
+    if f.v2Glow then
+        local r, g, b = f.ring:GetVertexColor()
+        for _, t in ipairs(f.v2Glow) do t:SetVertexColor(r, g, b, t.alpha) end
     end
 end
 
@@ -112,7 +149,11 @@ local function UpdateHealth(f)
     local unit = f.displayUnit
     local bar = f.health
 
-    if s.classColorHealth then
+    local npr, npg, npb
+    if IsV2(s) then npr, npg, npb = NPColor(unit) end
+    if npr then
+        bar:SetStatusBarColor(npr, npg, npb)
+    elseif s.classColorHealth then
         local r, g, b = ClassColor(unit)
         bar:SetStatusBarColor(r, g, b)
     else
@@ -135,7 +176,17 @@ local function UpdateHealth(f)
     if okMax and okCur then
         bar:SetMinMaxValues(0, maxHP)
         bar:SetValue(curHP)
-        f.healthText:SetText(Abbrev(curHP))
+        local hpTxt = Abbrev(curHP)
+        local done = false
+        if IsV2(s) and UnitHealthPercent then
+            -- "614K | 100%" like the Player frame (secret-safe: values only go to the formatter)
+            local curve = CurveConstants and CurveConstants.ScaleTo100
+            local okP, pct = pcall(UnitHealthPercent, unit, true, curve)
+            if okP and pct ~= nil and curve then
+                done = pcall(f.healthText.SetFormattedText, f.healthText, "%s | %.0f%%", hpTxt, pct)
+            end
+        end
+        if not done then f.healthText:SetText(hpTxt) end
     end
 end
 
@@ -531,7 +582,7 @@ end
 ---------------------------------------------------------------------------
 local ROUND_R = "Interface\\AddOns\\" .. ADDON_NAME .. "\\assets\\h3z_roundend_r"
 
-local function V2Mask(owner, field, ref, grow)
+local function V2Mask(owner, field, ref, grow, height)
     local m = owner[field]
     if not m then
         m = owner:CreateMaskTexture()
@@ -541,7 +592,10 @@ local function V2Mask(owner, field, ref, grow)
     m:ClearAllPoints()
     m:SetPoint("TOPRIGHT", ref, "TOPRIGHT", grow, grow)
     m:SetPoint("BOTTOMRIGHT", ref, "BOTTOMRIGHT", grow, -grow)
-    m:SetWidth(math.max(2, (ref:GetHeight() or 10) + grow * 2) / 2)
+    -- the height is passed in: right after a re-layout GetHeight() can still be 0 (= a square end)
+    local h = height or ref:GetHeight() or 10
+    if h <= 0 then h = 10 end
+    m:SetWidth(math.max(2, h + grow * 2) / 2)
     return m
 end
 
@@ -579,6 +633,47 @@ local function ApplyPartyStyle(f, s, P, BW, gap)
     f.v2Disc:ClearAllPoints()
     f.v2Disc:SetAllPoints(f.portrait)
     f.v2Disc:SetShown(v2)
+
+    -- v2 ring: a solid class-coloured disc behind the portrait (thin ring), like the Player frame
+    if not f.ringMask then
+        f.ringMask = f.v2Top:CreateMaskTexture()
+        f.ringMask:SetTexture(MASK_TEXTURE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    end
+    f.ringMask:ClearAllPoints()
+    f.ringMask:SetAllPoints(f.ring)
+    if v2 then
+        f.ring:SetTexture("Interface\\Buttons\\WHITE8x8")
+        if not f.ringMasked then f.ring:AddMaskTexture(f.ringMask); f.ringMasked = true end
+    else
+        if f.ringMasked then f.ring:RemoveMaskTexture(f.ringMask); f.ringMasked = nil end
+        f.ring:SetTexture(RING_TEXTURE)
+    end
+
+    -- v2 glow behind the ring (Modern Look > Portrait Glow), the same soft glow as the Player frame
+    local ML = ns.ModernLook
+    local mls = ML and ML.GetSettings and ML.GetSettings()
+    local glowOn = v2 and mls and mls.enabled and mls.glow
+    if not f.v2Glow then
+        f.v2Glow = {}
+        for i, a in ipairs({ 0.22, 0.12, 0.06 }) do
+            local t = f.v2Top:CreateTexture(nil, "BACKGROUND", nil, -8 + i)
+            local m = f.v2Top:CreateMaskTexture()
+            m:SetTexture(MASK_TEXTURE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            t:SetTexture("Interface\\Buttons\\WHITE8x8")
+            t:AddMaskTexture(m)
+            t.mask, t.alpha, t.grow = m, a, i * 3
+            f.v2Glow[i] = t
+        end
+    end
+    for _, t in ipairs(f.v2Glow) do
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", f.ring, "TOPLEFT", -t.grow, t.grow)
+        t:SetPoint("BOTTOMRIGHT", f.ring, "BOTTOMRIGHT", t.grow, -t.grow)
+        t.mask:ClearAllPoints()
+        t.mask:SetAllPoints(t)
+        t:SetShown(glowOn and true or false)
+    end
+    f.v2GlowOn = glowOn
     f.levelBox:SetFrameLevel((v2 and f.v2Top:GetFrameLevel() or f:GetFrameLevel()) + 1)
 
     local texList = {
@@ -592,7 +687,7 @@ local function ApplyPartyStyle(f, s, P, BW, gap)
     end
 
     -- bars start at the portrait's centre and keep their right end where it was
-    local half = (P + 10) / 2
+    local half = (f.ring:GetWidth() or (P + 10)) / 2
     f.health:ClearAllPoints()
     f.health:SetWidth(BW + half + gap)
     f.health:SetPoint("LEFT", f.ring, "CENTER", 0, 2)
@@ -621,11 +716,13 @@ local function ApplyPartyStyle(f, s, P, BW, gap)
     f.v2Border:SetPoint("TOPLEFT", f.v2Ref, "TOPLEFT", -1, 1)
     f.v2Border:SetPoint("BOTTOMRIGHT", f.v2Ref, "BOTTOMRIGHT", 1, -1)
     f.v2Border:Show()
-    SetMask(f.v2Border, V2Mask(f, "v2OuterMask", f.v2Ref, 1), true)
-    local hm = V2Mask(f.health, "v2InnerMask", f.v2Ref, 0)
+    local bh = (bottom == f.power) and ((f.health:GetHeight() or 0) + 1 + (f.power:GetHeight() or 0)) or (f.health:GetHeight() or 0)
+    if bh <= 0 then bh = f.v2BlockH or 20 end
+    SetMask(f.v2Border, V2Mask(f, "v2OuterMask", f.v2Ref, 1, bh), true)
+    local hm = V2Mask(f.health, "v2InnerMask", f.v2Ref, 0, bh)
     SetMask(f.health:GetStatusBarTexture(), hm, true)
     SetMask(f.healthBG, hm, true)
-    local pm = V2Mask(f.power, "v2InnerMask", f.v2Ref, 0)
+    local pm = V2Mask(f.power, "v2InnerMask", f.v2Ref, 0, bh)
     SetMask(f.power:GetStatusBarTexture(), pm, true)
     SetMask(f.powerBG, pm, true)
 end
@@ -639,16 +736,33 @@ local function StyleMember(f)
     local font, outline = Helpers.GetGeneralFont(), Helpers.GetGeneralFontOutline()
     local fontSize = s.fontSize or 10
     local tex = Helpers.GetGeneralTexture()
+    local v2 = IsV2(s)
+    if v2 then
+        HH = s.v2HealthHeight or 22         -- a taller bar like the Player frame
+        PH = s.v2PowerHeight or 4
+        BW = math.max(BW, s.v2BarWidth or 120)
+        fontSize = fontSize + 2
+        tex = PlayerFrameTexture()
+    end
 
     local gap = 6
-    local totalH = math.max(P + 10, HH + PH + fontSize + 8)
-    f:SetSize(P + gap + BW + 10, totalH)
+    local R = P + 10                       -- ring size
+    local inner = P                        -- portrait size
+    if v2 then
+        local blockH = HH + ((s.showPower ~= false) and (PH + 1) or 0)
+        R = math.floor(blockH * 1.6 + 0.5)
+        inner = R - 4                      -- thin ring (2 px) like the Player frame
+        P = R - 10
+        f.v2BlockH = blockH
+    end
+    local totalH = math.max(R, HH + PH + fontSize + 8)
+    f:SetSize(R + gap + BW, totalH)
 
-    f.ring:SetSize(P + 10, P + 10)
+    f.ring:SetSize(R, R)
     f.ring:ClearAllPoints()
-    f.ring:SetPoint("TOPLEFT", f, "TOPLEFT", 5, -(totalH - P - 10) / 2)
+    f.ring:SetPoint("TOPLEFT", f, "TOPLEFT", 5, -(totalH - R) / 2)
 
-    f.portrait:SetSize(P, P)
+    f.portrait:SetSize(inner, inner)
     f.portrait:ClearAllPoints()
     f.portrait:SetPoint("CENTER", f.ring, "CENTER", 0, 0)
     f.mask:SetAllPoints(f.portrait)
@@ -672,7 +786,8 @@ local function StyleMember(f)
     f.role:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", 0, 2)
     f.leader:SetSize(12, 12)
 
-    f.name:SetFont(font, fontSize, outline)
+    local nameSize = (s.nameFontSize and s.nameFontSize > 0) and s.nameFontSize or fontSize
+    f.name:SetFont(font, nameSize, outline)
     f.name:ClearAllPoints()
     local nameX = (s.showRole and 16) or 0
     f.name:SetPoint("BOTTOMLEFT", f.health, "TOPLEFT", nameX, 2)
@@ -684,7 +799,20 @@ local function StyleMember(f)
     f.health:SetSize(BW, HH)
     f.health:SetPoint("LEFT", f.ring, "RIGHT", gap, 2)
     f.health:SetStatusBarTexture(tex)
-    f.healthText:SetFont(font, math.max(8, fontSize - 1), outline)
+    local hpSize = (s.healthFontSize and s.healthFontSize > 0) and s.healthFontSize or math.max(8, fontSize - 1)
+    f.healthText:SetFont(font, hpSize, outline)
+    f.healthText:ClearAllPoints()
+    if v2 then
+        f.healthText:SetPoint("RIGHT", f.health, "RIGHT", -8, 0)
+        f.healthText:SetJustifyH("RIGHT")
+        f.healthBG:SetColorTexture(0.1, 0.1, 0.1, 0.9)       -- the Player frame's background
+        f.powerBG:SetColorTexture(0.1, 0.1, 0.1, 0.9)
+    else
+        f.healthText:SetPoint("CENTER", f.health, "CENTER", 0, 0)
+        f.healthText:SetJustifyH("CENTER")
+        f.healthBG:SetColorTexture(0, 0, 0, 0.7)
+        f.powerBG:SetColorTexture(0, 0, 0, 0.7)
+    end
 
     f.power:ClearAllPoints()
     f.power:SetSize(BW, PH)

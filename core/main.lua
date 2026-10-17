@@ -1625,7 +1625,7 @@ local defaults = {
             classColorRing = true,
             showPower = true,
             showRole = true,
-            showLevel = true,
+            showLevel = false,
             showLeader = true,
             rangeFade = true,
             showAuras = true,
@@ -1644,7 +1644,7 @@ local defaults = {
             aimGap = 28,                       -- extra gap from the cursor while mouselooking
             offsetHorizontal = 0,
             fontSize = 12,
-            fontType = "Friz Quadrata TT",
+            fontType = "Poppins SemiBold",
             fontOutline = "OUTLINE",          -- NONE/OUTLINE/THICKOUTLINE/MONOCHROMEOUTLINE
             bgEnabled = false,
             bgColor = {0, 0, 0, 1},
@@ -3517,7 +3517,8 @@ function H3z0UICore:SetAllFonts(name, onlyFrom)
     if not (self.db and self.db.profile and name) then return 0 end
     local changed = 0
     local function IsFontKey(k)
-        return type(k) == "string" and (k == "font" or k == "Font" or k:match("Font$") ~= nil)
+        return type(k) == "string" and (k == "font" or k == "Font" or k:match("Font$") ~= nil
+            or k == "fontType" or k == "fontFace" or k == "fontName" or k:match("FontType$") ~= nil)
     end
     local seen = {}
     local function Walk(def, prof, depth)
@@ -3556,6 +3557,12 @@ function H3z0UICore:OnInitialize()
         pcall(self.SetAllFonts, self, "Poppins SemiBold", "H3z0UI")
     end
     -- once: bring every element onto the Default Font you picked (it used to change only the default)
+    if not self.db.profile.fontSynced0241 then
+        self.db.profile.fontSynced0241 = true
+        local g = self.db.profile.general
+        local hn = self.db.profile.hoverName
+        if g and g.font and hn and (hn.fontType == nil or hn.fontType == "Friz Quadrata TT") then hn.fontType = g.font end
+    end
     if not self.db.profile.fontSynced024 then
         self.db.profile.fontSynced024 = true
         local g = self.db.profile.general

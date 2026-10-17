@@ -3,4 +3,5 @@
     <Script file="character.lua"/>
     <Script file="forever_ilvl.lua"/>
     <Script file="inspect.lua"/>
+    <Script file="character_v2.lua"/>
 </Ui>

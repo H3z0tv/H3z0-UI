@@ -433,7 +433,7 @@ local hooked = false
 local function Hook()
     if hooked then return end
     hooked = true
-    local function later() C_Timer.After(0.05, WS.ApplyChat) end
+    local function later() C_Timer.After(0.05, function() WS.ApplyChat(); HookChatActivity() end) end
     for _, fn in ipairs({ "FCF_Tab_OnClick", "FCF_DockUpdate", "FCF_OpenTemporaryWindow", "FCF_OpenNewWindow",
         "FCF_SelectDockFrame", "FCF_UnDockFrame", "FCF_DockFrame" }) do
         if type(_G[fn]) == "function" then hooksecurefunc(fn, later) end
@@ -442,6 +442,79 @@ local function Hook()
         hooksecurefunc(_G, "H3z0UI_RefreshChat", later)
     end
 end
+
+---------------------------------------------------------------------------
+-- Hide Chat When Idle: the whole chat window fades out when nothing happens and
+-- comes back on a new message, mouseover or when you press Enter
+---------------------------------------------------------------------------
+local lastActivity = GetTime()
+local idleAlpha = 1
+local hookedAdd = {}
+
+local function ChatPieces(cf)
+    local name = cf:GetName() or ""
+    return { cf, cf.h3zWSPanel, _G[name .. "Tab"], _G[name .. "ButtonFrame"], cf.buttonFrame }
+end
+
+local function AnyChatBusy()
+    for _, cf in ipairs(ChatFrames()) do
+        if cf:IsShown() then
+            local eb = _G[(cf:GetName() or "") .. "EditBox"]
+            if eb and eb.HasFocus and eb:HasFocus() then return true end
+            if cf:IsMouseOver(30, -8, -8, 8) then return true end
+            local p = cf.h3zWSPanel
+            if p and p:IsShown() and p:IsMouseOver() then return true end
+        end
+    end
+    if _G.GeneralDockManager and _G.GeneralDockManager:IsMouseOver() then return true end
+    return false
+end
+
+local function SetChatAlpha(a)
+    for _, cf in ipairs(ChatFrames()) do
+        for _, f in ipairs(ChatPieces(cf)) do
+            if f and f.SetAlpha then f:SetAlpha(a) end
+        end
+    end
+    if _G.GeneralDockManager then _G.GeneralDockManager:SetAlpha(a) end
+    if _G.ChatFrameMenuButton then _G.ChatFrameMenuButton:SetAlpha(a) end
+    if _G.ChatFrameChannelButton then _G.ChatFrameChannelButton:SetAlpha(a) end
+    if _G.QuickJoinToastButton then _G.QuickJoinToastButton:SetAlpha(a) end
+end
+
+local function HookChatActivity()
+    for _, cf in ipairs(ChatFrames()) do
+        if not hookedAdd[cf] and cf.AddMessage then
+            hookedAdd[cf] = true
+            hooksecurefunc(cf, "AddMessage", function() lastActivity = GetTime() end)
+        end
+    end
+end
+
+local idleTicker = CreateFrame("Frame")
+idleTicker.t = 0
+idleTicker:SetScript("OnUpdate", function(self, elapsed)
+    self.t = self.t + elapsed
+    if self.t < 0.1 then return end
+    local dt = self.t
+    self.t = 0
+    local s = DB()
+    local on = s and s.chatIdleFade
+    if not on then
+        if idleAlpha ~= 1 then idleAlpha = 1; SetChatAlpha(1) end
+        return
+    end
+    if AnyChatBusy() then lastActivity = GetTime() end
+    local hidden = (GetTime() - lastActivity) > (s.chatIdleDelay or 10)
+    local target = hidden and (s.chatIdleAlpha or 0) or 1
+    if idleAlpha ~= target then
+        -- fade out slowly, come back fast
+        local speed = hidden and 1.5 or 6
+        if idleAlpha < target then idleAlpha = math.min(target, idleAlpha + dt * speed)
+        else idleAlpha = math.max(target, idleAlpha - dt * speed) end
+        SetChatAlpha(idleAlpha)
+    end
+end)
 
 local known = 0
 local ev = CreateFrame("Frame")
@@ -455,6 +528,8 @@ ev:SetScript("OnEvent", function(_, event, name)
     C_Timer.After(1.5, function()
         Hook()
         WS.ApplyAll()
+        HookChatActivity()
+        lastActivity = GetTime()
     end)
 end)
 

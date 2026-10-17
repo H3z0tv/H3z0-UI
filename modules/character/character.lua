@@ -129,7 +129,22 @@ local defaultSettings = {
 
 local function GetSettings()
     local settings = Helpers.GetModuleDB("character")
+    if settings and settings.style == nil then settings.style = "v2" end
     return settings or defaultSettings
+end
+
+-- "v2": the modern look (compact slots with item level + enchant hints, centred
+-- section headers with lines, Item Level block, race background, H3z0 logo)
+local function IsV2()
+    local s = GetSettings()
+    return s and s.style ~= "classic"
+end
+
+local function UnitClassRGB(unit)
+    local _, class = UnitClass(unit or "player")
+    local c = class and RAID_CLASS_COLORS[class]
+    if c then return c.r, c.g, c.b end
+    return 0.204, 0.827, 0.6
 end
 
 ---------------------------------------------------------------------------
@@ -663,6 +678,16 @@ local function CreateSlotOverlay(slotFrame, slotInfo, unit)
     duraBg:SetAllPoints()
     duraBg:SetColorTexture(0, 0, 0, 0.5)
 
+    -- v2: a quality-coloured line under the item level, fading toward the model
+    overlay.v2Line = overlay:CreateTexture(nil, "ARTWORK")
+    overlay.v2Line:SetTexture("Interface\\Buttons\\WHITE8X8")
+    overlay.v2Line:SetHeight(2)
+    overlay.v2Line:Hide()
+    overlay.v2Hint = overlay:CreateFontString(nil, "OVERLAY")
+    overlay.v2Hint:SetFont(slotFont, math.max(8, slotTextSize - 1), FONT_FLAGS)
+    overlay.v2Hint:SetWordWrap(false)
+    overlay.v2Hint:Hide()
+
     overlay.slotInfo = slotInfo
     return overlay
 end
@@ -709,6 +734,95 @@ local function UpdateSlotOverlay(overlay, unit)
     local itemName = C_Item.GetItemInfo(itemLink)
     local quality = GetSlotItemQuality(unit, slotId)
     local r, g, b = GetItemQualityColorRGB(quality)
+
+    -- ===== v2: item level in quality colour beside the icon, a line under it, and a hint
+    -- ("Add enchant" / "Add socket") only when something is missing =====
+    if IsV2() then
+        local side = overlay.slotInfo.side
+        local onLeft = (side == "right") or (slotId == INVSLOT_MAINHAND)   -- text goes to the icon's left
+        local size = (unit == "target" and settings.inspectSlotTextSize or settings.slotTextSize) or 12
+        local font = GetGlobalFont()
+        overlay.itemName:Hide()
+        overlay.enchant:Hide()
+        local ilvl = showItemLevel and GetSlotItemLevel(unit, slotId)
+        overlay.itemLevel:ClearAllPoints()
+        overlay.itemLevel:SetFont(font, size + 2, "OUTLINE")
+        if ilvl then
+            overlay.itemLevel:SetText(tostring(ilvl))
+            overlay.itemLevel:SetTextColor(r, g, b, 1)
+            overlay.itemLevel:Show()
+        else
+            overlay.itemLevel:Hide()
+        end
+        local hint, hr, hg, hb
+        if showEnchants then
+            local enchantText, isEnchantable = GetEnchantText(unit, slotId)
+            if isEnchantable and not enchantText then hint, hr, hg, hb = "Add enchant", 1, 0.32, 0.32 end
+        end
+        if not hint and showGems then
+            local gems = GetGemInfo(unit, slotId)
+            local empty = 0
+            for _, gm in ipairs(gems or {}) do if not gm.filled then empty = empty + 1 end end
+            if empty > 0 then hint, hr, hg, hb = (empty == 1 and "Add 1 gem" or ("Add " .. empty .. " gems")), 0.55, 0.9, 0.45 end
+        end
+        overlay.v2Hint:ClearAllPoints()
+        overlay.v2Line:ClearAllPoints()
+        if onLeft then
+            overlay.itemLevel:SetPoint("BOTTOMRIGHT", overlay, "LEFT", -6, -2)
+            overlay.itemLevel:SetJustifyH("RIGHT")
+            overlay.v2Hint:SetPoint("BOTTOMRIGHT", overlay.itemLevel, "TOPRIGHT", 0, 1)
+            overlay.v2Hint:SetJustifyH("RIGHT")
+            overlay.v2Line:SetPoint("TOPRIGHT", overlay, "LEFT", -2, -3)
+            overlay.v2Line:SetWidth(64)
+            overlay.v2Line:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.9))
+        else
+            overlay.itemLevel:SetPoint("BOTTOMLEFT", overlay, "RIGHT", 6, -2)
+            overlay.itemLevel:SetJustifyH("LEFT")
+            overlay.v2Hint:SetPoint("BOTTOMLEFT", overlay.itemLevel, "TOPLEFT", 0, 1)
+            overlay.v2Hint:SetJustifyH("LEFT")
+            overlay.v2Line:SetPoint("TOPLEFT", overlay, "RIGHT", 2, -3)
+            overlay.v2Line:SetWidth(64)
+            overlay.v2Line:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.9), CreateColor(r, g, b, 0))
+        end
+        overlay.v2Line:SetShown(ilvl ~= nil and ilvl ~= false)
+        if hint then
+            overlay.v2Hint:SetText(hint)
+            overlay.v2Hint:SetTextColor(hr, hg, hb, 1)
+            overlay.v2Hint:Show()
+        else
+            overlay.v2Hint:Hide()
+        end
+        -- gems stay as small icons on the outer side
+        if showGems then
+            local gems = GetGemInfo(unit, slotId)
+            for i, gemTex in ipairs(overlay.gems) do
+                local gm = gems and gems[i]
+                if gm and gm.filled and type(gm.icon) == "number" and gm.icon ~= 0 then
+                    gemTex:SetTexture(gm.icon); gemTex:SetDesaturated(false); gemTex:SetVertexColor(1, 1, 1, 1); gemTex:Show()
+                elseif gm then
+                    gemTex:SetTexture("Interface\\ItemSocketingFrame\\UI-EmptySocket-Prismatic")
+                    gemTex:SetDesaturated(true); gemTex:SetVertexColor(0.6, 0.6, 0.6, 0.9); gemTex:Show()
+                else
+                    gemTex:Hide()
+                end
+            end
+        else
+            for _, gemTex in ipairs(overlay.gems) do gemTex:Hide() end
+        end
+        overlay.durabilityBar:Hide()
+        return
+    end
+    if overlay.v2Line then overlay.v2Line:Hide() end
+    if overlay.v2Hint then overlay.v2Hint:Hide() end
+    overlay.itemLevel:ClearAllPoints()
+    local sideC = overlay.slotInfo.side
+    if sideC == "right" or slotId == INVSLOT_MAINHAND then
+        overlay.itemLevel:SetPoint("TOPRIGHT", overlay.itemName, "BOTTOMRIGHT", 0, -1)
+        overlay.itemLevel:SetJustifyH("RIGHT")
+    else
+        overlay.itemLevel:SetPoint("TOPLEFT", overlay.itemName, "BOTTOMLEFT", 0, -1)
+        overlay.itemLevel:SetJustifyH("LEFT")
+    end
 
     -- Update item name (Line 1)
     if overlay.itemName then
@@ -1702,6 +1816,17 @@ local function CreateStatRow(parent, yOffset)
     row.value:SetShadowOffset(0, 0)
     TrackFontString(row.value, "statValue")
 
+    if IsV2() then
+        local r, g, b = UnitClassRGB(parent.h3zUnit or "player")
+        row.v2bg = row:CreateTexture(nil, "BACKGROUND")
+        row.v2bg:SetPoint("TOPLEFT", row, "TOP", -10, 0)
+        row.v2bg:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 3, 0)
+        row.v2bg:SetColorTexture(1, 1, 1, 1)
+        row.v2bg:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.28))
+        row.label:SetPoint("LEFT", row, "LEFT", 2, 0)
+        row.value:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+    end
+
     return row
 end
 
@@ -1726,6 +1851,34 @@ local function CreateSectionHeader(parent, text, yOffset)
         end
     else
         headerColor = settings.headerColor or {0.204, 0.827, 0.6}
+    end
+
+    if IsV2() then
+        local r, g, b = UnitClassRGB(parent.h3zUnit or "player")
+        local h = parent:CreateFontString(nil, "OVERLAY")
+        h:SetFont(font, fontSize + 3, "OUTLINE")
+        h:SetPoint("TOP", parent, "TOP", 0, yOffset - 2)
+        h:SetTextColor(r, g, b, 1)
+        h:SetText(text)
+        h:SetShadowOffset(0, 0)
+        TrackFontString(h, "sectionHeader")
+        local l1 = parent:CreateTexture(nil, "ARTWORK")
+        l1:SetHeight(2)
+        l1:SetPoint("LEFT", parent, "LEFT", 5, 0)
+        l1:SetPoint("RIGHT", h, "LEFT", -6, 0)
+        l1:SetPoint("TOP", h, "CENTER", 0, 1)
+        l1:SetColorTexture(1, 1, 1, 1)
+        l1:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.05), CreateColor(r, g, b, 0.9))
+        local l2 = parent:CreateTexture(nil, "ARTWORK")
+        l2:SetHeight(2)
+        l2:SetPoint("LEFT", h, "RIGHT", 6, 0)
+        l2:SetPoint("RIGHT", parent, "RIGHT", -5, 0)
+        l2:SetPoint("TOP", h, "CENTER", 0, 1)
+        l2:SetColorTexture(1, 1, 1, 1)
+        l2:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.9), CreateColor(r, g, b, 0.05))
+        table.insert(trackedUnderlines, l1)
+        table.insert(trackedUnderlines, l2)
+        return h, headerHeight + 10
     end
 
     local header = parent:CreateFontString(nil, "OVERLAY")
@@ -1805,6 +1958,22 @@ local function CreateStatBar(parent, yOffset, color)
     barBg:SetAllPoints()
     barBg:SetColorTexture(0, 0, 0, 0.4)
 
+    if IsV2() then
+        -- the bar fills the row behind the text (text moved onto a layer above it)
+        row.bar:ClearAllPoints()
+        row.bar:SetPoint("TOPLEFT", row, "TOP", -10, 0)
+        row.bar:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 3, 0)
+        row.bar:SetStatusBarColor(color[1], color[2], color[3], 0.45)
+        barBg:SetColorTexture(1, 1, 1, 0.05)
+        row.top = CreateFrame("Frame", nil, row)
+        row.top:SetAllPoints(row)
+        row.top:SetFrameLevel(row.bar:GetFrameLevel() + 2)
+        row.label:SetParent(row.top)
+        row.value:SetParent(row.top)
+        row.label:ClearAllPoints(); row.label:SetPoint("LEFT", row, "LEFT", 2, 0)
+        row.value:ClearAllPoints(); row.value:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+    end
+
     return row
 end
 
@@ -1878,6 +2047,31 @@ local function UpdateStatsPanel(panel, unit)
     -- Helper to safely get stats (pcall for Midnight protection)
     local function SafeGetStat(key, func, ...)
         return (ReadStat(unit, key, func, ...))
+    end
+
+    scrollChild.h3zUnit = unit
+    -- v2: Item Level block (equipped / overall) at the top
+    if IsV2() then
+        local _, hh = CreateSectionHeader(scrollChild, "Item Level", y)
+        y = y - hh
+        local overall, equipped
+        if unit == "player" then
+            overall, equipped = GetAverageItemLevel()
+        elseif C_PaperDollInfo and C_PaperDollInfo.GetInspectItemLevel then
+            local okI, v = pcall(C_PaperDollInfo.GetInspectItemLevel, unit)
+            if okI and v then overall, equipped = v, v end
+        end
+        if equipped and not IsSecret(equipped) then
+            local big = scrollChild:CreateFontString(nil, "OVERLAY")
+            big:SetFont(GetGlobalFont(), 20, "OUTLINE")
+            big:SetPoint("TOP", scrollChild, "TOP", 0, y - 2)
+            local r, g, b = UnitClassRGB(unit)
+            big:SetTextColor(r, g, b, 1)
+            big:SetText(string.format("%.1f / %.1f", equipped, overall or equipped))
+            big:SetShadowOffset(0, 0)
+            TrackFontString(big, "ilvlBig")
+            y = y - 30
+        end
     end
 
     -- HEALTH & RESOURCE
@@ -2049,7 +2243,7 @@ local function UpdateStatsPanel(panel, unit)
     y = y - 5
 
     -- SECONDARY STATS
-    _, headerHeight = CreateSectionHeader(scrollChild, "Secondary", y)
+    _, headerHeight = CreateSectionHeader(scrollChild, IsV2() and "Enhancements" or "Secondary", y)
     y = y - headerHeight
 
     local secondaryStats = {
@@ -2345,6 +2539,14 @@ local function UpdateILvlDisplay()
 
     local displayFrame = CharacterFrame._h3z0uiILvlDisplay
     if not displayFrame.text then return end
+    local v2 = IsV2()
+    displayFrame:SetShown(not v2)
+    if displayFrame.specText then displayFrame.specText:SetShown(not v2) end
+    if CharacterFrame._h3z0uiCenterILvl then CharacterFrame._h3z0uiCenterILvl:SetShown(not v2) end
+    if v2 then
+        if ns.CharacterV2 and ns.CharacterV2.Update then pcall(ns.CharacterV2.Update, CharacterFrame, "player") end
+        return
+    end
 
     -- Get player info
     local name = UnitName("player") or "Unknown"

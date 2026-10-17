@@ -248,6 +248,12 @@ local function UpdateRange(f)
 end
 
 -- Ready check: tick / cross / waiting icon over the portrait
+-- atlases first (present in current clients), the old texture files as a fallback
+local READY_ATLAS = {
+    ready    = "UI-LFG-ReadyMark",
+    notready = "UI-LFG-DeclineMark",
+    waiting  = "UI-LFG-PendingMark",
+}
 local READY_TEX = {
     ready    = READY_CHECK_READY_TEXTURE or "Interface\\RaidFrame\\ReadyCheck-Ready",
     notready = READY_CHECK_NOT_READY_TEXTURE or "Interface\\RaidFrame\\ReadyCheck-NotReady",
@@ -256,6 +262,8 @@ local READY_TEX = {
 local readyCheckActive = false
 local readyCheckFinishedAt = nil
 local readyPreview = false
+local rcDebug = false
+local function RCSay(msg) if rcDebug then print("|cff34D399H3z0 RC:|r " .. msg) end end
 -- answers seen in READY_CHECK / READY_CHECK_CONFIRM, by party unit
 -- (the game's GetReadyCheckStatus can be missing or hidden on some clients)
 local rcAnswers = {}
@@ -293,16 +301,66 @@ local function UpdateReadyCheck(f)
         if not status and readyCheckActive then status = "waiting" end
     end
     -- keep the icon above the portrait, ring and Frame Style overlays
-    if f.readyHolder then f.readyHolder:SetFrameLevel(f:GetFrameLevel() + 20) end
+    if f.readyHolder then
+        f.readyHolder:SetFrameStrata("HIGH")
+        f.readyHolder:SetFrameLevel(f:GetFrameLevel() + 20)
+        f.readyHolder:Show()
+    end
     if status and READY_TEX[status] then
         -- after the check ends, players who never answered count as not ready
         if not readyCheckActive and status == "waiting" then status = "notready" end
-        f.ready:SetTexture(READY_TEX[status])
+        local okAtlas = false
+        if f.ready.SetAtlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(READY_ATLAS[status]) then
+            okAtlas = pcall(f.ready.SetAtlas, f.ready, READY_ATLAS[status], false)
+        end
+        if not okAtlas then f.ready:SetTexture(READY_TEX[status]) end
+        if (f.ready:GetWidth() or 0) < 2 or f.ready:GetNumPoints() == 0 then
+            f.ready:ClearAllPoints()
+            f.ready:SetPoint("CENTER", f.portrait or f, "CENTER", 0, 0)
+            f.ready:SetSize(28, 28)
+        end
         f.ready:SetAlpha(1)
         f.ready:Show()
+        if rcDebug then
+            local w, h = f.ready:GetSize()
+            RCSay(string.format("%s: %s atlas=%s size=%dx%d holder=%s/%s shown=%s",
+                tostring(unit), status, tostring(okAtlas), w or 0, h or 0,
+                tostring(f.readyHolder and f.readyHolder:GetFrameStrata()), tostring(f.readyHolder and f.readyHolder:GetWidth()),
+                tostring(f.ready:IsVisible())))
+        end
     else
         f.ready:Hide()
     end
+end
+
+
+local function SafeUpdateReady(f)
+    local ok, err = pcall(UpdateReadyCheck, f)
+    if not ok then RCSay("update error: " .. tostring(err)) end
+end
+
+local function UpdateAllReady()
+    for _, f in ipairs(members) do
+        if f:IsShown() then SafeUpdateReady(f) end
+    end
+end
+
+-- own fade (Blizzard's UIFrameFade list is shared UI state; not touched)
+local function FadeReadyIcons(stamp)
+    local t = 0
+    local fader = CreateFrame("Frame")
+    fader:SetScript("OnUpdate", function(self, el)
+        t = t + el
+        local a = math.max(0, 1 - t / 1.5)
+        for _, f in ipairs(members) do if f.ready then f.ready:SetAlpha(a) end end
+        if t >= 1.5 then
+            self:SetScript("OnUpdate", nil)
+            if readyCheckFinishedAt == stamp then
+                readyCheckFinishedAt = nil
+                for _, f in ipairs(members) do if f.ready then f.ready:Hide(); f.ready:SetAlpha(1) end end
+            end
+        end
+    end)
 end
 
 local function UpdateAll(f)
@@ -388,6 +446,7 @@ local function CreateMember(index)
 
     -- ready check icon (above everything on the portrait)
     f.readyHolder = CreateFrame("Frame", nil, f)
+    f.readyHolder:SetFrameStrata("HIGH")          -- nothing in the party frames can cover it
     f.readyHolder:SetFrameLevel(f:GetFrameLevel() + 20)
     f.ready = f.readyHolder:CreateTexture(nil, "OVERLAY", nil, 7)
     f.ready:Hide()
@@ -420,7 +479,10 @@ local function StyleMember(f)
     f.portrait:SetPoint("CENTER", f.ring, "CENTER", 0, 0)
     f.mask:SetAllPoints(f.portrait)
     if f.readyHolder then
-        f.readyHolder:SetAllPoints(f.portrait)
+        -- the holder covers the whole member frame (a frame anchored to a texture
+        -- can end up with no size); the icon itself sits on the portrait's centre
+        f.readyHolder:ClearAllPoints()
+        f.readyHolder:SetAllPoints(f)
         f.ready:ClearAllPoints()
         f.ready:SetPoint("CENTER", f.portrait, "CENTER", 0, 0)
         f.ready:SetSize(math.floor(P * 0.62), math.floor(P * 0.62))
@@ -632,44 +694,43 @@ events:SetScript("OnEvent", function(_, event, unit, ...)
         for _, t in ipairs(PARTY_TOKENS) do
             if UnitExists(t) then rcAnswers[t] = "waiting" end
         end
-        -- the one who started it is ready (arg1 = initiator name)
-        local initiator = unit   -- READY_CHECK passes the initiator's name first
-        if initiator and not IsSecret(initiator) then
+        -- the one who started it is ready (READY_CHECK passes the initiator's name first)
+        pcall(function()
+            local initiator = unit
+            if not initiator or IsSecret(initiator) then return end
             for _, t in ipairs(PARTY_TOKENS) do
-                local ok, n = pcall(GetUnitName, t, true)
-                local ok2, short = pcall(UnitName, t)
-                if (ok and n == initiator) or (ok2 and short == initiator) then rcAnswers[t] = "ready" end
+                local n = GetUnitName(t, true)
+                local short = UnitName(t)
+                if (n and not IsSecret(n) and n == initiator) or (short and not IsSecret(short) and short == initiator) then
+                    rcAnswers[t] = "ready"
+                end
             end
-        end
-        for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end
+        end)
+        RCSay("READY_CHECK from " .. tostring(unit) .. ", members shown: " .. tostring(#members))
+        UpdateAllReady()
         return
     elseif event == "READY_CHECK_CONFIRM" then
-        local who, isReady = unit, select(1, ...)
-        local t = ToPartyUnit(who)
-        if t and not IsSecret(isReady) then
-            rcAnswers[t] = isReady and "ready" or "notready"
-        end
-        for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end
+        local isReady = ...
+        pcall(function()
+            local t = ToPartyUnit(unit)
+            if t and not IsSecret(isReady) then
+                rcAnswers[t] = isReady and "ready" or "notready"
+            end
+            RCSay("CONFIRM " .. tostring(unit) .. " -> " .. tostring(t) .. " = " .. tostring(isReady))
+        end)
+        UpdateAllReady()
         return
     elseif event == "READY_CHECK_FINISHED" then
-        for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end
+        UpdateAllReady()
         readyCheckActive = false
         local stamp = GetTime()
         readyCheckFinishedAt = stamp
-        for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end
+        UpdateAllReady()
+        RCSay("FINISHED")
         -- keep the result on screen for a few seconds, then fade it out
         C_Timer.After(6, function()
             if readyCheckFinishedAt ~= stamp then return end
-            for _, f in ipairs(members) do
-                if f.ready and f.ready:IsShown() then
-                    UIFrameFadeOut(f.ready, 1.5, 1, 0)
-                end
-            end
-            C_Timer.After(1.6, function()
-                if readyCheckFinishedAt ~= stamp then return end
-                readyCheckFinishedAt = nil
-                for _, f in ipairs(members) do if f.ready then f.ready:Hide(); f.ready:SetAlpha(1) end end
-            end)
+            FadeReadyIcons(stamp)
         end)
         return
     elseif event == "PLAYER_TARGET_CHANGED" then
@@ -694,6 +755,19 @@ for _, e in ipairs({
     "READY_CHECK", "READY_CHECK_CONFIRM", "READY_CHECK_FINISHED",
 }) do
     events:RegisterEvent(e)
+end
+
+-- while a ready check runs, refresh the icons twice a second (in case an event is missed)
+do
+    local poll = CreateFrame("Frame")
+    local acc = 0
+    poll:SetScript("OnUpdate", function(_, el)
+        if not readyCheckActive then return end
+        acc = acc + el
+        if acc < 0.5 then return end
+        acc = 0
+        UpdateAllReady()
+    end)
 end
 
 -- range fade (UnitInRange has no event)
@@ -762,6 +836,15 @@ SlashCmdList["H3Z0PARTY"] = function(msg)
         if s then s.pos = nil end
         RestorePosition()
         print("|cff34D399H3z0 UI:|r Party frames position reset.")
+    elseif msg:match("^%s*rcdebug") then
+        rcDebug = not rcDebug
+        print("|cff34D399H3z0 UI:|r Ready check debug " .. (rcDebug and "ON - start a ready check and send me the chat lines" or "OFF"))
+        if rcDebug then
+            for i, f in ipairs(members) do
+                print(string.format("  frame %d: unit=%s shown=%s exists=%s icon=%s",
+                    i, tostring(f.displayUnit), tostring(f:IsShown()), tostring(UnitExists(f.displayUnit or "")), tostring(f.ready ~= nil)))
+            end
+        end
     elseif msg:match("^%s*ready") then
         readyPreview = not readyPreview
         for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end

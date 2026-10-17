@@ -1,6 +1,9 @@
 # H3z0 UI - Patch Notes
 
 ## 0.23.7 - Streamer Mode
+- M+ Timer chat command renamed to `/h3z0mpt` (demo / show / hide).
+- Fixed: Tracked Bars with different widths / one bar shifted sideways. The position check only compared each bar's Y offset, so a bar Blizzard had anchored by two points (left + right, overriding the width) was left alone. It now also requires exactly one anchor of the expected point on the viewer and the configured width; otherwise the bar is re-anchored and re-sized.
+- Fixed (again): Party Frames ready check icons. The icon holder is on HIGH strata above the whole frame, READY_CHECK / CONFIRM handling runs protected (names / units that come back secret can't break it), all shown frames refresh every 0.5 s while a check is active, and the fade-out uses H3z0 UI's own timer instead of Blizzard's UIFrameFadeOut. `/h3z0party rcdebug` prints the frames and every ready check event to chat. The icon now uses the client's ready / decline / pending atlases (old texture files only as fallback) and its holder covers the member frame instead of being anchored to the portrait texture - even the preview showed nothing before, so the icon itself wasn't drawing.
 - **Streamer Mode** (Action Bars > Master Settings > "Streamer Mode (hide button press highlight)", `/h3z0ui streamer`): hides the press / active highlight on every action button (pushed glow, checked border, SpellCastAnimFrame, TargetReticleAnimFrame, InterruptDisplay) on all bars, stance, pet and the extra action button. Only alpha is changed, so it works in combat and writes nothing into Blizzard's buttons; turning it off brings the highlights back.
 
 ## 0.23.6 - Taint clean-up

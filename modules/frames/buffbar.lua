@@ -1179,8 +1179,22 @@ LayoutBuffBars = function()
     -- This mirrors the icon layout's self-correcting behavior - if Blizzard moves a bar,
     -- we detect it and snap it back immediately
     local needsReposition = false
+    local wantPoint = isVertical and (growFromBottom and "LEFT" or "RIGHT") or (growFromBottom and "BOTTOM" or "TOP")
+    local wantWidth = stylingEnabled and (isVertical and barHeight or settings.barWidth) or nil
     for index, bar in ipairs(bars) do
         local offsetIndex = index - 1
+
+        -- Blizzard sometimes anchors a bar by two points (left + right edge), which
+        -- overrides the width and shifts it: only one anchor of ours on the viewer is OK
+        local p1, rel = bar:GetPoint(1)
+        if bar:GetNumPoints() ~= 1 or p1 ~= wantPoint or rel ~= BuffBarCooldownViewer then
+            needsReposition = true
+            break
+        end
+        if wantWidth and math.abs((bar:GetWidth() or 0) - wantWidth) > 1 then
+            needsReposition = true
+            break
+        end
 
         if isVertical then
             -- Check X position for vertical layout

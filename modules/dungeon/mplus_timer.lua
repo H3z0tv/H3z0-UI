@@ -1820,7 +1820,7 @@ function MPlusTimer:EnableDemoMode()
     self:Show()
     self:StartTimerLoop()
 
-    print("|cFF34D4E8[H3z0 UI M+ Timer]|r Demo mode enabled. Type /qmpt demo to disable.")
+    print("|cFF34D4E8[H3z0 UI M+ Timer]|r Demo mode enabled. Type /h3z0mpt demo to disable.")
 end
 
 function MPlusTimer:DisableDemoMode()
@@ -2182,7 +2182,7 @@ end
 ---------------------------------------------------------------------------
 -- Slash Command
 ---------------------------------------------------------------------------
-SLASH_H3z0UIIMPLUSTIMER1 = "/qmpt"
+SLASH_H3z0UIIMPLUSTIMER1 = "/h3z0mpt"
 SlashCmdList["H3z0UIIMPLUSTIMER"] = function(msg)
     local cmd = msg:lower():trim()
 
@@ -2194,9 +2194,9 @@ SlashCmdList["H3z0UIIMPLUSTIMER"] = function(msg)
         MPlusTimer:Hide()
     else
         print("|cFF34D4E8[H3z0 UI M+ Timer]|r Commands:")
-        print("  /qmpt demo - Toggle demo mode")
-        print("  /qmpt show - Show timer")
-        print("  /qmpt hide - Hide timer")
+        print("  /h3z0mpt demo - Toggle demo mode")
+        print("  /h3z0mpt show - Show timer")
+        print("  /h3z0mpt hide - Hide timer")
     end
 end
 

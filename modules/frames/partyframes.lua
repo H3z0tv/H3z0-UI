@@ -255,15 +255,45 @@ local READY_TEX = {
 }
 local readyCheckActive = false
 local readyCheckFinishedAt = nil
+local readyPreview = false
+-- answers seen in READY_CHECK / READY_CHECK_CONFIRM, by party unit
+-- (the game's GetReadyCheckStatus can be missing or hidden on some clients)
+local rcAnswers = {}
+
+local function IsSecret(v) return issecretvalue and issecretvalue(v) or false end
+
+-- "raid3" / "player" / "party2" from the events -> our "partyN" / "player"
+local PARTY_TOKENS = { "player", "party1", "party2", "party3", "party4" }
+local function ToPartyUnit(unit)
+    if not unit or IsSecret(unit) then return nil end
+    if unit == "player" or unit:match("^party%d$") then return unit end
+    for _, t in ipairs(PARTY_TOKENS) do
+        local ok, same = pcall(UnitIsUnit, unit, t)
+        if ok and same and not IsSecret(same) then return t end
+    end
+end
+
+local function ApiReadyStatus(unit)
+    local fn = GetReadyCheckStatus or (C_PartyInfo and C_PartyInfo.GetReadyCheckStatus)
+    if not fn then return nil end
+    local ok, st = pcall(fn, unit)
+    if ok and st and not IsSecret(st) then return st end
+end
 
 local function UpdateReadyCheck(f)
     if not f.ready then return end
     local unit = f.displayUnit
     local status
-    if (readyCheckActive or readyCheckFinishedAt) and unit and UnitExists(unit) then
-        local ok, s = pcall(GetReadyCheckStatus, unit)
-        if ok and s and not (issecretvalue and issecretvalue(s)) then status = s end
+    if readyPreview then
+        local i = 0
+        for n, m in ipairs(members) do if m == f then i = n end end
+        status = ({ "ready", "notready", "waiting", "ready" })[i] or "ready"
+    elseif (readyCheckActive or readyCheckFinishedAt) and unit and UnitExists(unit) then
+        status = rcAnswers[unit] or ApiReadyStatus(unit)
+        if not status and readyCheckActive then status = "waiting" end
     end
+    -- keep the icon above the portrait, ring and Frame Style overlays
+    if f.readyHolder then f.readyHolder:SetFrameLevel(f:GetFrameLevel() + 20) end
     if status and READY_TEX[status] then
         -- after the check ends, players who never answered count as not ready
         if not readyCheckActive and status == "waiting" then status = "notready" end
@@ -585,7 +615,7 @@ local function RefreshShown()
     end
 end
 
-events:SetScript("OnEvent", function(_, event, unit)
+events:SetScript("OnEvent", function(_, event, unit, ...)
     local s = GetSettings()
     if not s or not s.enabled or not container then return end
 
@@ -598,9 +628,27 @@ events:SetScript("OnEvent", function(_, event, unit)
     if event == "READY_CHECK" then
         readyCheckActive = true
         readyCheckFinishedAt = nil
+        wipe(rcAnswers)
+        for _, t in ipairs(PARTY_TOKENS) do
+            if UnitExists(t) then rcAnswers[t] = "waiting" end
+        end
+        -- the one who started it is ready (arg1 = initiator name)
+        local initiator = unit   -- READY_CHECK passes the initiator's name first
+        if initiator and not IsSecret(initiator) then
+            for _, t in ipairs(PARTY_TOKENS) do
+                local ok, n = pcall(GetUnitName, t, true)
+                local ok2, short = pcall(UnitName, t)
+                if (ok and n == initiator) or (ok2 and short == initiator) then rcAnswers[t] = "ready" end
+            end
+        end
         for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end
         return
     elseif event == "READY_CHECK_CONFIRM" then
+        local who, isReady = unit, select(1, ...)
+        local t = ToPartyUnit(who)
+        if t and not IsSecret(isReady) then
+            rcAnswers[t] = isReady and "ready" or "notready"
+        end
         for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end
         return
     elseif event == "READY_CHECK_FINISHED" then
@@ -714,11 +762,15 @@ SlashCmdList["H3Z0PARTY"] = function(msg)
         if s then s.pos = nil end
         RestorePosition()
         print("|cff34D399H3z0 UI:|r Party frames position reset.")
+    elseif msg:match("^%s*ready") then
+        readyPreview = not readyPreview
+        for _, f in ipairs(members) do if f:IsShown() then UpdateReadyCheck(f) end end
+        print("|cff34D399H3z0 UI:|r Ready check icons preview " .. (readyPreview and "ON (use /h3z0party test while solo)" or "OFF"))
     elseif msg:match("^%s*test") then
         testMode = not testMode
         ApplyLayout()
         print("|cff34D399H3z0 UI:|r Party frames preview " .. (testMode and "ON (shows your own character in every slot)" or "OFF"))
     else
-        print("|cff34D399H3z0 UI:|r /h3z0party test - preview, /h3z0party reset - reset position. Shift+drag a frame to move the list.")
+        print("|cff34D399H3z0 UI:|r /h3z0party test - preview, /h3z0party ready - preview ready check icons, /h3z0party reset - reset position. Shift+drag a frame to move the list.")
     end
 end

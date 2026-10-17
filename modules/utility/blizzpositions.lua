@@ -40,6 +40,15 @@ local function Store(mode)
     return p.blizzPositions[mode]
 end
 
+-- Sizes (chat window, damage meter, ...): profile.blizzSizes[mode][key] = { w, h }
+local function SizeStore(mode)
+    local p = Profile()
+    if not p then return nil end
+    p.blizzSizes = p.blizzSizes or {}
+    p.blizzSizes[mode] = p.blizzSizes[mode] or {}
+    return p.blizzSizes[mode]
+end
+
 -- All Blizzard Edit Mode frames by key
 local function SystemFrames()
     local list = {}
@@ -75,6 +84,17 @@ local function Place(f, pos)
     applying = false
 end
 
+local function PlaceSize(f, sz)
+    if not (f and sz and sz.w and sz.h) then return end
+    if InCombatLockdown() and f.IsProtected and f:IsProtected() then
+        pending = true
+        return
+    end
+    applying = true
+    pcall(f.SetSize, f, sz.w, sz.h)
+    applying = false
+end
+
 local hooked = {}
 local function HookFrame(f)
     if hooked[f] or not f.ApplySystemAnchor then return end
@@ -82,16 +102,36 @@ local function HookFrame(f)
     -- Edit Mode re-anchors its frames now and then: put ours back right after
     hooksecurefunc(f, "ApplySystemAnchor", function(self)
         if applying then return end
+        local key = BP.Key(self.system, self.systemIndex)
+        local sz = SizeStore(Mode())
+        if sz and sz[key] then PlaceSize(self, sz[key]) end
         local s = Store(Mode())
-        local pos = s and s[BP.Key(self.system, self.systemIndex)]
+        local pos = s and s[key]
         if pos then Place(self, pos) end
     end)
+    -- and when it re-applies its own size settings
+    if f.UpdateSystem then
+        hooksecurefunc(f, "UpdateSystem", function(self)
+            if applying then return end
+            local sz = SizeStore(Mode())
+            local v = sz and sz[BP.Key(self.system, self.systemIndex)]
+            if v then PlaceSize(self, v) end
+        end)
+    end
 end
 
 function BP.ApplyAll()
     local s = Store(Mode())
     if not s then return end
     local frames = SystemFrames()
+    local sizes = SizeStore(Mode()) or {}
+    for key, sz in pairs(sizes) do
+        local f = frames[key]
+        if f then
+            HookFrame(f)
+            PlaceSize(f, sz)
+        end
+    end
     for key, pos in pairs(s) do
         local f = frames[key]
         if f then
@@ -115,10 +155,42 @@ function BP.Save(frame, dx, dy)
     Place(frame, s[BP.Key(frame.system, frame.systemIndex)])
 end
 
+-- Save a size (from Layout Mode's resize grip). The frame keeps its top-left
+-- corner where it is: the centre offset is saved again for the new size.
+function BP.SaveSize(frame, w, h, left, top)
+    if not (frame and frame.system and w and h) then return end
+    local sz = SizeStore(Mode())
+    if not sz then return end
+    local key = BP.Key(frame.system, frame.systemIndex)
+    sz[key] = { w = math.floor(w + 0.5), h = math.floor(h + 0.5) }
+    HookFrame(frame)
+    PlaceSize(frame, sz[key])
+    if left and top then
+        -- left / top in UIParent units -> centre offset in UIParent units
+        local k = (frame:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
+        local cx = left + (w * k) / 2
+        local cy = top - (h * k) / 2
+        local px, py = UIParent:GetCenter()
+        if px and py then BP.Save(frame, cx - px, cy - py) end
+    end
+end
+
+function BP.GetSizes()
+    local p = Profile()
+    return p and p.blizzSizes
+end
+
+function BP.SetSizes(t)
+    local p = Profile()
+    if p and type(t) == "table" then p.blizzSizes = t end
+end
+
 -- Forget a frame's saved position (back to Blizzard's own position after a reload)
 function BP.Reset(frame)
     local s = Store(Mode())
     if s and frame and frame.system then s[BP.Key(frame.system, frame.systemIndex)] = nil end
+    local sz = SizeStore(Mode())
+    if sz and frame and frame.system then sz[BP.Key(frame.system, frame.systemIndex)] = nil end
 end
 
 -- For Export / Import

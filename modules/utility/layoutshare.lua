@@ -64,6 +64,7 @@ function Share.Export()
         },
         -- Blizzard frames (action bars, Cooldown Manager, ...) as saved by H3z0 UI
         blizzPositions = ns.BlizzPositions and ns.BlizzPositions.GetAll() or nil,
+        blizzSizes = ns.BlizzPositions and ns.BlizzPositions.GetSizes and ns.BlizzPositions.GetSizes() or nil,
     }
     local serialized = AceSerializer:Serialize(data)
     local compressed = LibDeflate:CompressDeflate(serialized, { level = 9 })
@@ -101,6 +102,9 @@ function Share.Import(str, quiet)
     LS.Load(LS.CurrentMode())
 
     -- Blizzard frame positions (kept in H3z0 UI; Blizzard's Edit Mode layouts are never changed)
+    if type(data.blizzSizes) == "table" and ns.BlizzPositions and ns.BlizzPositions.SetSizes then
+        ns.BlizzPositions.SetSizes(data.blizzSizes)
+    end
     if type(data.blizzPositions) == "table" and ns.BlizzPositions then
         ns.BlizzPositions.SetAll(data.blizzPositions)
         ns.BlizzPositions.ApplyAll()

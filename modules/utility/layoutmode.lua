@@ -758,6 +758,9 @@ local function CreateHandle(el)
             GameTooltip:AddLine("Change its anchor in the options to move it freely.", 0.8, 0.8, 0.8, true)
         else
             GameTooltip:AddLine("Drag to move. Arrow keys nudge 1px, Shift+arrow 10px.", 0.8, 0.8, 0.8, true)
+            if self.el.resizable then
+                GameTooltip:AddLine("Drag the corner (bottom right) to resize.", 0.8, 0.8, 0.8, true)
+            end
         end
         GameTooltip:AddLine("Right-click: open its settings (Layout Mode stays open).", 0.2, 0.83, 0.6, true)
         GameTooltip:Show()
@@ -817,6 +820,63 @@ local function CreateHandle(el)
         SnapToGrid(target)
         SaveElement(self.el, target)
     end)
+
+    -- Resize grip (bottom-right) for frames that can be resized (chat, damage meter)
+    local grip = CreateFrame("Button", nil, h)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", h, "BOTTOMRIGHT", -1, 1)
+    grip:SetFrameLevel(h:GetFrameLevel() + 5)
+    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    grip:Hide()
+    grip:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Drag to resize", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    grip:SetScript("OnMouseDown", function(self, button)
+        local target = h.target
+        if button ~= "LeftButton" or not target or InCombatLockdown() then return end
+        local us = UIParent:GetEffectiveScale()
+        local fs = target:GetEffectiveScale()
+        local left, top = target:GetLeft(), target:GetTop()
+        if not (left and top and us and fs) then return end
+        local k = fs / us                 -- frame units -> UIParent units
+        local leftU, topU = left * k, top * k
+        local minW, minH = 120, 60
+        if target.GetResizeBounds then
+            local ok, a, b = pcall(target.GetResizeBounds, target)
+            if ok and a and a > 0 then minW = a end
+            if ok and b and b > 0 then minH = b end
+        end
+        Select(h.el)
+        self.resizing = true
+        self:SetScript("OnUpdate", function()
+            local cx, cy = GetCursorPosition()
+            cx, cy = cx / us, cy / us
+            local w = math.max(minW, (cx - leftU) / k)
+            local hh = math.max(minH, (topU - cy) / k)
+            pcall(target.SetSize, target, w, hh)
+            -- keep the top-left corner in place while the size changes
+            target:ClearAllPoints()
+            target:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+            self.w, self.h = w, hh
+        end)
+        self.leftU, self.topU = leftU, topU
+    end)
+    grip:SetScript("OnMouseUp", function(self)
+        if not self.resizing then return end
+        self.resizing = false
+        self:SetScript("OnUpdate", nil)
+        local target = h.target
+        if target and self.w and h.el.saveSize then
+            h.el.saveSize(target, self.w, self.h, self.leftU, self.topU)
+        end
+        self.w, self.h = nil, nil
+    end)
+    h.grip = grip
     return h
 end
 
@@ -853,7 +913,20 @@ local function BlizzardSystemElements()
                 end
                 name = name or (f.GetName and f:GetName()) or "Blizzard Frame"
                 local CDM = Enum and Enum.EditModeSystem and Enum.EditModeSystem.CooldownViewer
+                local S = Enum and Enum.EditModeSystem or {}
+                local lname = tostring(name):lower()
+                -- chat window and damage meter can be resized from Layout Mode
+                local resizable = (S.ChatFrame ~= nil and sys == S.ChatFrame)
+                    or (S.DamageMeter ~= nil and sys == S.DamageMeter)
+                    or lname:find("chat", 1, true) ~= nil
+                    or lname:find("damage", 1, true) ~= nil
                 list[#list + 1] = {
+                    resizable = resizable,
+                    saveSize = function(frame, w, h, left, top)
+                        if ns.BlizzPositions and ns.BlizzPositions.SaveSize then
+                            ns.BlizzPositions.SaveSize(frame, w, h, left, top)
+                        end
+                    end,
                     key = key, label = tostring(name), group = "blizzard", ghost = true,
                     -- Cooldown Manager gets a handle even while it's hidden out of combat
                     showHidden = (CDM ~= nil and sys == CDM),
@@ -896,6 +969,9 @@ local function RefreshHandles()
                 h.target = target
             end
             local lockText = el.locked and el.locked() or nil
+            if h.grip then
+                if el.resizable and not lockText then h.grip:Show() else h.grip:Hide() end
+            end
             h.isLocked = lockText ~= nil
             h.lockText = lockText
             h.label:SetText(el.label .. (h.isLocked and "  (locked)" or ""))

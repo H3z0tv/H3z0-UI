@@ -611,9 +611,22 @@ local function GetFontPath()
     return H3z0UI and H3z0UI.GetGlobalFont and H3z0UI:GetGlobalFont() or STANDARD_TEXT_FONT
 end
 
+-- A line Blizzard shows as complete / failed / highlighted keeps Blizzard's
+-- colour (grey / green / red): painting it in the text colour made finished
+-- objectives (e.g. Prey quests) look unfinished.
+local function IsSpecialLine(line)
+    local cs = line.h3z0uiColorStyle
+    if cs and OBJECTIVE_TRACKER_COLOR and cs ~= OBJECTIVE_TRACKER_COLOR["Normal"] then return true end
+    if line.state == "COMPLETED" or line.state == "FAILED" then return true end
+    local icon = line.Icon or line.Check
+    if icon and icon.IsShown and icon:IsShown() then return true end
+    return false
+end
+
 -- Apply font and color to a single line (objective text)
 local function StyleLine(line, fontPath, textFontSize, textColor)
     if not line then return end
+    if IsSpecialLine(line) then textColor = nil end
     if fontObjectsActive then
         if line.Text then SafeSetTextColor(line.Text, textColor) end
         if line.Dash then SafeSetTextColor(line.Dash, textColor) end
@@ -701,6 +714,22 @@ local function HookLineCreation()
     local settings = GetSettings()
     if not settings then return end
 
+    -- Always remember Blizzard's colour style per line (complete / failed), and put
+    -- Blizzard's colour back if our colour was applied before the line completed
+    if ObjectiveTrackerBlockMixin and ObjectiveTrackerBlockMixin.AddObjective and not ObjectiveTrackerBlockMixin.h3z0uiColorStyleHooked then
+        hooksecurefunc(ObjectiveTrackerBlockMixin, "AddObjective", function(self, objectiveKey, text, template, useFullHeight, dashStyle, colorStyle)
+            local line = self.usedLines and self.usedLines[objectiveKey]
+            if not line then return end
+            line.h3z0uiColorStyle = colorStyle
+            if colorStyle and OBJECTIVE_TRACKER_COLOR and colorStyle ~= OBJECTIVE_TRACKER_COLOR["Normal"]
+                and type(colorStyle) == "table" and colorStyle.r and line.Text then
+                line.Text:SetTextColor(colorStyle.r, colorStyle.g, colorStyle.b)
+                if line.Dash then line.Dash:SetTextColor(colorStyle.r, colorStyle.g, colorStyle.b) end
+            end
+        end)
+        ObjectiveTrackerBlockMixin.h3z0uiColorStyleHooked = true
+    end
+
     local textFontSize = settings.objectiveTrackerTextFontSize or 0
     if textFontSize <= 0 then return end
 
@@ -711,6 +740,7 @@ local function HookLineCreation()
         hooksecurefunc(ObjectiveTrackerBlockMixin, "AddObjective", function(self, objectiveKey, text, template, useFullHeight, dashStyle, colorStyle, adjustForNoText, overrideHeight)
             local line = self.usedLines and self.usedLines[objectiveKey]
             if line then
+                line.h3z0uiColorStyle = colorStyle   -- Complete / Failed / Normal from Blizzard
                 local currentSettings = GetSettings()
                 local currentTextSize = currentSettings and currentSettings.objectiveTrackerTextFontSize or 0
                 local currentTextColor = currentSettings and currentSettings.objectiveTrackerTextColor

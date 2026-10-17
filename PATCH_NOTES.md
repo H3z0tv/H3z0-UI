@@ -1,5 +1,10 @@
 # H3z0 UI - Patch Notes
 
+## 0.23.5 - Resize chat / damage meter, quest completion, ready check
+- **Resize the chat window and the damage meter in Layout Mode**: their handles get a corner grip (bottom right). Drag it to resize; the top-left corner stays put. Sizes are stored in the H3z0 UI profile (profile.blizzSizes, PC and Deck separately) like the Blizzard frame positions, re-applied after login / Edit Mode updates, and exported in layout codes (blizzSizes).
+- Fixed: completed quest objectives (e.g. Prey quests) didn't look complete with the Objective Tracker skin. The skin painted every objective line in the chosen text colour; lines Blizzard marks Complete / Failed now keep Blizzard's colour and check.
+- Fixed: Party Frames ready check icons (from 0.23.4) - answers tracked from the ready check events, `/h3z0party ready` previews them.
+
 ## 0.23.4 - H3z0 Pro M+ timer, PC Handheld, own layout storage, new default layout
 - **Layout Mode no longer touches Blizzard's Edit Mode.** Positions of Blizzard frames (action bars, Cooldown Manager, buffs, objective tracker, ...) are saved in the H3z0 UI profile (PC and Deck separately) and H3z0 UI places the frames itself. No more "H3z0 PC" / "H3z0 Deck" Edit Mode layouts are created or switched; Handheld Mode / PC Handheld only swap the addons. Export codes (v2) carry these positions; older codes still import the H3z0 frame positions.
 - **New default layout** for new installs (PC and Deck, Blizzard frames included). Existing setups are not changed; use Import to take it.
@@ -8,6 +13,7 @@
 - Hover Name: default distance from the cursor raised (18), and while mouselooking / Action Combat the name moves a further "Gap While Aiming" (default 28, General & QoL > Hover Name) away so it never covers the crosshair.
 - Fixed: ADDON_ACTION_FORBIDDEN "UpgradeItem()" (Item Upgrade confirm blocked, blamed on H3z0 UI). Root cause: the tooltip module replaced Blizzard's global MoneyFrame_Update / SetTooltipMoney (and GameTooltip.SetSpellByID) with pcall wrappers; the upgrade popup draws its cost with MoneyFrame_Update, so the popup ran addon code and became tainted. Those replacements are gone. Also no longer written: the LOCK_ACTIONBAR global (Blizzard keeps it in sync itself) and the accidental globals StopGlow / UpdateZoneTextDisplay (now local). In addition, every H3z0 UI popup (reload prompts, layout import, Plater import, gold data, ...) now uses H3z0 UI's own dialog (core/popup.lua) instead of Blizzard's StaticPopup, which an addon taints just by using it. "Auto-Fill DELETE Text" is off by default now (it must write into Blizzard's delete popup) and no longer calls Blizzard's handler itself.
 - Fixed: Objective Tracker skin hid the delve banner (title / tier), leaving an empty gap at the top of the Delves section. The banner is kept while in a delve; the tracker is re-laid out after SCENARIO_COMPLETED and zone changes so a finished delve doesn't linger.
+- Fixed: Party Frames ready check icons not showing. Answers are tracked from READY_CHECK (initiator = ready, everyone else waiting) and READY_CHECK_CONFIRM (per unit, raidN mapped to partyN), with GetReadyCheckStatus / C_PartyInfo only as a fallback; the icon is kept above the portrait and Frame Style overlays. `/h3z0party ready` previews the icons.
 - **PC Handheld** (H3z0 Features > Steam Deck + PC Controller, `/h3z0ui pchandheld`): the Steam Deck setup on PC - Steam Deck HUD and Deck frame positions and ConsolePort (Action Combat Mode off), but your normal PC UI scale. Only one of PC Controller, PC Handheld and Steam Deck can be on; switching between them reloads. Unticking PC Handheld goes back to the normal PC layout and addons.
 
 ## 0.23.1 - Fixes and menu order

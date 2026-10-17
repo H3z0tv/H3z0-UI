@@ -1,5 +1,8 @@
 # H3z0 UI - Patch Notes
 
+## 0.23.8 - Modern Look
+- **Modern Look** (Unit Frames > Portraits, `/h3z0ui modern`, on by default): a visual layer that adds a soft 4-layer drop shadow to the unit frames (player, target, focus, pet, target of target, boss), the power bars, cast bars, the square minimap and the info bar; a subtle vertical sheen and a 1px top highlight on health, power and cast bars; a soft class / reaction coloured glow behind Frame Style's round portraits; and an accent line on top of the minimap info bar. Each part can be switched off. Only H3z0 UI's own frames get extra textures - no settings are changed and nothing of Blizzard's is touched.
+
 ## 0.23.7 - Streamer Mode
 - M+ Timer chat command renamed to `/h3z0mpt` (demo / show / hide).
 - Fixed: Tracked Bars with different widths / one bar shifted sideways. The position check only compared each bar's Y offset, so a bar Blizzard had anchored by two points (left + right, overriding the width) was left alone. It now also requires exactly one anchor of the expected point on the viewer and the configured width; otherwise the bar is re-anchored and re-sized.

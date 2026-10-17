@@ -131,8 +131,14 @@ function H3z0UI:SlashCommandOpen(input)
             print("|cFF56D1FFH3z0 UI:|r Layout Mode not loaded.")
         end
         return
+    elseif input and input == "modern" then
+        if _G.H3z0UI_ToggleModernLook then
+            local on = _G.H3z0UI_ToggleModernLook()
+            print("|cff34D399H3z0 UI:|r Modern Look " .. (on and "|cff00ff00ON|r" or "|cffff5555OFF|r"))
+        end
+        return
     elseif input and input == "streamer" then
-        local core = (_G.H3z0UI and _G.H3z0UI.H3z0UICore) or (ns and ns.Addon)
+        local core = _G.H3z0UI and (_G.H3z0UI.H3z0UICore or _G.H3z0UI)
         local g = core and core.db and core.db.profile and core.db.profile.actionBars and core.db.profile.actionBars.global
         if g then
             g.streamerMode = not g.streamerMode

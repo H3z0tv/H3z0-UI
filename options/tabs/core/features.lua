@@ -106,6 +106,19 @@ local function BuildPortraits(tabContent)
     local b = Builder(tabContent)
     local db = Shared.GetDB()
 
+    -- Modern Look (shadow / sheen / glow on frames, minimap and info bar)
+    local ML = ns.ModernLook
+    local mldb = ML and ML.GetSettings and ML.GetSettings()
+    if mldb then
+        local function RefreshML() if _G.H3z0UI_RefreshModernLook then _G.H3z0UI_RefreshModernLook() end end
+        b.Section("Modern Look")
+        b.Info("Soft shadows, a subtle sheen on the bars and a glow behind the portraits - on the unit frames, power and cast bars, minimap and info bar. Your settings stay as they are. /h3z0ui modern", 34)
+        b.Check("Use Modern Look", "enabled", mldb, RefreshML)
+        b.Check("Soft Shadows", "shadow", mldb, RefreshML)
+        b.Check("Bar Sheen + Top Highlight", "sheen", mldb, RefreshML)
+        b.Check("Portrait Glow (round portraits)", "glow", mldb, RefreshML)
+    end
+
     -- Frame style (round / docked)
     local FS = ns.FrameStyle
     local fsdb = FS and FS.GetSettings and FS.GetSettings()
@@ -287,7 +300,7 @@ local function BuildExtras(tabContent)
     end)
 
     b.Section("Chat Commands")
-    b.Info("/h3z0ui layout  -  Layout Mode (also the Esc menu Edit Mode button)\n/h3z0ui blizzedit  -  Blizzard Edit Mode (size settings only)\n/h3z0ui cdm  -  Cooldown Manager not showing? check and repair\n/h3z0ui export  /  import  -  share a layout code\n/h3z0ui style  -  Frame Style on/off\n/h3z0ui bars  -  Compact Action Bars on/off\n/h3z0ui coords  -  Map coordinates on/off\n/h3z0ui controller  -  PC Controller on/off\n/h3z0ui pchandheld  -  PC Handheld on/off\n/h3z0ui deck  -  Handheld Mode on/off\n/h3z0ui streamer  -  Streamer Mode on/off\n/h3z0ui whatsnew  -  What's New window\n/h3z0ui setup  -  Setup Wizard", 212, C.text)
+    b.Info("/h3z0ui layout  -  Layout Mode (also the Esc menu Edit Mode button)\n/h3z0ui blizzedit  -  Blizzard Edit Mode (size settings only)\n/h3z0ui cdm  -  Cooldown Manager not showing? check and repair\n/h3z0ui export  /  import  -  share a layout code\n/h3z0ui style  -  Frame Style on/off\n/h3z0ui modern  -  Modern Look on/off\n/h3z0ui bars  -  Compact Action Bars on/off\n/h3z0ui coords  -  Map coordinates on/off\n/h3z0ui controller  -  PC Controller on/off\n/h3z0ui pchandheld  -  PC Handheld on/off\n/h3z0ui deck  -  Handheld Mode on/off\n/h3z0ui streamer  -  Streamer Mode on/off\n/h3z0ui whatsnew  -  What's New window\n/h3z0ui setup  -  Setup Wizard", 226, C.text)
 
     b.Finish()
 end

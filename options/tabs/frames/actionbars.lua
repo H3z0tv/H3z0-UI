@@ -46,7 +46,7 @@ local function BuildBarLayoutInto(holder, firstBuild, barKey, rebuild)
     end
 
     Section("Bar Layout")
-    Info("The same settings as Blizzard's Edit Mode for each bar: orientation, rows, number of icons, icon size, padding and when the bar shows. They are saved into your Edit Mode layout and the bar changes right away. Changes wait for the end of combat. Right click a bar in H3z0 UI Layout Mode to open it here.", 48)
+    Info("Orientation, rows, number of icons, icon size, padding and when each bar shows. H3z0 UI keeps these values (for PC and Deck) and puts them back on every login, so Blizzard's Edit Mode never has to be opened. The bar changes right away; in combat it waits until combat ends. The same settings are in Layout Mode when you click a bar.", 48)
 
     if not ABL then
         Info("Bar layout is not available.", 20, {1, 0.5, 0.3, 1})
@@ -62,21 +62,13 @@ local function BuildBarLayoutInto(holder, firstBuild, barKey, rebuild)
     end))
 
     local _, entry, reason = ABL.Entry(barKey)
-    if not entry then
-        if reason == "preset" then
-            Info("Your Edit Mode layout is one of Blizzard's presets (Modern / Classic), which can't be changed. Copy it to your own layout once and every setting below works:", 34, {1, 0.75, 0.3, 1})
-            local btn = GUI:CreateButton(holder, "Copy to my own layout", 200, 26, function()
-                if InCombatLockdown() then return end
-                ABL.CopyPresetToCustom()
-                C_Timer.After(0.5, function() rebuild(barKey) end)
-            end)
-            btn:SetPoint("TOPLEFT", PAD, y)
-            y = y - 38
-        else
-            Info(tostring(reason or "This bar can't be read right now."), 34, {1, 0.75, 0.3, 1})
-        end
+    if not entry and reason ~= "preset" then
+        Info(tostring(reason or "This bar can't be read right now."), 34, {1, 0.75, 0.3, 1})
         GUI._suppressSearchRegistration = false
         return math.abs(y) + 40
+    end
+    if reason == "preset" then
+        Info("You are on one of Blizzard's preset layouts: the first change switches to the layout H3z0 UI manages for you (H3z0 PC / H3z0 Deck).", 34, {1, 0.75, 0.3, 1})
     end
 
     local frame = ABL.Frame(barKey)

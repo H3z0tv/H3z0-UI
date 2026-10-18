@@ -1,10 +1,19 @@
 # H3z0 UI - Patch Notes
 
-## 0.24.6 - Action bar layout
+## 0.24.7 - Action bar layout, Layout Mode controls everything
 New
+- Secondary class resource bar: new Style option - Bar (as before) or Orbs. Orbs shows point resources as round orbs, one per point: combo points, holy power, chi, soul shards, essence and arcane charges. Filled orbs take the bar colour (resource, class or custom colour) with a soft shine, empty orbs show the background colour, and a partly filled soul shard (destruction) shows as a dimmer orb. Orb Size and Orb Spacing can be set; the orbs are centred on the bar and follow its orientation. With Orbs only the orbs are drawn - no bar background, border or shadow behind them. Runes and Stagger stay bars. Cooldown Manager > Class Resource Bar > Secondary Class Resource Bar.
+- Layout Mode is the one place to control your UI: click any frame and a panel opens next to it with Shown (on / off) and its settings. For action bars that is Orientation, Rows, Number of Icons, Icon Size, Icon Padding, Bar Visible and Always Show Buttons - the same as Blizzard's Edit Mode, without opening it. "All Settings" opens the full page in the options.
+- Layout Mode > Show / Hide: a list of every frame with an on / off switch - unit frames, cast bars, party and raid frames, action bars 2 to 8, stance and pet bar, power bars, totem bar, timers and Blizzard's own frames (buffs, debuffs, objective tracker, ...). Frames you switch off stay in the list so you can switch them on again.
+- Blizzard frames switched off in Layout Mode are hidden by H3z0 UI and stay hidden after a reload; action bars are switched off with their own "Hidden" setting and come back exactly as they were shown before.
+- H3z0 UI keeps every action bar value itself (separately for PC and Deck) and puts it back on every login and whenever Layout Mode opens. When you are on one of Blizzard's preset layouts, H3z0 UI switches to the layout it manages for you (H3z0 PC / H3z0 Deck) on the first change.
 - Action Bars > Bar Layout (new first tab): every bar's Edit Mode settings in the H3z0 UI options - Orientation, Rows, Number of Icons, Icon Size, Icon Padding, Bar Visible (always, in combat, out of combat, hidden), Always Show Buttons, and for Action Bar 1 Hide Bar Art and Hide Bar Scrolling. Pick the bar at the top (Action Bar 1 to 8, Stance Bar, Pet Bar). The values are saved into your Edit Mode layout and Blizzard lays the bar out right away, exactly as if you changed them in Edit Mode. Changes made in combat wait until it ends.
 - Layout Mode: right click an action bar to open Bar Layout with that bar already picked.
 - If your Edit Mode layout is one of Blizzard's presets (Modern / Classic), Bar Layout offers to copy it to your own layout first (presets can't be changed).
+
+Fixed
+- Cast bars: switching a cast bar on or off left both the H3z0 UI cast bar and Blizzard's small one on screen (or none), because Blizzard's bar is only switched off at login. Switching a cast bar now reloads right away - in the cast bar options and in Layout Mode. Switching a unit frame in Layout Mode reloads too, for the same reason.
+- Character + Inspect: with both windows open the Inspect window lay on top of the Character window. H3z0 UI makes the Inspect window wider, and the game placed the windows by the old width; it now places them again after every width change.
 
 Changed
 - The other Action Bars tabs moved one place to the right (Master Settings, Mouseover Hide, Per-Bar Overrides, Extra Buttons, Totem Bar); search and Layout Mode right click follow.

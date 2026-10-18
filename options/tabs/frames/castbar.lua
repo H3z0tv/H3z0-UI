@@ -115,7 +115,12 @@ local function BuildCastbarOptions(tabContent, unitKey, y, PAD, FORM_ROW, Refres
         generalLabel:SetJustifyH("LEFT")
         y = y - 20
 
-        local castEnable = GUI:CreateFormCheckbox(tabContent, "Enable Castbar", "enabled", castDB, RefreshUnit)
+        -- 0.24.6: Blizzard's own cast bar is switched off once at login, so switching this one
+        -- reloads right away (otherwise both bars, or none, would show until the next reload)
+        local castEnable = GUI:CreateFormCheckbox(tabContent, "Enable Castbar (reloads)", "enabled", castDB, function()
+            RefreshUnit()
+            if H3z0UI and H3z0UI.SafeReload then H3z0UI:SafeReload() else ReloadUI() end
+        end)
         castEnable:SetPoint("TOPLEFT", PAD, y)
         castEnable:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW

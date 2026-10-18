@@ -74,6 +74,18 @@ end
 ---------------------------------------------------------------------------
 -- Inspect Frame Configuration Constants
 ---------------------------------------------------------------------------
+-- 0.24.6: the game places side-by-side windows (Character + Inspect) by their width; after
+-- H3z0 UI changes the Inspect window's width the game has to place them again, or they overlap.
+-- UpdateUIPanelPositions is the game's own (secure) way to ask for that.
+local function RepositionPanels()
+    if InCombatLockdown() or type(UpdateUIPanelPositions) ~= "function" then return end
+    C_Timer.After(0, function()
+        if not InCombatLockdown() and InspectFrame and InspectFrame:IsShown() then
+            pcall(UpdateUIPanelPositions, InspectFrame)
+        end
+    end)
+end
+
 local INSPECT_CONFIG = {
     FRAME_TARGET_WIDTH = 500,      -- Narrower than CharacterFrame (no stats panel)
     FRAME_DEFAULT_WIDTH = 338,     -- Default InspectFrame width (Guild tab)
@@ -628,6 +640,7 @@ local function SetInspectExtendedMode(tabNum)
     if not InspectFrame then return end
     currentInspectTab = tabNum
     InspectFrame:SetWidth(INSPECT_CONFIG.FRAME_TARGET_WIDTH)
+    RepositionPanels()
     RepositionInspectTabs()
     RepositionInspectCloseButton(true)
     if _G.H3z0UI_InspectFrameSkinning and _G.H3z0UI_InspectFrameSkinning.SetExtended then
@@ -646,6 +659,7 @@ local function SetInspectNormalMode()
     if not InspectFrame then return end
     currentInspectTab = 3
     InspectFrame:SetWidth(INSPECT_CONFIG.FRAME_DEFAULT_WIDTH)
+    RepositionPanels()
     ResetInspectTabsPosition()
     RepositionInspectCloseButton(false)
     if _G.H3z0UI_InspectFrameSkinning and _G.H3z0UI_InspectFrameSkinning.SetExtended then
@@ -988,6 +1002,8 @@ local function ApplyInspectPaneLayout()
     if inspectLayoutApplied then return end
 
     InspectFrame:SetWidth(INSPECT_CONFIG.FRAME_TARGET_WIDTH)
+
+    RepositionPanels()
     RepositionInspectCloseButton(true)
 
     -- Apply panel scale from settings (base scale 1.30, slider is multiplier)
@@ -1086,6 +1102,7 @@ local function HookInspectFrame()
     InspectFrame:HookScript("OnHide", function()
         inspectLayoutApplied = false
         InspectFrame:SetWidth(INSPECT_CONFIG.FRAME_DEFAULT_WIDTH)
+        RepositionPanels()
         GameTooltip:Hide()
     end)
 

@@ -2452,9 +2452,50 @@ end
 
 -- set a value (as Edit Mode shows it); returns true, or false + reason.
 -- Several changes in a row go into the same layout copy and are saved together.
-function ABL.Set(barKey, setting, value)
+-- H3z0 UI keeps every bar value itself (per PC / Deck layout) and puts it back on every login
+local function Store(create)
+    local core = ns.Addon
+    local p = core and core.db and core.db.profile
+    if not (p and p.actionBars) then return nil end
+    local LS = ns.LayoutSets
+    local mode = (LS and LS.CurrentMode and LS.CurrentMode()) or "pc"
+    if create then
+        p.actionBars.layoutStore = p.actionBars.layoutStore or {}
+        p.actionBars.layoutStore[mode] = p.actionBars.layoutStore[mode] or {}
+    end
+    return p.actionBars.layoutStore and p.actionBars.layoutStore[mode]
+end
+ABL.Store = Store
+
+-- the active layout is a Blizzard preset: switch to (or create) the layout H3z0 UI manages for this mode
+local function EnsureManagedLayout()
+    local LS = ns.LayoutSets
+    if not (LS and LS.EnsureLayout and LS.ModeLayoutName) or InCombatLockdown() then return false end
+    local index = LS.EnsureLayout(LS.ModeLayoutName())
+    if not index then return false end
+    LS.Activate(index)
+    return true
+end
+ABL.EnsureManagedLayout = EnsureManagedLayout
+
+function ABL.Set(barKey, setting, value, noStore)
     if InCombatLockdown() then return false, "Bar layout can't be changed in combat." end
+    if not noStore then
+        local st = Store(true)
+        if st then
+            st[barKey] = st[barKey] or {}
+            st[barKey][setting] = value
+        end
+    end
     local info, entry, reason, frame
+    if not pendingInfo then
+        local _, e, r = ABL.Entry(barKey)
+        if not e and r == "preset" and EnsureManagedLayout() then
+            -- the new layout is active a moment later: apply then
+            C_Timer.After(0.3, function() ABL.Set(barKey, setting, value, true) end)
+            return true
+        end
+    end
     if pendingInfo then
         frame = ABL.Frame(barKey)
         info = pendingInfo
@@ -2478,6 +2519,66 @@ function ABL.Set(barKey, setting, value)
         C_Timer.After(0.15, ApplyNow)
     end
     return true
+end
+
+-- put every value H3z0 UI keeps back into the active layout (login, PC / Deck switch, Layout Mode)
+function ABL.ApplyStored()
+    if InCombatLockdown() then return end
+    local st = Store(false)
+    if type(st) ~= "table" then return end
+    for barKey, vals in pairs(st) do
+        if type(vals) == "table" then
+            for setting, value in pairs(vals) do
+                if type(setting) == "number" and ABL.Has(barKey, setting) and ABL.Get(barKey, setting) ~= value then
+                    ABL.Set(barKey, setting, value, true)
+                end
+            end
+        end
+    end
+end
+
+local VIS = Enum and Enum.ActionBarVisibleSetting or {}
+local VIS_HIDDEN = VIS.Hidden or 3
+local VIS_ALWAYS = VIS.Always or 0
+
+function ABL.CanToggle(barKey)
+    return ABS.VisibleSetting ~= nil and ABL.Has(barKey, ABS.VisibleSetting)
+end
+
+function ABL.IsShown(barKey)
+    if not ABL.CanToggle(barKey) then return true end
+    return ABL.Get(barKey, ABS.VisibleSetting) ~= VIS_HIDDEN
+end
+
+-- on / off: "off" is Edit Mode's "Hidden"; "on" brings back how it was shown before
+function ABL.SetShown(barKey, on)
+    if not ABL.CanToggle(barKey) then return false, "This bar can't be switched off." end
+    local st = Store(true)
+    st._prevVisible = st._prevVisible or {}
+    if on then
+        local prev = st._prevVisible[barKey]
+        return ABL.Set(barKey, ABS.VisibleSetting, (prev ~= nil and prev ~= VIS_HIDDEN) and prev or VIS_ALWAYS)
+    end
+    local cur = ABL.Get(barKey, ABS.VisibleSetting)
+    if cur ~= nil and cur ~= VIS_HIDDEN then st._prevVisible[barKey] = cur end
+    return ABL.Set(barKey, ABS.VisibleSetting, VIS_HIDDEN)
+end
+
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("PLAYER_REGEN_ENABLED")
+    local pending = false
+    f:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then
+            if pending then pending = false; ABL.ApplyStored() end
+            return
+        end
+        C_Timer.After(3, function()
+            if InCombatLockdown() then pending = true return end
+            ABL.ApplyStored()
+        end)
+    end)
 end
 
 function ABL.CopyPresetToCustom()

@@ -1981,6 +1981,133 @@ function H3z0UICore:UpdateSecondaryPowerBarTicks(bar, resource, max)
 end
 
 
+---------------------------------------------------------------------------
+-- 0.24.7: Orbs style for the secondary bar - point resources (combo points, holy power,
+-- chi, soul shards, essence, arcane charges) as round orbs instead of one bar
+---------------------------------------------------------------------------
+local ORB_TEX = "Interface\\AddOns\\H3z0UI\\assets\\h3z_circle"
+local issecret = issecretvalue or function() return false end
+
+local function OrbCount(resource, max)
+    if resource == Enum.PowerType.SoulShards then
+        local ok, m = pcall(UnitPowerMax, "player", resource)
+        if ok and type(m) == "number" and not issecret(m) then return m end
+    end
+    return max
+end
+
+local function UseOrbs(cfg, resource, max, current, valueType)
+    if cfg.style ~= "orbs" then return false end
+    if not tickedPowerTypes[resource] or fragmentedPowerTypes[resource] then return false end
+    if valueType == "percent" then return false end
+    if type(max) ~= "number" or issecret(max) or issecret(current) then return false end
+    local n = OrbCount(resource, max)
+    return type(n) == "number" and n >= 1 and n <= 10
+end
+
+-- everything that draws the bar itself (background, its own textures, the Modern Look shadow)
+-- is see-through while orbs are shown: only the orbs stay
+local function SetBarBodyAlpha(bar, a)
+    for _, r in ipairs({ bar:GetRegions() }) do
+        if r.IsObjectType and r:IsObjectType("Texture") then r:SetAlpha(a) end
+    end
+    if bar.h3zMLShadow then bar.h3zMLShadow:SetAlpha(a) end
+    bar.StatusBar:SetAlpha(a)
+end
+
+local function HideOrbs(bar)
+    if bar.OrbHolder then bar.OrbHolder:Hide() end
+    if bar.h3zOrbMode then
+        bar.h3zOrbMode = nil
+        SetBarBodyAlpha(bar, 1)
+    end
+end
+
+function H3z0UICore:UpdateSecondaryOrbs(bar, cfg, resource, max, current, displayValue, valueType, isVertical)
+    local n = OrbCount(resource, max)
+    local value = (valueType == "shards" and type(displayValue) == "number") and displayValue or current
+    if resource == Enum.PowerType.SoulShards and valueType ~= "shards" and max and n and max > n then
+        value = current / (max / n)            -- fragments -> shards
+    end
+    bar.h3zOrbMode = true
+    SetBarBodyAlpha(bar, 0)
+    if bar.Border then bar.Border:Hide() end
+    for _, t in ipairs(bar.ticks) do t:Hide() end
+
+    if not bar.OrbHolder then
+        bar.OrbHolder = CreateFrame("Frame", nil, bar)
+        bar.OrbHolder:SetAllPoints(bar)
+        bar.Orbs = {}
+    end
+    local holder = bar.OrbHolder
+    holder:SetFrameLevel(bar.StatusBar:GetFrameLevel() + 1)
+    if bar.TextFrame then bar.TextFrame:SetFrameLevel(holder:GetFrameLevel() + 2) end
+    holder:Show()
+
+    local r, g, b, a = bar.StatusBar:GetStatusBarColor()
+    local bg = cfg.bgColor or { 0.08, 0.08, 0.08, 0.85 }
+    local size = cfg.orbSize or 14
+    local gap = cfg.orbSpacing or 4
+    local border = cfg.orbBorder or 1
+    local length = isVertical and bar:GetHeight() or bar:GetWidth()
+    local total = n * size + (n - 1) * gap
+    local start = ((length or total) - total) / 2
+
+    for i = 1, math.max(n, #bar.Orbs) do
+        local o = bar.Orbs[i]
+        if i <= n then
+            if not o then
+                o = CreateFrame("Frame", nil, holder)
+                o.edge = o:CreateTexture(nil, "BACKGROUND")
+                o.edge:SetTexture(ORB_TEX)
+                o.edge:SetAllPoints()
+                o.empty = o:CreateTexture(nil, "BORDER")
+                o.empty:SetTexture(ORB_TEX)
+                o.fill = o:CreateTexture(nil, "ARTWORK")
+                o.fill:SetTexture(ORB_TEX)
+                o.shine = o:CreateTexture(nil, "OVERLAY")
+                o.shine:SetTexture(ORB_TEX)
+                o.shine:SetBlendMode("ADD")
+                bar.Orbs[i] = o
+            end
+            o:SetSize(size, size)
+            o:ClearAllPoints()
+            local off = H3z0UICore:PixelRound(start + (i - 1) * (size + gap), bar)
+            if isVertical then
+                o:SetPoint("BOTTOM", holder, "BOTTOM", 0, off)
+            else
+                o:SetPoint("LEFT", holder, "LEFT", off, 0)
+            end
+            o.edge:SetVertexColor(0, 0, 0, 1)
+            o.empty:ClearAllPoints()
+            o.empty:SetPoint("TOPLEFT", border, -border)
+            o.empty:SetPoint("BOTTOMRIGHT", -border, border)
+            o.empty:SetVertexColor(bg[1], bg[2], bg[3], bg[4] or 0.85)
+            o.fill:ClearAllPoints()
+            o.fill:SetPoint("TOPLEFT", border, -border)
+            o.fill:SetPoint("BOTTOMRIGHT", -border, border)
+            o.fill:SetVertexColor(r or 1, g or 1, b or 1, 1)
+            -- soft highlight on the top of a filled orb
+            local inset = math.max(2, size * 0.22)
+            o.shine:ClearAllPoints()
+            o.shine:SetPoint("TOPLEFT", inset, -border - 1)
+            o.shine:SetPoint("BOTTOMRIGHT", -inset, size * 0.45)
+            o.shine:SetVertexColor(1, 1, 1, 0.22)
+            if value >= i then
+                o.fill:SetAlpha(1); o.fill:Show(); o.shine:Show()
+            elseif value > i - 1 then
+                -- a partly filled orb (destruction soul shard fragments)
+                o.fill:SetAlpha(0.25 + (value - (i - 1)) * 0.45); o.fill:Show(); o.shine:Hide()
+            else
+                o.fill:Hide(); o.shine:Hide()
+            end
+            o:Show()
+        elseif o then
+            o:Hide()
+        end
+    end
+end
+
 function H3z0UICore:UpdateSecondaryPowerBar()
     local cfg = self.db.profile.secondaryPowerBar
     if not cfg.enabled then
@@ -2490,6 +2617,12 @@ end
         bar.SoulShardDecimal:Hide()
     end
 
+    -- 0.24.7: Orbs style
+    if UseOrbs(cfg, resource, max, current, valueType) then
+        self:UpdateSecondaryOrbs(bar, cfg, resource, max, current, displayValue, valueType, isVertical)
+    else
+        HideOrbs(bar)
+    end
 
     bar:Show()
 end

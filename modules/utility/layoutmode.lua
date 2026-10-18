@@ -663,6 +663,7 @@ local function Select(el)
     local h = el and LM.handles[el.key]
     if h then StyleHandle(h, "selected") end
     UpdateReadout()
+    if LM.UpdateInspector then pcall(LM.UpdateInspector, el) end
 end
 
 local function MoveTo(target, dx, dy)
@@ -801,7 +802,7 @@ local function CreateHandle(el)
                 GameTooltip:AddLine("Drag the corner (bottom right) to resize.", 0.8, 0.8, 0.8, true)
             end
         end
-        GameTooltip:AddLine("Right-click: open its settings (Layout Mode stays open).", 0.2, 0.83, 0.6, true)
+        GameTooltip:AddLine("Click: its settings and on / off panel. Right-click: all settings in the options.", 0.2, 0.83, 0.6, true)
         GameTooltip:Show()
     end)
     h:SetScript("OnLeave", function(self)
@@ -1026,7 +1027,9 @@ local function RefreshHandles()
             end
             h.isLocked = lockText ~= nil
             h.lockText = lockText
-            h.label:SetText(el.label .. (h.isLocked and "  (locked)" or ""))
+            local hiddenSt = Profile() and Profile().layoutHidden
+            local off = hiddenSt and hiddenSt[el.key]
+            h.label:SetText(el.label .. (h.isLocked and "  (locked)" or "") .. (off and "  (off)" or ""))
             local state = (LM.selected == el) and "selected" or ((h:IsShown() and h:IsMouseOver()) and "hover" or "normal")
             StyleHandle(h, state)
             h:Show()
@@ -1042,6 +1045,359 @@ local function RefreshHandles()
         end
     end
     UpdateReadout()
+end
+
+---------------------------------------------------------------------------
+-- 0.24.6: on / off for every element, and a settings panel for the selected one.
+-- Everything is controlled from here; Blizzard's Edit Mode never has to be opened.
+---------------------------------------------------------------------------
+-- Blizzard frames (buffs, objective tracker, ...) are switched off by H3z0 UI (fully see-through,
+-- no mouse) and stay off after a reload
+local function HiddenStore()
+    local p = Profile()
+    if not p then return nil end
+    p.layoutHidden = p.layoutHidden or {}
+    return p.layoutHidden
+end
+
+local function ApplyBlizzHidden(frame, hidden)
+    if not frame then return end
+    frame.h3zLMHidden = hidden and true or nil
+    if not frame.h3zLMHook then
+        frame.h3zLMHook = true
+        hooksecurefunc(frame, "SetAlpha", function(self, a)
+            if self.h3zLMHidden and not self.h3zLMSetting and (a or 0) > 0 then
+                self.h3zLMSetting = true
+                self:SetAlpha(0)
+                self.h3zLMSetting = nil
+            end
+        end)
+        frame:HookScript("OnShow", function(self) if self.h3zLMHidden then self:SetAlpha(0) end end)
+    end
+    frame.h3zLMSetting = true
+    pcall(frame.SetAlpha, frame, hidden and 0 or 1)
+    frame.h3zLMSetting = nil
+    if not InCombatLockdown() and frame.EnableMouse and not (frame.IsProtected and frame:IsProtected()) then
+        pcall(frame.EnableMouse, frame, not hidden)
+    end
+end
+
+local function Refresh(name) local fn = _G[name]; if fn then pcall(fn) end end
+
+local function ModuleToggle(path, refresh, reloadNote)
+    return {
+        get = function()
+            local t = Profile()
+            for i = 1, #path - 1 do t = t and t[path[i]] end
+            return t and t[path[#path]] ~= false and t[path[#path]] ~= nil
+        end,
+        set = function(on)
+            local t = Profile()
+            for i = 1, #path - 1 do t = t and t[path[i]] end
+            if not t then return end
+            t[path[#path]] = on and true or false
+            if type(refresh) == "function" then pcall(refresh) elseif refresh then Refresh(refresh) end
+            if reloadNote then Say(reloadNote) end
+        end,
+    }
+end
+
+local function ToggleFor(el)
+    local key = el.key
+    local ABL = ns.ActionBarLayout
+    local bk = AB_PICK[key]
+    if bk then
+        if not (ABL and ABL.CanToggle(bk)) then return nil end
+        return {
+            get = function() return ABL.IsShown(bk) end,
+            set = function(on)
+                local ok, why = ABL.SetShown(bk, on)
+                if not ok and why then Say(why) end
+            end,
+        }
+    end
+    if key == "party" then return ModuleToggle({ "partyFrames", "enabled" }, "H3z0UI_RefreshPartyFrames") end
+    if key == "raid" then
+        return ModuleToggle({ "raidFrames", "enabled" }, function()
+            Refresh("H3z0UI_RefreshRaidFrames"); Refresh("H3z0UI_RefreshPartyFrames")
+        end)
+    end
+    if key == "powerbar" then
+        return ModuleToggle({ "powerBar", "enabled" }, function()
+            local core = Core(); if core and core.UpdatePowerBar then pcall(core.UpdatePowerBar, core) end
+        end)
+    end
+    if key == "secondarypowerbar" then
+        return ModuleToggle({ "secondaryPowerBar", "enabled" }, function()
+            local core = Core(); if core and core.UpdateSecondaryPowerBar then pcall(core.UpdateSecondaryPowerBar, core) end
+        end)
+    end
+    if key == "totems" then return ModuleToggle({ "totemBar", "enabled" }, "H3z0UI_RefreshTotemBar") end
+    if key == "combattimer" then return ModuleToggle({ "combatTimer", "enabled" }, "H3z0UI_RefreshCombatTimer") end
+    if key == "mplus" then return ModuleToggle({ "mplusTimer", "enabled" }, nil, "M+ Timer: /reload to finish.") end
+    -- unit frames and cast bars replace Blizzard's frames, which are switched off once at login:
+    -- switching them reloads right away so there are never two (or none)
+    local function ReloadNow()
+        local ui = _G.H3z0UI
+        C_Timer.After(0.1, function()
+            if ui and ui.SafeReload then ui:SafeReload() else ReloadUI() end
+        end)
+    end
+    local unit = key:match("^uf_(.+)$")
+    if unit then
+        return ModuleToggle({ "h3z0uiUnitFrames", unit, "enabled" }, ReloadNow)
+    end
+    unit = key:match("^cb_(.+)$")
+    if unit then
+        return ModuleToggle({ "h3z0uiUnitFrames", unit, "castbar", "enabled" }, ReloadNow)
+    end
+    if key:match("^bz_") then
+        return {
+            get = function() local st = HiddenStore(); return not (st and st[key]) end,
+            set = function(on)
+                local st = HiddenStore(); if not st then return end
+                st[key] = (not on) or nil
+                local ok, f = pcall(el.frame)
+                if ok and f then ApplyBlizzHidden(f, not on) end
+            end,
+        }
+    end
+    return nil
+end
+LM.ToggleFor = ToggleFor
+
+local function AllElements()
+    local all = {}
+    for _, el in ipairs(elements) do all[#all + 1] = el end
+    for _, el in ipairs(PanelElements()) do all[#all + 1] = el end
+    for _, el in ipairs(BlizzardSystemElements()) do all[#all + 1] = el end
+    return all
+end
+
+-- Blizzard frames switched off earlier stay off after a reload
+local function ApplyAllBlizzHidden()
+    local st = HiddenStore()
+    if not st or not next(st) then return end
+    for _, el in ipairs(BlizzardSystemElements()) do
+        if st[el.key] then
+            local ok, f = pcall(el.frame)
+            if ok and f then ApplyBlizzHidden(f, true) end
+        end
+    end
+end
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent", function() C_Timer.After(2.5, ApplyAllBlizzHidden) end)
+end
+
+---------------------------------------------------------------------------
+-- Panels (built with the options window's widgets)
+---------------------------------------------------------------------------
+local function GUIRef() return _G.H3z0UI and _G.H3z0UI.GUI end
+
+local function PanelFrame(name, w)
+    local f = CreateFrame("Frame", name, UIParent, "BackdropTemplate")
+    f:SetSize(w, 200)
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+    f:SetBackdropColor(0.04, 0.06, 0.09, 0.96)
+    local r, g, b = Accent()
+    f:SetBackdropBorderColor(r, g, b, 0.9)
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:SetClampedToScreen(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.title:SetPoint("TOPLEFT", 12, -10)
+    f.title:SetPoint("RIGHT", f, "RIGHT", -34, 0)
+    f.title:SetJustifyH("LEFT")
+    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", 2, 2)
+    close:SetScript("OnClick", function() f:Hide(); if f.onClose then f.onClose() end end)
+    f:Hide()
+    return f
+end
+
+-- a fresh content frame each time (old widgets are dropped)
+local function NewBody(f)
+    if f.body then f.body:Hide(); f.body:SetParent(nil) end
+    local body = CreateFrame("Frame", nil, f)
+    body:SetPoint("TOPLEFT", 10, -32)
+    body:SetPoint("TOPRIGHT", -10, -32)
+    body:SetHeight(10)
+    f.body = body
+    return body
+end
+
+local function Builder(body)
+    local GUI = GUIRef()
+    local b = { y = 0 }
+    function b.Place(w, h)
+        w:SetPoint("TOPLEFT", body, "TOPLEFT", 0, b.y)
+        w:SetPoint("RIGHT", body, "RIGHT", 0, 0)
+        b.y = b.y - (h or 30)
+        return w
+    end
+    function b.Text(txt, h, color)
+        local l = body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        l:SetPoint("TOPLEFT", body, "TOPLEFT", 0, b.y)
+        l:SetPoint("RIGHT", body, "RIGHT", 0, 0)
+        l:SetJustifyH("LEFT")
+        l:SetText(txt)
+        if color then l:SetTextColor(color[1], color[2], color[3], 1) end
+        b.y = b.y - (h or 18)
+        return l
+    end
+    function b.Button(txt, w, onClick)
+        local btn = GUI:CreateButton(body, txt, w or 140, 22, onClick)
+        btn:SetPoint("TOPLEFT", body, "TOPLEFT", 0, b.y)
+        b.y = b.y - 28
+        return btn
+    end
+    return b, GUI
+end
+
+---------------------------------------------------------------------------
+-- Inspector: the selected element
+---------------------------------------------------------------------------
+local inspector
+local function UpdateInspector(el)
+    if not LM.active then return end
+    local GUI = GUIRef()
+    if not GUI then return end
+    if not inspector then
+        inspector = PanelFrame("H3z0UI_LayoutModeInspector", 330)
+        inspector:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -30, -120)
+    end
+    if not el then inspector:Hide() return end
+    inspector.title:SetText(el.label)
+    local body = NewBody(inspector)
+    local b = Builder(body)
+    local oldSuppress = GUI._suppressSearchRegistration
+    GUI._suppressSearchRegistration = true      -- these widgets must not go into the options search
+
+    local tg = ToggleFor(el)
+    if tg then
+        local state = { on = tg.get() and true or false }
+        b.Place(GUI:CreateFormCheckbox(body, "Shown", "on", state, function(v)
+            if InCombatLockdown() then return end
+            tg.set(v and true or false)
+            C_Timer.After(0.3, function() if LM.active then RefreshHandles() end end)
+        end))
+    end
+
+    -- action bars: the same settings as Blizzard's Edit Mode, kept by H3z0 UI
+    local ABL = ns.ActionBarLayout
+    local bk = AB_PICK[el.key]
+    if ABL and bk then
+        local frame = ABL.Frame(bk)
+        local SLIDER = Enum.EditModeSettingDisplayType and Enum.EditModeSettingDisplayType.Slider
+        local DROP = Enum.EditModeSettingDisplayType and Enum.EditModeSettingDisplayType.Dropdown
+        local CHECK = Enum.EditModeSettingDisplayType and Enum.EditModeSettingDisplayType.Checkbox
+        local proxy = {}
+        for _, st in ipairs(ABL.SETTINGS) do
+            if ABL.Has(bk, st.setting) then
+                local dinfo = ABL.DisplayInfo(frame, st.setting)
+                local val = ABL.Get(bk, st.setting)
+                local function Changed(v)
+                    local ok, why = ABL.Set(bk, st.setting, v)
+                    if not ok and why then Say(why) end
+                    C_Timer.After(0.5, function() if LM.active then RefreshHandles() end end)
+                end
+                local kind = dinfo and dinfo.type
+                if kind == CHECK then
+                    proxy[st.key] = (val == 1 or val == true)
+                    b.Place(GUI:CreateFormCheckbox(body, st.label, st.key, proxy, function(v) Changed(v and 1 or 0) end))
+                elseif kind == DROP and type(dinfo.options) == "table" then
+                    local opts = {}
+                    for _, o in ipairs(dinfo.options) do opts[#opts + 1] = { value = o.value, text = o.text or tostring(o.value) } end
+                    proxy[st.key] = val
+                    b.Place(GUI:CreateFormDropdown(body, st.label, opts, st.key, proxy, Changed))
+                elseif kind == SLIDER and dinfo.minValue and dinfo.maxValue then
+                    proxy[st.key] = tonumber(val) or dinfo.minValue
+                    b.Place(GUI:CreateFormSlider(body, st.label, dinfo.minValue, dinfo.maxValue, dinfo.stepSize or 1, st.key, proxy, Changed))
+                end
+            end
+        end
+    end
+
+    b.y = b.y - 4
+    if SettingsFor(el) then
+        b.Button("All Settings", 140, function() OpenSettings(el) end)
+    end
+    b.Text("Drag the frame to move it. Arrow keys nudge 1px, Shift+arrow 10px.", 30, { 0.7, 0.75, 0.8 })
+
+    GUI._suppressSearchRegistration = oldSuppress
+    body:SetHeight(-b.y)
+    inspector:SetHeight(-b.y + 46)
+    inspector:Show()
+end
+LM.UpdateInspector = UpdateInspector
+
+---------------------------------------------------------------------------
+-- Show / Hide list: every element with an on / off switch (also the ones switched off)
+---------------------------------------------------------------------------
+local listPanel
+local function UpdateList()
+    local GUI = GUIRef()
+    if not GUI then return end
+    if not listPanel then
+        listPanel = PanelFrame("H3z0UI_LayoutModeList", 300)
+        listPanel:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 30, -120)
+        listPanel.title:SetText("Show / Hide")
+        listPanel.scroll = CreateFrame("ScrollFrame", nil, listPanel, "UIPanelScrollFrameTemplate")
+        listPanel.scroll:SetPoint("TOPLEFT", 8, -30)
+        listPanel.scroll:SetPoint("BOTTOMRIGHT", -28, 10)
+    end
+    listPanel:SetHeight(math.min(560, (UIParent:GetHeight() or 800) - 200))
+    local content = CreateFrame("Frame", nil, listPanel.scroll)
+    content:SetWidth(258)
+    if listPanel.content then listPanel.content:Hide(); listPanel.content:SetParent(nil) end
+    listPanel.content = content
+    listPanel.scroll:SetScrollChild(content)
+    local b = Builder(content)
+    local oldSuppress = GUI._suppressSearchRegistration
+    GUI._suppressSearchRegistration = true
+    local seen = {}
+    local groupsOrder = {
+        { "unitframes", "Unit Frames" }, { "party", "Party" }, { "raid", "Raid" }, { "actionbars", "Action Bars" },
+        { "powerbars", "Power Bars" }, { "totems", "Totem Bar" }, { "combattimer", "Timers" }, { "mplus", "Timers" },
+        { "blizzard", "Blizzard Frames" },
+    }
+    for _, gi in ipairs(groupsOrder) do
+        local header = false
+        for _, el in ipairs(AllElements()) do
+            if el.group == gi[1] and not seen[el.key] then
+                local tg = ToggleFor(el)
+                if tg then
+                    seen[el.key] = true
+                    if not header then
+                        header = true
+                        b.y = b.y - 4
+                        local r, g, bb = Accent()
+                        b.Text(gi[2], 18, { r, g, bb })
+                    end
+                    local state = { on = tg.get() and true or false }
+                    b.Place(GUI:CreateFormCheckbox(content, el.label, "on", state, function(v)
+                        if InCombatLockdown() then return end
+                        tg.set(v and true or false)
+                        C_Timer.After(0.3, function() if LM.active then RefreshHandles() end end)
+                    end), 28)
+                end
+            end
+        end
+    end
+    GUI._suppressSearchRegistration = oldSuppress
+    content:SetHeight(-b.y + 10)
+    listPanel:Show()
+end
+LM.UpdateList = UpdateList
+LM.HidePanels = function()
+    if inspector then inspector:Hide() end
+    if listPanel then listPanel:Hide() end
 end
 
 ---------------------------------------------------------------------------
@@ -1169,6 +1525,17 @@ local function BuildToolbar()
         if _G.H3z0UI_ImportLayout then _G.H3z0UI_ImportLayout() end
     end)
     import:SetPoint("RIGHT", grid, "LEFT", -12, 0)
+    local showHide = ToolbarButton(bar, "Show / Hide", function()
+        if LM.listShown then
+            LM.listShown = false
+            if LM.HidePanels then LM.HidePanels() end
+            if LM.selected and LM.UpdateInspector then LM.UpdateInspector(LM.selected) end
+        else
+            LM.listShown = true
+            if LM.UpdateList then LM.UpdateList() end
+        end
+    end)
+    showHide:SetPoint("TOPLEFT", bar.title, "TOPRIGHT", 14, 3)
     local export = ToolbarButton(bar, "Export", function()
         if _G.H3z0UI_ExportLayout then _G.H3z0UI_ExportLayout() end
     end)
@@ -1241,7 +1608,7 @@ function LM:Enter()
     end
     local LSets = ns.LayoutSets
     if LSets then
-        Say("Editing the |cffFFFF00" .. (LSets.CurrentMode() == "deck" and "Deck" or "PC") .. "|r layout. Positions are saved in H3z0 UI - Blizzard's Edit Mode layouts are not changed.")
+        Say("Editing the |cffFFFF00" .. (LSets.CurrentMode() == "deck" and "Deck" or "PC") .. "|r layout. Click a frame for its settings, Show / Hide switches frames on and off. Everything is kept by H3z0 UI.")
     end
 
     self.active = true
@@ -1250,6 +1617,7 @@ function LM:Enter()
     for _, g in pairs(groups) do
         if g.enter then pcall(g.enter) end
     end
+    if ns.ActionBarLayout and ns.ActionBarLayout.ApplyStored then pcall(ns.ActionBarLayout.ApplyStored) end
 
     if self.showGrid then BuildGrid():Show() end
     BuildToolbar():Show()
@@ -1283,6 +1651,8 @@ function LM:Exit()
     self.selected = nil
     if self.grid then self.grid:Hide() end
     if self.toolbar then self.toolbar:Hide() end
+    self.listShown = false
+    if self.HidePanels then self.HidePanels() end
     if self.keys then self.keys:EnableKeyboard(false); self.keys:Hide() end
 
     for _, g in pairs(groups) do

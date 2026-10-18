@@ -2481,6 +2481,31 @@ local function CreateCDMSetupPage(parent)
         orientationSecondary:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
 
+        -- 0.24.7: Bar or Orbs
+        if secondary.style == nil then secondary.style = "bar" end
+        if secondary.orbSize == nil then secondary.orbSize = 14 end
+        if secondary.orbSpacing == nil then secondary.orbSpacing = 4 end
+        local styleSecondary = GUI:CreateFormDropdown(tabContent, "Style", {
+            { value = "bar", text = "Bar" },
+            { value = "orbs", text = "Orbs (round, one per point)" },
+        }, "style", secondary, RefreshPowerBars)
+        styleSecondary:SetPoint("TOPLEFT", PAD, y)
+        styleSecondary:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        y = y - FORM_ROW
+        local orbSizeSlider = GUI:CreateFormSlider(tabContent, "Orb Size", 6, 40, 1, "orbSize", secondary, RefreshPowerBars)
+        orbSizeSlider:SetPoint("TOPLEFT", PAD, y)
+        orbSizeSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        y = y - FORM_ROW
+        local orbGapSlider = GUI:CreateFormSlider(tabContent, "Orb Spacing", 0, 20, 1, "orbSpacing", secondary, RefreshPowerBars)
+        orbGapSlider:SetPoint("TOPLEFT", PAD, y)
+        orbGapSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        y = y - FORM_ROW
+        local orbInfo = GUI:CreateLabel(tabContent, "Orbs are used for point resources (combo points, holy power, chi, soul shards, essence, arcane charges). Runes and Stagger stay bars. The orb colour is the bar colour (resource / class / custom colour below).", 11, C.textMuted)
+        orbInfo:SetPoint("TOPLEFT", PAD, y)
+        orbInfo:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        orbInfo:SetJustifyH("LEFT")
+        y = y - 34
+
         -- Quick Position row with 3 buttons: Snap to Essentials, Snap to Utility, Snap to Primary
         local snapSecondaryContainer = CreateFrame("Frame", nil, tabContent)
         snapSecondaryContainer:SetHeight(FORM_ROW)

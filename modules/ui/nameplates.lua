@@ -360,12 +360,40 @@ local function FindCastBars(frame, list, depth)
     end
 end
 
+-- 0.24.4: the level box of Blizzard's nameplate has other names on WoW: Forever / Classic
+-- (levelText, LevelFrame on the health bar, ...): every part named "level" on the plate, its
+-- health bar or its health container is hidden too (our name line shows the level)
+local function LevelParts(uf)
+    local list = uf.h3zNPLevelParts
+    if list then return list end
+    list = {}
+    local seen = {}
+    local function Scan(t)
+        if type(t) ~= "table" then return end
+        for k, v in pairs(t) do
+            if type(k) == "string" and type(v) == "table" and not seen[v] and k:lower():find("level", 1, true)
+                and v.SetAlpha and not v.h3zNPOwn then
+                seen[v] = true
+                list[#list + 1] = v
+            end
+        end
+    end
+    Scan(uf)
+    Scan(uf.healthBar)
+    Scan(uf.HealthBarsContainer)
+    if uf.HealthBarsContainer then Scan(uf.HealthBarsContainer.healthBar) end
+    if #list > 0 then uf.h3zNPLevelParts = list end   -- nothing found yet: look again next time
+    return list
+end
+
 local function HideBlizzard(uf, hidden, castToo)
     if not uf then return end
     for _, k in ipairs(HIDE_KEYS) do
         local r = uf[k]
         if type(r) == "table" and r.SetAlpha and k ~= "castBar" and k ~= "CastBar" then pcall(SetHidden, r, hidden) end
     end
+    local lv = LevelParts(uf)
+    for i = 1, #lv do pcall(SetHidden, lv[i], hidden) end
     local bars = uf.h3zNPCastBars
     if not bars then
         bars = {}
@@ -1067,5 +1095,51 @@ do
             if s and type(s.instSaved) == "table" then instSaved = s.instSaved end
         end
         C_Timer.After(1, ApplyInstanceFriendly)
+    end)
+end
+
+---------------------------------------------------------------------------
+-- Stacking / overlap (0.24.4): the game's own nameplate spacing - stacked or overlapping, and
+-- how close plates may sit (vertical / horizontal). Works for every nameplate, H3z0 or not.
+-- Only touched once you change it in the options (stackManaged), then kept on every login.
+---------------------------------------------------------------------------
+local STACK_CVARS = { motion = "nameplateMotion", v = "nameplateOverlapV", h = "nameplateOverlapH" }
+local stackPending = false
+
+function NP.StackingAvailable()
+    return GetCV(STACK_CVARS.v) ~= nil or GetCV(STACK_CVARS.motion) ~= nil
+end
+
+-- read the current game values into the settings (before the player has changed anything)
+function NP.ReadStacking()
+    local s = DB()
+    if not s or s.stackManaged then return end
+    local m = tonumber(GetCV(STACK_CVARS.motion) or "")
+    if m then s.stackMode = (m == 1) and "stack" or "overlap" end
+    s.overlapV = tonumber(GetCV(STACK_CVARS.v) or "") or s.overlapV or 1.1
+    s.overlapH = tonumber(GetCV(STACK_CVARS.h) or "") or s.overlapH or 0.8
+end
+
+function NP.ApplyStacking()
+    local s = DB()
+    if not (s and s.stackManaged) then return end
+    if InCombatLockdown() then stackPending = true return end
+    stackPending = false
+    if GetCV(STACK_CVARS.motion) ~= nil then SetCV(STACK_CVARS.motion, (s.stackMode == "overlap") and "0" or "1") end
+    if GetCV(STACK_CVARS.v) ~= nil and s.overlapV then SetCV(STACK_CVARS.v, string.format("%.2f", s.overlapV)) end
+    if GetCV(STACK_CVARS.h) ~= nil and s.overlapH then SetCV(STACK_CVARS.h, string.format("%.2f", s.overlapH)) end
+end
+_G.H3z0UI_ApplyPlateStacking = NP.ApplyStacking
+
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("PLAYER_REGEN_ENABLED")
+    f:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then
+            if stackPending then NP.ApplyStacking() end
+            return
+        end
+        C_Timer.After(1.5, NP.ApplyStacking)
     end)
 end

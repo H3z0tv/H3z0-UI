@@ -1,5 +1,17 @@
 # H3z0 UI - Patch Notes
 
+## 0.24.4 - Nameplate stacking, cleaner options
+New
+- Nameplates > Stacking & Overlap: choose Stacked (nameplates move apart so none cover another) or Overlapping, and set how close they may sit with Vertical Spacing and Horizontal Spacing. These are the game's own nameplate spacing settings, so they work for every nameplate (H3z0 Nameplates or Blizzard's), are kept on every login and wait for the end of combat when changed in a fight. "Game Default Spacing" puts the default values back. Nothing is changed until you touch one of these options.
+
+- WoW: Forever: the addon is called H3z0 UI Forever there - in the AddOn list (own H3z0UI_Forever.toc, which the Forever client reads first), in the options header, in Blizzard's AddOns settings, on the minimap button and in What's New. Retail stays H3z0 UI. Both come from the same files.
+
+Fixed
+- Options window: the sidebar was too narrow - "Cooldown Manager" and "Skinning & Autohide" ran over the divider line. The sidebar is wider and a name that still does not fit gets a slightly smaller font (retail and WoW: Forever).
+- Options window: long option names ran into the switches, sliders and dropdowns next to them (and were cut off with "..."). The name column is wider now, on retail and on WoW: Forever.
+- WoW: Forever nameplates: Blizzard's level box stuck out on the right of the H3z0 nameplate bar. It is hidden now (the level is already in front of the name).
+- UI Look: "Player / Target / Focus use the nameplate colours" is now "Unit Frames in Nameplate Colours" so it fits.
+
 ## 0.24.3 - Smoother nameplates, tracked bar fix
 Faster
 - H3z0 Nameplates: the settings were looked up in a way that built a new table and walked every colour on each health, cast and colour update of every nameplate - in a big pull that is hundreds of times a second and fed the garbage collector (short stutters). The settings are now prepared once.

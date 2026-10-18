@@ -250,7 +250,7 @@ local function CreateCustomTrackersPage(parent)
 
         -- Custom styled editbox (matches H3z0UI dropdown styling)
         local nameInputBg = CreateFrame("Frame", nil, nameContainer, "BackdropTemplate")
-        nameInputBg:SetPoint("LEFT", nameContainer, "LEFT", 180, 0)
+        nameInputBg:SetPoint("LEFT", nameContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         nameInputBg:SetSize(200, 24)
         local pxName = H3z0UICore:GetPixelSize(nameInputBg)
         nameInputBg:SetBackdrop({

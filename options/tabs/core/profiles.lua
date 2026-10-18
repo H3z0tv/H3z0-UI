@@ -58,7 +58,7 @@ local function CreateSpecProfilesPage(parent)
     currentProfileLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
 
     local currentProfileName = activeContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    currentProfileName:SetPoint("LEFT", activeContainer, "LEFT", 180, 0)
+    currentProfileName:SetPoint("LEFT", activeContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
     currentProfileName:SetText("Loading...")
     currentProfileName:SetTextColor(C.accent[1], C.accent[2], C.accent[3], 1)
 
@@ -98,7 +98,7 @@ local function CreateSpecProfilesPage(parent)
 
     local resetBtn = CreateFrame("Button", nil, resetContainer, "BackdropTemplate")
     resetBtn:SetSize(120, 24)
-    resetBtn:SetPoint("LEFT", resetContainer, "LEFT", 180, 0)
+    resetBtn:SetPoint("LEFT", resetContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
     local pxReset = GetCore() and GetCore():GetPixelSize(resetBtn) or 1
     resetBtn:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = pxReset})
     resetBtn:SetBackdropColor(0.15, 0.15, 0.15, 1)
@@ -196,7 +196,7 @@ local function CreateSpecProfilesPage(parent)
 
     profileDropdown = CreateFrame("Button", nil, profileDropdownContainer, "BackdropTemplate")
     profileDropdown:SetHeight(24)
-    profileDropdown:SetPoint("LEFT", profileDropdownContainer, "LEFT", 180, 0)
+    profileDropdown:SetPoint("LEFT", profileDropdownContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
     profileDropdown:SetPoint("RIGHT", profileDropdownContainer, "RIGHT", 0, 0)
     local px = GetCore() and GetCore():GetPixelSize(profileDropdown) or 1
     profileDropdown:SetBackdrop({
@@ -392,7 +392,7 @@ local function CreateSpecProfilesPage(parent)
 
     -- Custom styled editbox (matches dropdown styling)
     local newProfileBoxBg = CreateFrame("Frame", nil, newProfileContainer, "BackdropTemplate")
-    newProfileBoxBg:SetPoint("LEFT", newProfileContainer, "LEFT", 180, 0)
+    newProfileBoxBg:SetPoint("LEFT", newProfileContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
     newProfileBoxBg:SetSize(200, 24)
     local pxBox = GetCore() and GetCore():GetPixelSize(newProfileBoxBg) or 1
     newProfileBoxBg:SetBackdrop({

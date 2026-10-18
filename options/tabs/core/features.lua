@@ -86,7 +86,7 @@ local function Builder(tabContent)
         l:SetText(label)
         l:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
         local btn = GUI:CreateButton(row, text, width or 140, 24, onClick)
-        btn:SetPoint("LEFT", row, "LEFT", 180, 0)
+        btn:SetPoint("LEFT", row, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         b.Place(row)
         return btn
     end
@@ -233,7 +233,7 @@ local function BuildLookInto(holder, firstBuild)
     local NP = ns.H3zPlates
     local npdb = NP and NP.GetSettings and NP.GetSettings()
     if npdb then
-        b.Check("Player / Target / Focus use the nameplate colours", "unitFrameColors", npdb, RefreshAllLook)
+        b.Check("Unit Frames in Nameplate Colours", "unitFrameColors", npdb, RefreshAllLook)
     end
 
     local char = db and db.character

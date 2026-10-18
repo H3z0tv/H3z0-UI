@@ -8,6 +8,8 @@ local isForever = type(version) == "string" and version:match("^1%.60%.") ~= nil
 ns.Client = {
     isForever = isForever,
     flavor = isForever and "forever" or "midnight",
+    -- the addon's name as shown in game (0.24.4: "H3z0 UI Forever" on WoW: Forever)
+    displayName = isForever and "H3z0 UI Forever" or "H3z0 UI",
     version = version,
     build = build,
     interfaceVersion = interfaceVersion,

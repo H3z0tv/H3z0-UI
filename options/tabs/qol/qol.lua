@@ -98,7 +98,7 @@ local function BuildGeneralTab(tabContent)
 
         -- Button container aligned with slider track (180px) to editbox right edge
         local buttonContainer = CreateFrame("Frame", nil, tabContent)
-        buttonContainer:SetPoint("LEFT", scaleSlider, "LEFT", 180, 0)
+        buttonContainer:SetPoint("LEFT", scaleSlider, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         buttonContainer:SetPoint("RIGHT", scaleSlider, "RIGHT", 0, 0)
         buttonContainer:SetPoint("TOP", presetLabel, "TOP", 0, 0)
         buttonContainer:SetHeight(26)

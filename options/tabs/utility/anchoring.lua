@@ -852,7 +852,7 @@ function H3z0UI_Anchoring_Options:CreateAnchorPresetControls(parent, settingsDB,
             {source = "BOTTOMRIGHT", target = "TOPRIGHT"}
         })
     end)
-    presetAboveBtn:SetPoint("LEFT", presetButtonContainer, "LEFT", 180, 0)
+    presetAboveBtn:SetPoint("LEFT", presetButtonContainer, "LEFT", ((GetGUI() or {}).FORM_CONTROL_X or 232), 0)
     
     -- Below (auto width) - castbar below target, auto width matching
     local presetBelowBtn = GUI:CreateButton(presetButtonContainer, "Below (auto width)", buttonWidth, 24, function()

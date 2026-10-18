@@ -5,7 +5,7 @@
 local ADDON_NAME, ns = ...
 local H3z0UI = H3z0UI
 
-local ADDON_DISPLAY_NAME = "H3z0 UI"
+local ADDON_DISPLAY_NAME = (ns.Client and ns.Client.displayName) or "H3z0 UI"
 
 local function OpenH3z0UI()
     if H3z0UI.GUI then

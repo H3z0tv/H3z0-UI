@@ -297,7 +297,7 @@ local function BuildCastbarOptions(tabContent, unitKey, y, PAD, FORM_ROW, Refres
         -- Toggle track (pill-shaped, matches CreateFormToggle)
         local castPreviewTrack = CreateFrame("Button", nil, castPreviewContainer, "BackdropTemplate")
         castPreviewTrack:SetSize(40, 20)
-        castPreviewTrack:SetPoint("LEFT", castPreviewContainer, "LEFT", 180, 0)
+        castPreviewTrack:SetPoint("LEFT", castPreviewContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         local pxCastTrack = SafeGetPixelSize(castPreviewTrack)
         castPreviewTrack:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = pxCastTrack})
 
@@ -353,7 +353,7 @@ local function BuildCastbarOptions(tabContent, unitKey, y, PAD, FORM_ROW, Refres
         -- Snap to Frame button
         local snapFrameBtn = CreateFrame("Button", nil, snapContainer, "BackdropTemplate")
         snapFrameBtn:SetSize(100, 24)
-        snapFrameBtn:SetPoint("LEFT", snapContainer, "LEFT", 180, 0)
+        snapFrameBtn:SetPoint("LEFT", snapContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         local pxSnapFrame = SafeGetPixelSize(snapFrameBtn)
         snapFrameBtn:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = pxSnapFrame})
         snapFrameBtn:SetBackdropColor(0.15, 0.15, 0.15, 1)
@@ -781,7 +781,7 @@ local function BuildCastbarOptions(tabContent, unitKey, y, PAD, FORM_ROW, Refres
 
             local resetBtn = CreateFrame("Button", nil, resetContainer, "BackdropTemplate")
             resetBtn:SetSize(140, 24)
-            resetBtn:SetPoint("LEFT", resetContainer, "LEFT", 180, 0)
+            resetBtn:SetPoint("LEFT", resetContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
             local px = SafeGetPixelSize(resetBtn)
             resetBtn:SetBackdrop({
                 bgFile = "Interface\\Buttons\\WHITE8x8",

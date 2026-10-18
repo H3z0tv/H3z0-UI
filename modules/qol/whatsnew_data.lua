@@ -9,15 +9,16 @@
 local ADDON_NAME, ns = ...
 
 ns.WhatsNew = {
-    version = "0.24.3",
-    build = 1,
+    version = "0.24.4",
+    build = 2,
     new = {
-        "|cff34D399Smoother H3z0 Nameplates|r: the nameplates do much less work per update in big pulls - settings, zone, spec and addon checks are no longer redone on every health or cast update, borders only change when the threat or target state changes, and a plate that shows up again keeps its layout.",
-        "Coming from 0.24.1 or older? 0.24.2 brought the UI Look page (Classic / Modern / Modern v2 with only that version's options), Character and Inspect v2, a much faster options window and many fixes - see PATCH_NOTES.md.",
+        "|cff34D399Stacking & Overlap|r (Nameplates page): Stacked or Overlapping nameplates, and Vertical / Horizontal Spacing sliders for how close they may sit. Works for every nameplate and is kept on every login.",
     },
     fixed = {
-        "Tracked buff bars (Cooldown Manager): a bar that stayed in Blizzard's look and position and overlapped the H3z0 UI bars is styled and stacked like the rest now.",
-        "Tracked bars are only re-styled when something changed instead of 10 times a second for every bar.",
-        "Changing your target looks up the target's nameplate once instead of once per nameplate.",
+        "Options window: the sidebar names (Cooldown Manager, Skinning & Autohide) no longer run over the divider line.",
+        "WoW: Forever: the addon is now called H3z0 UI Forever there.",
+        "Options window: long option names no longer run into the switches, sliders and dropdowns (wider name column, retail and WoW: Forever).",
+        "WoW: Forever nameplates: Blizzard's level box no longer sticks out on the right of the bar.",
+        "From 0.24.3: smoother H3z0 Nameplates in big pulls and the tracked buff bar overlap fix.",
     },
 }

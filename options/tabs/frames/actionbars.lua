@@ -1195,7 +1195,7 @@ BuildTotemBarTab = function(tabContent)
 
     local previewTrack = CreateFrame("Button", nil, previewContainer, "BackdropTemplate")
     previewTrack:SetSize(40, 20)
-    previewTrack:SetPoint("LEFT", previewContainer, "LEFT", 180, 0)
+    previewTrack:SetPoint("LEFT", previewContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
     local core = GetCore()
     local pxTrack = (core and core.GetPixelSize) and core:GetPixelSize(previewTrack) or 1
     previewTrack:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = pxTrack})

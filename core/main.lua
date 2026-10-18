@@ -4151,7 +4151,7 @@ function H3z0UICore:CreateMinimapButton()
     local dataObj = LDB:NewDataObject(ADDON_NAME, {
         type = "launcher",
         icon = "Interface\\AddOns\\H3z0UI\\assets\\minimap_icon",
-        label = "H3z0 UI",
+        label = (ns.Client and ns.Client.displayName) or "H3z0 UI",
         OnClick = function(clickedframe, button)
             if button == "LeftButton" then
                 self:OpenConfig()

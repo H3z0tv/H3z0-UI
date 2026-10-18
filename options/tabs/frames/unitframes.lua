@@ -99,7 +99,7 @@ local function CreateUnitFramesPage(parent)
 
         local editModeBtn = CreateFrame("Button", nil, editContainer, "BackdropTemplate")
         editModeBtn:SetSize(120, 24)
-        editModeBtn:SetPoint("LEFT", editContainer, "LEFT", 180, 0)
+        editModeBtn:SetPoint("LEFT", editContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         local px = SafeGetPixelSize(editModeBtn)
         editModeBtn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -421,7 +421,7 @@ local function CreateUnitFramesPage(parent)
         -- Toggle track (pill-shaped, matches CreateFormToggle)
         local previewTrack = CreateFrame("Button", nil, previewContainer, "BackdropTemplate")
         previewTrack:SetSize(40, 20)
-        previewTrack:SetPoint("LEFT", previewContainer, "LEFT", 180, 0)
+        previewTrack:SetPoint("LEFT", previewContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         local pxTrack = SafeGetPixelSize(previewTrack)
         previewTrack:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = pxTrack})
 
@@ -1088,7 +1088,7 @@ local function CreateUnitFramesPage(parent)
 
             local debuffPreviewTrack = CreateFrame("Button", nil, debuffPreviewContainer, "BackdropTemplate")
             debuffPreviewTrack:SetSize(40, 20)
-            debuffPreviewTrack:SetPoint("LEFT", debuffPreviewContainer, "LEFT", 180, 0)
+            debuffPreviewTrack:SetPoint("LEFT", debuffPreviewContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
             local pxDebuffTrack = SafeGetPixelSize(debuffPreviewTrack)
             debuffPreviewTrack:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = pxDebuffTrack})
 
@@ -1275,7 +1275,7 @@ local function CreateUnitFramesPage(parent)
 
             local buffPreviewTrack = CreateFrame("Button", nil, buffPreviewContainer, "BackdropTemplate")
             buffPreviewTrack:SetSize(40, 20)
-            buffPreviewTrack:SetPoint("LEFT", buffPreviewContainer, "LEFT", 180, 0)
+            buffPreviewTrack:SetPoint("LEFT", buffPreviewContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
             local pxBuffTrack = SafeGetPixelSize(buffPreviewTrack)
             buffPreviewTrack:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = pxBuffTrack})
 

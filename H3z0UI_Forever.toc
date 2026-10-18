@@ -1,0 +1,17 @@
+## Interface: 16001
+## Title: |cFF30D1FFH3z0 UI Forever|r
+## IconTexture: Interface\AddOns\H3z0UI\assets\icon
+## AddonCompartmentFunc: H3z0UI_CompartmentClick
+## AddonCompartmentFuncOnEnter: H3z0UI_CompartmentOnEnter
+## AddonCompartmentFuncOnLeave: H3z0UI_CompartmentOnLeave
+## Notes: Comprehensive UI customization addon
+## Author: H3z0
+## Version: 0.24.4
+## DefaultState: Enabled
+## LoadOnDemand: 0
+## OptionalDeps: CombatMode
+## SavedVariables: H3z0UI_DB, H3z0UIDB
+
+## X-License: GPLv3
+
+load.xml

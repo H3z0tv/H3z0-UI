@@ -241,6 +241,30 @@ Build = function(tabContent)
         Place(GUI:CreateFormCheckbox(tabContent, "Show Level", "showLevel", npdb, RefreshNP))
         Place(GUI:CreateFormCheckbox(tabContent, "Show Health Value", "showHealth", npdb, RefreshNP))
         Place(GUI:CreateFormCheckbox(tabContent, "Show Health Percent", "showPercent", npdb, RefreshNP))
+        -- 0.24.4: stacking / overlap (the game's own spacing; also for Blizzard's plates)
+        if NP.StackingAvailable and NP.StackingAvailable() then
+            if NP.ReadStacking then NP.ReadStacking() end
+            local function Stack()
+                npdb.stackManaged = true
+                if _G.H3z0UI_ApplyPlateStacking then _G.H3z0UI_ApplyPlateStacking() end
+            end
+            Section("Stacking & Overlap")
+            Info("How nameplates sit next to each other. Stacked: they move apart so none cover another. Overlapping: they stay over their unit and can cover each other. The spacing sliders set how close they may get (lower = closer together, more overlap). Applies to every nameplate and is kept on every login; in combat it waits until combat ends.", 50)
+            Place(GUI:CreateFormDropdown(tabContent, "Nameplate Placement", {
+                { value = "stack", text = "Stacked (no overlap)" },
+                { value = "overlap", text = "Overlapping" },
+            }, "stackMode", npdb, Stack))
+            Place(GUI:CreateFormSlider(tabContent, "Vertical Spacing", 0.3, 2.5, 0.05, "overlapV", npdb, Stack))
+            Place(GUI:CreateFormSlider(tabContent, "Horizontal Spacing", 0.3, 2.5, 0.05, "overlapH", npdb, Stack))
+            local resetStack = GUI:CreateButton(tabContent, "Game Default Spacing", 180, 24, function()
+                npdb.stackMode, npdb.overlapV, npdb.overlapH = "stack", 1.1, 0.8
+                Stack()
+                Rebuild()
+            end)
+            resetStack:SetPoint("TOPLEFT", PAD, y)
+            y = y - 36
+            Section("Teammates")
+        end
         Info("Teammates inside dungeons / raids: the game locks friendly nameplates there, so they can't get the H3z0 look. H3z0 UI can switch Blizzard's own settings while you are inside (and back when you leave):", 34)
         local function RefreshInst() if _G.H3z0UI_ApplyInstanceFriendly then _G.H3z0UI_ApplyInstanceFriendly() end end
         Place(GUI:CreateFormCheckbox(tabContent, "Teammates in Class Colours (instances)", "instClassColors", npdb, RefreshInst))

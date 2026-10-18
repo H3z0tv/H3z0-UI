@@ -1995,7 +1995,7 @@ local function CreateCDMSetupPage(parent)
 
         local snapPrimaryBtn = CreateFrame("Button", nil, snapPrimaryContainer, "BackdropTemplate")
         snapPrimaryBtn:SetSize(115, 24)
-        snapPrimaryBtn:SetPoint("LEFT", snapPrimaryContainer, "LEFT", 180, 0)
+        snapPrimaryBtn:SetPoint("LEFT", snapPrimaryContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         local pxSnapPrimary = (H3z0UICore and H3z0UICore.GetPixelSize and H3z0UICore:GetPixelSize(snapPrimaryBtn)) or 1
         snapPrimaryBtn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -2108,7 +2108,7 @@ local function CreateCDMSetupPage(parent)
         -- Lock to Essentials button
         local lockEssentialBtn = CreateFrame("Button", nil, lockContainer, "BackdropTemplate")
         lockEssentialBtn:SetSize(115, 24)
-        lockEssentialBtn:SetPoint("LEFT", lockContainer, "LEFT", 180, 0)
+        lockEssentialBtn:SetPoint("LEFT", lockContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         local pxLockEss = (H3z0UICore and H3z0UICore.GetPixelSize and H3z0UICore:GetPixelSize(lockEssentialBtn)) or 1
         lockEssentialBtn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -2496,7 +2496,7 @@ local function CreateCDMSetupPage(parent)
         -- Snap to Essentials button
         local snapSecEssentialBtn = CreateFrame("Button", nil, snapSecondaryContainer, "BackdropTemplate")
         snapSecEssentialBtn:SetSize(100, 24)
-        snapSecEssentialBtn:SetPoint("LEFT", snapSecondaryContainer, "LEFT", 180, 0)
+        snapSecEssentialBtn:SetPoint("LEFT", snapSecondaryContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         local pxSnapSecEss = (H3z0UICore and H3z0UICore.GetPixelSize and H3z0UICore:GetPixelSize(snapSecEssentialBtn)) or 1
         snapSecEssentialBtn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -2673,7 +2673,7 @@ local function CreateCDMSetupPage(parent)
         -- Lock to Essential button
         local lockSecEssentialBtn = CreateFrame("Button", nil, lockSecContainer, "BackdropTemplate")
         lockSecEssentialBtn:SetSize(100, 24)
-        lockSecEssentialBtn:SetPoint("LEFT", lockSecContainer, "LEFT", 180, 0)
+        lockSecEssentialBtn:SetPoint("LEFT", lockSecContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         local pxLockSecEss = (H3z0UICore and H3z0UICore.GetPixelSize and H3z0UICore:GetPixelSize(lockSecEssentialBtn)) or 1
         lockSecEssentialBtn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -3146,7 +3146,7 @@ local function CreateCDMSetupPage(parent)
 
         local resetPowerColorsBtn = CreateFrame("Button", nil, resetPowerColorsContainer, "BackdropTemplate")
         resetPowerColorsBtn:SetSize(140, 24)
-        resetPowerColorsBtn:SetPoint("LEFT", resetPowerColorsContainer, "LEFT", 180, 0)
+        resetPowerColorsBtn:SetPoint("LEFT", resetPowerColorsContainer, "LEFT", (GUI.FORM_CONTROL_X or 232), 0)
         local pxResetPower = (H3z0UICore and H3z0UICore.GetPixelSize and H3z0UICore:GetPixelSize(resetPowerColorsBtn)) or 1
         resetPowerColorsBtn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",

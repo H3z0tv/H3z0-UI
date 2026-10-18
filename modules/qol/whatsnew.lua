@@ -136,7 +136,7 @@ function WN.Show()
     local data = ns.WhatsNew
     if not data then return end
     local f = Build()
-    f.title:SetText("|cff34D399H3z0 UI|r  What's New in " .. tostring(data.version)
+    f.title:SetText("|cff34D399" .. ((ns.Client and ns.Client.displayName) or "H3z0 UI") .. "|r  What's New in " .. tostring(data.version)
         .. (data.build and ("  |cff888888(update " .. tostring(data.build) .. ")|r") or ""))
     Fill(f, data)
     f:Show()

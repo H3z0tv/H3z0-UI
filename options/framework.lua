@@ -86,7 +86,7 @@ end
 
 -- Panel dimensions (used for widget sizing)
 GUI.PANEL_WIDTH = 1000
-GUI.SIDEBAR_WIDTH = 150
+GUI.SIDEBAR_WIDTH = 176   -- 0.24.4: was 150, "Cooldown Manager" / "Skinning & Autohide" ran over the divider
 GUI.CONTENT_WIDTH = 800  -- Panel width minus sidebar and padding
 
 -- Settings Registry for search functionality
@@ -2315,7 +2315,11 @@ local FORM_ROW_HEIGHT = 28
 -- under the switch / slider. Keep the label inside its column: wrap to two
 -- lines and shrink the font a little if two lines are still not enough.
 ---------------------------------------------------------------------------
-local FORM_LABEL_W = 170
+-- 0.24.4: a wider label column (was 170 / controls at 180): long labels ran into the controls
+local FORM_LABEL_W = 222
+local FORM_CONTROL_X = 232
+GUI.FORM_LABEL_W = FORM_LABEL_W
+GUI.FORM_CONTROL_X = FORM_CONTROL_X
 local function FitFormLabel(text)
     if not (text and text.SetWidth) then return end
     text:SetWidth(FORM_LABEL_W)
@@ -2361,7 +2365,7 @@ function GUI:CreateFormToggle(parent, label, dbKey, dbTable, onChange, registryI
     -- Toggle track (the pill-shaped background)
     local track = CreateFrame("Button", nil, container, "BackdropTemplate")
     track:SetSize(40, 20)
-    track:SetPoint("LEFT", container, "LEFT", 180, 0)
+    track:SetPoint("LEFT", container, "LEFT", FORM_CONTROL_X, 0)
     local px = H3z0UICore:GetPixelSize(track)
     track:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -2493,7 +2497,7 @@ function GUI:CreateFormToggleInverted(parent, label, dbKey, dbTable, onChange)
     -- Toggle track
     local track = CreateFrame("Button", nil, container, "BackdropTemplate")
     track:SetSize(40, 20)
-    track:SetPoint("LEFT", container, "LEFT", 180, 0)
+    track:SetPoint("LEFT", container, "LEFT", FORM_CONTROL_X, 0)
     local px = H3z0UICore:GetPixelSize(track)
     track:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -2610,7 +2614,7 @@ function GUI:CreateFormCheckboxOriginal(parent, label, dbKey, dbTable, onChange)
     -- Checkbox aligned with other widgets (starts at 180px from left)
     local box = CreateFrame("Button", nil, container, "BackdropTemplate")
     box:SetSize(18, 18)
-    box:SetPoint("LEFT", container, "LEFT", 180, 0)
+    box:SetPoint("LEFT", container, "LEFT", FORM_CONTROL_X, 0)
     local px = H3z0UICore:GetPixelSize(box)
     box:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -2711,7 +2715,7 @@ function GUI:CreateFormSlider(parent, label, min, max, step, dbKey, dbTable, onC
     -- Track container (for the filled + unfilled portions)
     local trackContainer = CreateFrame("Frame", nil, container)
     trackContainer:SetHeight(6)  -- Thicker track (was 14, now 6 for cleaner look)
-    trackContainer:SetPoint("LEFT", container, "LEFT", 180, 0)
+    trackContainer:SetPoint("LEFT", container, "LEFT", FORM_CONTROL_X, 0)
     trackContainer:SetPoint("RIGHT", container, "RIGHT", -70, 0)
 
     -- Unfilled track (background) - rounded appearance via backdrop
@@ -2987,7 +2991,7 @@ function GUI:CreateFormDropdown(parent, label, options, dbKey, dbTable, onChange
     -- Dropdown button (right side)
     local dropdown = CreateFrame("Button", nil, container, "BackdropTemplate")
     dropdown:SetHeight(24)  -- Increased from 22
-    dropdown:SetPoint("LEFT", container, "LEFT", 180, 0)
+    dropdown:SetPoint("LEFT", container, "LEFT", FORM_CONTROL_X, 0)
     dropdown:SetPoint("RIGHT", container, "RIGHT", 0, 0)
     local px = H3z0UICore:GetPixelSize(dropdown)
     dropdown:SetBackdrop({
@@ -3286,7 +3290,7 @@ function GUI:CreateFormColorPicker(parent, label, dbKey, dbTable, onChange, opti
     -- Color swatch aligned with other widgets (starts at 180px from left)
     local swatch = CreateFrame("Button", nil, container, "BackdropTemplate")
     swatch:SetSize(50, 18)
-    swatch:SetPoint("LEFT", container, "LEFT", 180, 0)
+    swatch:SetPoint("LEFT", container, "LEFT", FORM_CONTROL_X, 0)
     local px = H3z0UICore:GetPixelSize(swatch)
     swatch:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -3959,7 +3963,7 @@ function GUI:CreateMainFrame()
 
     local nameSub = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     SetFont(nameSub, 22, "OUTLINE", C.textBright)
-    nameSub:SetText("UI")
+    nameSub:SetText((ns and ns.Client and ns.Client.isForever) and "UI FOREVER" or "UI")
     nameSub:SetPoint("LEFT", nameMain, "RIGHT", 6, 0)
 
     local versionText = (H3z0UI and H3z0UI.versionString) or C_AddOns.GetAddOnMetadata("H3z0UI", "Version") or "2.xx"
@@ -4659,7 +4663,17 @@ function GUI:AddTab(frame, name, pageCreateFunc, isBottomItem)
     SetFont(tab.text, 11, "", C.tabNormal)
     tab.text:SetText(name)
     tab.text:SetPoint("LEFT", tab, "LEFT", 30, 0)
+    tab.text:SetPoint("RIGHT", tab, "RIGHT", -8, 0)
     tab.text:SetJustifyH("LEFT")
+    if tab.text.SetWordWrap then tab.text:SetWordWrap(false) end
+    do  -- 0.24.4: shrink a label that does not fit the sidebar (down to 9)
+        local room = (GUI.SIDEBAR_WIDTH or 176) - 30 - 9
+        local font, size, flags = tab.text:GetFont()
+        local w = (tab.text.GetUnboundedStringWidth and tab.text:GetUnboundedStringWidth()) or tab.text:GetStringWidth() or 0
+        if font and size and w > room then
+            tab.text:SetFont(font, math.max(9, math.floor(size * room / w)), flags or "")
+        end
+    end
 
     -- Position in sidebar
     if isBottomItem then

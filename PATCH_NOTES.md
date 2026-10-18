@@ -1,5 +1,14 @@
 # H3z0 UI - Patch Notes
 
+## 0.24.6 - Action bar layout
+New
+- Action Bars > Bar Layout (new first tab): every bar's Edit Mode settings in the H3z0 UI options - Orientation, Rows, Number of Icons, Icon Size, Icon Padding, Bar Visible (always, in combat, out of combat, hidden), Always Show Buttons, and for Action Bar 1 Hide Bar Art and Hide Bar Scrolling. Pick the bar at the top (Action Bar 1 to 8, Stance Bar, Pet Bar). The values are saved into your Edit Mode layout and Blizzard lays the bar out right away, exactly as if you changed them in Edit Mode. Changes made in combat wait until it ends.
+- Layout Mode: right click an action bar to open Bar Layout with that bar already picked.
+- If your Edit Mode layout is one of Blizzard's presets (Modern / Classic), Bar Layout offers to copy it to your own layout first (presets can't be changed).
+
+Changed
+- The other Action Bars tabs moved one place to the right (Master Settings, Mouseover Hide, Per-Bar Overrides, Extra Buttons, Totem Bar); search and Layout Mode right click follow.
+
 ## 0.24.5 - Raid frames
 New
 - H3z0 UI Raid Frames: one column per group with the group number on top. Every member is a slate tile with the name in class colour (top left), the level (top right), a health bar in class colour with the missing part dark, a small tank / healer badge and a thin power bar for tanks and healers. Pets have their own column on the right of the last group in use.

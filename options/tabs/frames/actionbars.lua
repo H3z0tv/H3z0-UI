@@ -15,6 +15,147 @@ local RefreshAll = Shared.RefreshAll
 -- Forward declaration for Totem Bar sub-tab (defined below Action Bars page)
 local BuildTotemBarTab
 
+---------------------------------------------------------------------------
+-- 0.24.6: SUB-TAB Bar Layout - the Edit Mode settings of each bar (rows, icons, size, ...)
+---------------------------------------------------------------------------
+local function BuildBarLayoutInto(holder, firstBuild, barKey, rebuild)
+    local y = -10
+    local PAD = PADDING
+    local FORM_ROW = 32
+    local ABL = ns.ActionBarLayout
+    if not firstBuild then GUI._suppressSearchRegistration = true end
+
+    local function Place(w, h)
+        w:SetPoint("TOPLEFT", PAD, y)
+        w:SetPoint("RIGHT", holder, "RIGHT", -PAD, 0)
+        y = y - (h or FORM_ROW)
+        return w
+    end
+    local function Info(text, h, color)
+        local l = GUI:CreateLabel(holder, text, 11, color or C.textMuted)
+        l:SetPoint("TOPLEFT", PAD, y)
+        l:SetPoint("RIGHT", holder, "RIGHT", -PAD, 0)
+        l:SetJustifyH("LEFT")
+        y = y - (h or 20)
+    end
+    local function Section(title)
+        GUI:SetSearchSection(title)
+        local hdr = GUI:CreateSectionHeader(holder, title)
+        hdr:SetPoint("TOPLEFT", PAD, y)
+        y = y - hdr.gap
+    end
+
+    Section("Bar Layout")
+    Info("The same settings as Blizzard's Edit Mode for each bar: orientation, rows, number of icons, icon size, padding and when the bar shows. They are saved into your Edit Mode layout and the bar changes right away. Changes wait for the end of combat. Right click a bar in H3z0 UI Layout Mode to open it here.", 48)
+
+    if not ABL then
+        Info("Bar layout is not available.", 20, {1, 0.5, 0.3, 1})
+        GUI._suppressSearchRegistration = false
+        return math.abs(y) + 40
+    end
+
+    local barOpts = {}
+    for _, b in ipairs(ABL.BARS) do barOpts[#barOpts + 1] = { value = b.key, text = b.label } end
+    local pick = { bar = barKey }
+    Place(GUI:CreateFormDropdown(holder, "Bar", barOpts, "bar", pick, function(v)
+        C_Timer.After(0, function() rebuild(v or pick.bar) end)
+    end))
+
+    local _, entry, reason = ABL.Entry(barKey)
+    if not entry then
+        if reason == "preset" then
+            Info("Your Edit Mode layout is one of Blizzard's presets (Modern / Classic), which can't be changed. Copy it to your own layout once and every setting below works:", 34, {1, 0.75, 0.3, 1})
+            local btn = GUI:CreateButton(holder, "Copy to my own layout", 200, 26, function()
+                if InCombatLockdown() then return end
+                ABL.CopyPresetToCustom()
+                C_Timer.After(0.5, function() rebuild(barKey) end)
+            end)
+            btn:SetPoint("TOPLEFT", PAD, y)
+            y = y - 38
+        else
+            Info(tostring(reason or "This bar can't be read right now."), 34, {1, 0.75, 0.3, 1})
+        end
+        GUI._suppressSearchRegistration = false
+        return math.abs(y) + 40
+    end
+
+    local frame = ABL.Frame(barKey)
+    local proxy = {}
+    local function Changed(st)
+        return function(v)
+            local ok, why = ABL.Set(barKey, st.setting, v ~= nil and v or proxy[st.key])
+            if not ok and why then print("|cff34D399H3z0 UI:|r " .. why) end
+        end
+    end
+    local SLIDER = Enum.EditModeSettingDisplayType and Enum.EditModeSettingDisplayType.Slider
+    local DROP = Enum.EditModeSettingDisplayType and Enum.EditModeSettingDisplayType.Dropdown
+    local CHECK = Enum.EditModeSettingDisplayType and Enum.EditModeSettingDisplayType.Checkbox
+    local shown = 0
+    for _, st in ipairs(ABL.SETTINGS) do
+        if ABL.Has(barKey, st.setting) then
+            local dinfo = ABL.DisplayInfo(frame, st.setting)
+            local val = ABL.Get(barKey, st.setting)
+            local kind = dinfo and dinfo.type
+            if kind == CHECK then
+                proxy[st.key] = (val == 1 or val == true)
+                Place(GUI:CreateFormCheckbox(holder, st.label, st.key, proxy, function(v)
+                    Changed(st)(v and 1 or 0)
+                end))
+                shown = shown + 1
+            elseif kind == DROP and type(dinfo.options) == "table" then
+                local opts = {}
+                for _, o in ipairs(dinfo.options) do
+                    opts[#opts + 1] = { value = o.value, text = o.text or tostring(o.value) }
+                end
+                proxy[st.key] = val
+                Place(GUI:CreateFormDropdown(holder, st.label, opts, st.key, proxy, Changed(st)))
+                shown = shown + 1
+            elseif kind == SLIDER and dinfo.minValue and dinfo.maxValue then
+                proxy[st.key] = tonumber(val) or dinfo.minValue
+                Place(GUI:CreateFormSlider(holder, st.label, dinfo.minValue, dinfo.maxValue, dinfo.stepSize or 1,
+                    st.key, proxy, Changed(st)))
+                shown = shown + 1
+            end
+        end
+    end
+    if shown == 0 then Info("This bar has no layout settings.", 20) end
+
+    local reread = GUI:CreateButton(holder, "Read again from Edit Mode", 210, 24, function() rebuild(barKey) end)
+    reread:SetPoint("TOPLEFT", PAD, y)
+    y = y - 34
+    Info("Position: drag the bar in H3z0 UI Layout Mode. Button look (backdrop, borders, gloss, text): Master Settings.", 34)
+
+    GUI._suppressSearchRegistration = false
+    return math.abs(y) + 40
+end
+
+local function BuildBarLayoutTab(tabContent)
+    GUI:SetSearchContext({tabIndex = 8, tabName = "Action Bars", subTabIndex = 1, subTabName = "Bar Layout"})
+    local holder
+    local first = true
+    local current = _G.H3z0UI_ActionBarLayoutPick or "bar1"
+    local function Rebuild(barKey)
+        if InCombatLockdown() and not first then return end
+        current = barKey or current
+        if holder then holder:Hide(); holder:SetParent(nil) end
+        holder = CreateFrame("Frame", nil, tabContent)
+        holder:SetPoint("TOPLEFT", 0, 0)
+        holder:SetPoint("TOPRIGHT", 0, 0)
+        local ok, h = pcall(BuildBarLayoutInto, holder, first, current, Rebuild)
+        GUI._suppressSearchRegistration = false
+        first = false
+        h = (ok and h) or 400
+        holder:SetHeight(h)
+        tabContent:SetHeight(h)
+    end
+    Rebuild(current)
+    -- Layout Mode right click picks the bar: follow it when this tab is shown again
+    tabContent:HookScript("OnShow", function()
+        local want = _G.H3z0UI_ActionBarLayoutPick
+        if want and want ~= current then Rebuild(want) else Rebuild(current) end
+    end)
+end
+
 local function GetCore()
     return (_G.H3z0UI and _G.H3z0UI.H3z0UICore) or ns.Addon
 end
@@ -55,7 +196,7 @@ local function CreateActionBarsPage(parent)
         local FORM_ROW = 32
 
         -- Set search context for widget auto-registration
-        GUI:SetSearchContext({tabIndex = 8, tabName = "Action Bars", subTabIndex = 2, subTabName = "Mouseover Hide"})
+        GUI:SetSearchContext({tabIndex = 8, tabName = "Action Bars", subTabIndex = 3, subTabName = "Mouseover Hide"})
 
         ---------------------------------------------------------
         -- Warning: Enable Blizzard Action Bars
@@ -193,7 +334,7 @@ local function CreateActionBarsPage(parent)
         local FORM_ROW = 32
 
         -- Set search context for auto-registration
-        GUI:SetSearchContext({tabIndex = 8, tabName = "Action Bars", subTabIndex = 1, subTabName = "Master Settings"})
+        GUI:SetSearchContext({tabIndex = 8, tabName = "Action Bars", subTabIndex = 2, subTabName = "Master Settings"})
 
         -- 9-point anchor options for text positioning
         local anchorOptions = {
@@ -556,7 +697,7 @@ local function CreateActionBarsPage(parent)
     ---------------------------------------------------------
     local function BuildPerBarOverridesTab(tabContent)
         -- Set search context for widget auto-registration
-        GUI:SetSearchContext({tabIndex = 8, tabName = "Action Bars", subTabIndex = 3, subTabName = "Per-Bar Overrides"})
+        GUI:SetSearchContext({tabIndex = 8, tabName = "Action Bars", subTabIndex = 4, subTabName = "Per-Bar Overrides"})
 
         -- Use tabContent directly - parent Action Bars page already has scroll
         local content = tabContent
@@ -978,7 +1119,7 @@ local function CreateActionBarsPage(parent)
         local FORM_ROW = 32
 
         -- Set search context
-        GUI:SetSearchContext({tabIndex = 8, tabName = "Action Bars", subTabIndex = 4, subTabName = "Extra Buttons"})
+        GUI:SetSearchContext({tabIndex = 8, tabName = "Action Bars", subTabIndex = 5, subTabName = "Extra Buttons"})
 
         -- Refresh callback
         local function RefreshExtraButtons()
@@ -1113,6 +1254,7 @@ local function CreateActionBarsPage(parent)
     -- Create Sub-Tabs
     ---------------------------------------------------------
     GUI:CreateSubTabs(content, {
+        {name = "Bar Layout", builder = BuildBarLayoutTab},
         {name = "Master Settings", builder = BuildMasterSettingsTab},
         {name = "Mouseover Hide", builder = BuildMouseoverHideTab},
         {name = "Per-Bar Overrides", builder = BuildPerBarOverridesTab},
@@ -1136,7 +1278,7 @@ BuildTotemBarTab = function(tabContent)
     local db = core and core.db and core.db.profile and core.db.profile.totemBar
 
     -- Set search context for widget auto-registration
-    GUI:SetSearchContext({tabIndex = 8, tabName = "Action Bars", subTabIndex = 5, subTabName = "Totem Bar"})
+    GUI:SetSearchContext({tabIndex = 8, tabName = "Action Bars", subTabIndex = 6, subTabName = "Totem Bar"})
 
     -- Class guard: show notice for non-shamans
     local _, playerClass = UnitClass("player")

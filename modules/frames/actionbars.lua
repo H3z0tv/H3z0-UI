@@ -2277,3 +2277,211 @@ do
         hooksecurefunc(ActionBars, "Refresh", Debounced(ApplyModernButtons, 0.15))
     end
 end
+
+---------------------------------------------------------------------------
+-- 0.24.6: Bar Layout - the Edit Mode settings of Blizzard's bars (orientation, rows,
+-- icons, icon size, padding, visibility, ...) from the H3z0 UI options. The values are
+-- written into your active custom Edit Mode layout and Blizzard lays the bar out itself,
+-- exactly like changing them in Edit Mode (no bar is moved or resized by addon code).
+---------------------------------------------------------------------------
+local ABL = {}
+ns.ActionBarLayout = ABL
+
+ABL.BARS = {
+    { key = "bar1", label = "Action Bar 1", frames = { "MainActionBar", "MainMenuBar" } },
+    { key = "bar2", label = "Action Bar 2", frames = { "MultiBarBottomLeft" } },
+    { key = "bar3", label = "Action Bar 3", frames = { "MultiBarBottomRight" } },
+    { key = "bar4", label = "Action Bar 4", frames = { "MultiBarRight" } },
+    { key = "bar5", label = "Action Bar 5", frames = { "MultiBarLeft" } },
+    { key = "bar6", label = "Action Bar 6", frames = { "MultiBar5" } },
+    { key = "bar7", label = "Action Bar 7", frames = { "MultiBar6" } },
+    { key = "bar8", label = "Action Bar 8", frames = { "MultiBar7" } },
+    { key = "stance", label = "Stance Bar", frames = { "StanceBar" } },
+    { key = "pet", label = "Pet Bar", frames = { "PetActionBar" } },
+}
+
+local ABS = Enum and Enum.EditModeActionBarSetting or {}
+ABL.SETTINGS = {
+    { key = "orientation", setting = ABS.Orientation, label = "Orientation" },
+    { key = "rows", setting = ABS.NumRows, label = "Rows" },
+    { key = "icons", setting = ABS.NumIcons, label = "Number of Icons" },
+    { key = "size", setting = ABS.IconSize, label = "Icon Size (%)" },
+    { key = "padding", setting = ABS.IconPadding, label = "Icon Padding" },
+    { key = "visible", setting = ABS.VisibleSetting, label = "Bar Visible" },
+    { key = "alwaysShow", setting = ABS.AlwaysShowButtons, label = "Always Show Buttons" },
+    { key = "hideArt", setting = ABS.HideBarArt, label = "Hide Bar Art" },
+    { key = "hideScrolling", setting = ABS.HideBarScrolling, label = "Hide Bar Scrolling" },
+}
+
+function ABL.Frame(barKey)
+    for _, b in ipairs(ABL.BARS) do
+        if b.key == barKey then
+            for _, n in ipairs(b.frames) do
+                local f = _G[n]
+                if f and f.system ~= nil then return f end
+            end
+        end
+    end
+    return nil
+end
+
+-- how Edit Mode shows a setting (slider range, dropdown options, checkbox)
+function ABL.DisplayInfo(frame, setting)
+    local mgr = _G.EditModeSettingDisplayInfoManager
+    local list = mgr and mgr.systemSettingDisplayInfo and frame and mgr.systemSettingDisplayInfo[frame.system]
+    if type(list) ~= "table" then return nil end
+    for _, info in ipairs(list) do
+        if info.setting == setting then return info end
+    end
+    return nil
+end
+
+local function NumPresets()
+    local n = 0
+    if Enum and Enum.EditModePresetLayouts then for _ in pairs(Enum.EditModePresetLayouts) do n = n + 1 end end
+    return n > 0 and n or 2
+end
+
+-- layoutInfo + this bar's entry in the active custom layout, or nil + reason ("preset", text)
+function ABL.Entry(barKey)
+    local frame = ABL.Frame(barKey)
+    if not frame then return nil, nil, "This bar is not available." end
+    if not (C_EditMode and C_EditMode.GetLayouts) then return nil, nil, "Edit Mode is not available." end
+    local info = C_EditMode.GetLayouts()
+    if type(info) ~= "table" or type(info.layouts) ~= "table" then return nil, nil, "Edit Mode layouts are not loaded yet." end
+    local layout = info.layouts[(tonumber(info.activeLayout) or 0) - NumPresets()]
+    if type(layout) ~= "table" then return info, nil, "preset" end
+    for _, sys in ipairs(layout.systems or {}) do
+        if sys.system == frame.system and sys.systemIndex == frame.systemIndex then
+            return info, sys, nil, frame
+        end
+    end
+    return info, nil, "This bar is not in your Edit Mode layout yet - open Blizzard's Edit Mode once and save."
+end
+
+local function RawToDisplay(dinfo, raw)
+    if not dinfo or raw == nil then return raw end
+    if dinfo.type == (Enum.EditModeSettingDisplayType and Enum.EditModeSettingDisplayType.Slider) and dinfo.ConvertValue
+        and dinfo.minValue and dinfo.maxValue then
+        local step = dinfo.stepSize or 1
+        for d = dinfo.minValue, dinfo.maxValue, step do
+            local ok, r = pcall(dinfo.ConvertValue, dinfo, d)
+            if ok and r == raw then return d end
+        end
+    end
+    return raw
+end
+
+local function DisplayToRaw(dinfo, value)
+    if dinfo and dinfo.ConvertValue then
+        local ok, r = pcall(dinfo.ConvertValue, dinfo, value)
+        if ok and r ~= nil then return r end
+    end
+    return value
+end
+
+-- current value as Edit Mode shows it (nil when the bar has no such setting)
+function ABL.Get(barKey, setting)
+    local _, entry, _, frame = ABL.Entry(barKey)
+    frame = frame or ABL.Frame(barKey)
+    local raw
+    if entry then
+        for _, s in ipairs(entry.settings or {}) do
+            if s.setting == setting then raw = s.value break end
+        end
+    elseif frame and frame.GetSettingValue then
+        local ok, v = pcall(frame.GetSettingValue, frame, setting, true)
+        if ok then raw = v end
+    end
+    return RawToDisplay(ABL.DisplayInfo(frame, setting), raw)
+end
+
+function ABL.Has(barKey, setting)
+    if setting == nil then return false end
+    local _, entry, _, frame = ABL.Entry(barKey)
+    if entry then
+        for _, s in ipairs(entry.settings or {}) do if s.setting == setting then return true end end
+        return false
+    end
+    frame = frame or ABL.Frame(barKey)
+    return frame ~= nil and ABL.DisplayInfo(frame, setting) ~= nil
+end
+
+local applyQueued = false
+local pendingInfo
+local function ApplyNow()
+    applyQueued = false
+    if InCombatLockdown() then return end
+    local info = pendingInfo
+    pendingInfo = nil
+    if not info then return end
+    local ok, err = pcall(C_EditMode.SaveLayouts, info)
+    if not ok then
+        print("|cff34D399H3z0 UI:|r Saving the Edit Mode layout failed: " .. tostring(err))
+        return
+    end
+    -- Blizzard re-applies the layout and lays the bars out itself
+    if C_EditMode.SetActiveLayout then pcall(C_EditMode.SetActiveLayout, info.activeLayout) end
+    -- if a bar did not take the new value, let Edit Mode load the layout once (open + close)
+    local checks = ABL._checks or {}
+    ABL._checks = nil
+    C_Timer.After(0.4, function()
+        if InCombatLockdown() then return end
+        for _, c in ipairs(checks) do
+            local ok, cur = pcall(c.frame.GetSettingValue, c.frame, c.setting, true)
+            if ok and cur ~= nil and cur ~= c.raw then
+                local em = _G.EditModeManagerFrame
+                if em and ShowUIPanel and HideUIPanel and not em:IsShown() then
+                    pcall(ShowUIPanel, em)
+                    pcall(HideUIPanel, em)
+                end
+                return
+            end
+        end
+    end)
+end
+
+local function EntryIn(info, frame)
+    local layout = info and info.layouts and info.layouts[(tonumber(info.activeLayout) or 0) - NumPresets()]
+    if type(layout) ~= "table" then return nil end
+    for _, sys in ipairs(layout.systems or {}) do
+        if sys.system == frame.system and sys.systemIndex == frame.systemIndex then return sys end
+    end
+    return nil
+end
+
+-- set a value (as Edit Mode shows it); returns true, or false + reason.
+-- Several changes in a row go into the same layout copy and are saved together.
+function ABL.Set(barKey, setting, value)
+    if InCombatLockdown() then return false, "Bar layout can't be changed in combat." end
+    local info, entry, reason, frame
+    if pendingInfo then
+        frame = ABL.Frame(barKey)
+        info = pendingInfo
+        entry = frame and EntryIn(info, frame)
+        if not entry then return false, "This bar is not in your Edit Mode layout yet." end
+    else
+        info, entry, reason, frame = ABL.Entry(barKey)
+        if not entry then return false, reason end
+    end
+    local raw = DisplayToRaw(ABL.DisplayInfo(frame, setting), value)
+    local found = false
+    for _, st in ipairs(entry.settings or {}) do
+        if st.setting == setting then st.value = raw; found = true break end
+    end
+    if not found then return false, "This bar has no such setting." end
+    ABL._checks = ABL._checks or {}
+    table.insert(ABL._checks, { frame = frame, setting = setting, raw = raw })
+    pendingInfo = info
+    if not applyQueued then
+        applyQueued = true
+        C_Timer.After(0.15, ApplyNow)
+    end
+    return true
+end
+
+function ABL.CopyPresetToCustom()
+    local LM = ns.H3z0UI_LayoutMode
+    if LM and LM.EditMode and LM.EditMode.CopyPresetToCustom then return LM.EditMode.CopyPresetToCustom() end
+    return false
+end

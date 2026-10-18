@@ -699,7 +699,7 @@ local SETTINGS = {
     party = { 4, 1 }, raidtab = { 4, 1 }, raid = { 4, 2 },
     powerbar = { 5, 5, "Primary Class Resource Bar" },
     secondarypowerbar = { 5, 5, "Secondary Class Resource Bar" },
-    totems = { 8, 5 },
+    totems = { 8, 6 },
     combattimer = { 3, 1, "Combat Timer" },
     mplus = { 10, 2, "H3z0 UI M+ Timer" },
     minimap = { 9, 1 },
@@ -710,8 +710,11 @@ for unit, sub in pairs(UF_SUB) do
     SETTINGS["uf_" .. unit] = { 6, sub }
     SETTINGS["cb_" .. unit] = { 6, sub, "Castbar" }
 end
-for _, k in ipairs({ "ab1", "ab2", "ab3", "ab4", "ab5", "ab6", "ab7", "ab8", "abStance", "abPet" }) do
-    SETTINGS[k] = { 8, 3 }
+-- 0.24.6: action bars open Action Bars > Bar Layout with that bar picked
+local AB_PICK = { ab1 = "bar1", ab2 = "bar2", ab3 = "bar3", ab4 = "bar4", ab5 = "bar5", ab6 = "bar6",
+    ab7 = "bar7", ab8 = "bar8", abStance = "stance", abPet = "pet" }
+for k in pairs(AB_PICK) do
+    SETTINGS[k] = { 8, 1 }
 end
 
 local function SettingsFor(el)
@@ -728,7 +731,7 @@ local function SettingsFor(el)
         return { 7, 1 }                               -- Chat
     end
     if el.sys and S.ExtraAbilities and el.sys == S.ExtraAbilities then
-        return { 8, 4 }                               -- Action Bars > Extra Buttons
+        return { 8, 5 }                               -- Action Bars > Extra Buttons
     end
     if el.sys and ((S.TalkingHeadFrame and el.sys == S.TalkingHeadFrame)
         or (S.StatusTrackingBar and el.sys == S.StatusTrackingBar)) then
@@ -757,6 +760,7 @@ local function OpenSettings(el)
         return
     end
     if not (GUI and GUI.NavigateTo) then return end
+    if AB_PICK[el.key] then _G.H3z0UI_ActionBarLayoutPick = AB_PICK[el.key] end
     -- Layout Mode stays open: the options window opens on top of the handles
     GUI:NavigateTo(where[1], where[2], where[3])
     local mf = GUI.MainFrame

@@ -1,5 +1,17 @@
 # H3z0 UI - Patch Notes
 
+## 0.24.5 - Raid frames
+New
+- H3z0 UI Raid Frames: one column per group with the group number on top. Every member is a slate tile with the name in class colour (top left), the level (top right), a health bar in class colour with the missing part dark, a small tank / healer badge and a thin power bar for tanks and healers. Pets have their own column on the right of the last group in use.
+- Built on the game's secure group headers: click to target, right click for the menu, and roster changes keep working in combat. Range fade for members out of range, white border on your target, "Dead" and "Offline" in the bar.
+- Layout Mode: Raid Frames can be moved like every other H3z0 UI element. While you are not in a raid a 20-player preview with pets is shown, so you can place and size them anywhere. Right click opens the settings.
+- Party Frames page has two tabs now: Party Frames and Raid Frames. Raid settings: scale, width, height, spacing in a group and between groups, groups shown, font size, group numbers, class colour names and health, level, role, power bar (tanks and healers / everyone / nobody), power bar height, range fade, pets and pet size, hide Blizzard raid frames, preview and reset position.
+- In a raid the H3z0 UI party frames step aside while the raid frames are on (in a raid the party list would only repeat your own group).
+- /h3z0raid test shows the preview, /h3z0raid reset puts the frames back at their default place, /h3z0raid debug shows what was built.
+
+Fixed
+- Raid frames preview: if one of the game's secure group headers could not be built, the whole raid frame setup stopped and the preview never showed. The preview is now built first and on its own, every header is built separately, and the Preview button builds the frames if they are not there yet.
+
 ## 0.24.4 - Nameplate stacking, cleaner options
 New
 - Nameplates > Stacking & Overlap: choose Stacked (nameplates move apart so none cover another) or Overlapping, and set how close they may sit with Vertical Spacing and Horizontal Spacing. These are the game's own nameplate spacing settings, so they work for every nameplate (H3z0 Nameplates or Blizzard's), are kept on every login and wait for the end of combat when changed in a fight. "Game Default Spacing" puts the default values back. Nothing is changed until you touch one of these options.

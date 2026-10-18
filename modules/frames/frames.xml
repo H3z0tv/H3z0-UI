@@ -11,4 +11,5 @@
     <Script file="raidbuffs.lua"/>
     <Script file="totems.lua"/>
     <Script file="partyframes.lua"/>
+    <Script file="raidframes.lua"/>
 </Ui>

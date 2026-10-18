@@ -114,14 +114,101 @@ local function BuildPartyFramesTab(tabContent)
     tabContent:SetHeight(math.abs(y) + 50)
 end
 
--- Own sidebar page (between General & QoL and Cooldown Manager)
+---------------------------------------------------------------------------
+-- 0.24.5: Raid Frames (own sub-tab)
+---------------------------------------------------------------------------
+local function BuildRaidFramesTab(tabContent)
+    local y = -10
+    local FORM_ROW = 32
+    local PADDING = Shared.PADDING
+    local db = Shared.GetDB()
+    GUI:SetSearchContext({tabIndex = 4, tabName = "Party Frames", subTabIndex = 2, subTabName = "Raid Frames"})
+    local rf = db and db.raidFrames
+    if not rf then return end
+
+    local function Refresh()
+        if _G.H3z0UI_RefreshRaidFrames then _G.H3z0UI_RefreshRaidFrames() end
+        if _G.H3z0UI_RefreshPartyFrames then _G.H3z0UI_RefreshPartyFrames() end   -- party frames hide in raids
+    end
+    local function Section(title)
+        GUI:SetSearchSection(title)
+        local header = GUI:CreateSectionHeader(tabContent, title)
+        header:SetPoint("TOPLEFT", PADDING, y)
+        y = y - header.gap
+    end
+    local function Place(widget)
+        widget:SetPoint("TOPLEFT", PADDING, y)
+        widget:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+        y = y - FORM_ROW
+    end
+    local function Check(label, key) Place(GUI:CreateFormCheckbox(tabContent, label, key, rf, Refresh)) end
+    local function Slider(label, min, max, step, key) Place(GUI:CreateFormSlider(tabContent, label, min, max, step, key, rf, Refresh)) end
+    local function Info(text, height)
+        local label = GUI:CreateLabel(tabContent, text, 10, C.textMuted)
+        label:SetPoint("TOPLEFT", PADDING, y)
+        label:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+        label:SetJustifyH("LEFT")
+        y = y - (height or 20)
+    end
+
+    Section("Raid Frames")
+    Check("H3z0 UI Raid Frames", "enabled")
+    Info("One column per group with the group number on top, every member a slate tile: name in class colour, level, health bar in class colour, role badge and a power bar for tanks and healers. Pets in their own column on the right. Clicks target, right click opens the menu, and everything keeps working in combat. Move them in Layout Mode (a 20-player preview shows while you are not in a raid). Changes are applied out of combat.", 58)
+    Check("Hide Blizzard Raid Frames", "hideBlizzard")
+    local previewBtn = GUI:CreateButton(tabContent, "Preview (on/off)", 150, 26, function()
+        if SlashCmdList and SlashCmdList["H3Z0RAID"] then SlashCmdList["H3Z0RAID"]("test") end
+    end)
+    previewBtn:SetPoint("TOPLEFT", PADDING, y)
+    local resetBtn = GUI:CreateButton(tabContent, "Reset Position", 150, 26, function()
+        if SlashCmdList and SlashCmdList["H3Z0RAID"] then SlashCmdList["H3Z0RAID"]("reset") end
+    end)
+    resetBtn:SetPoint("LEFT", previewBtn, "RIGHT", 10, 0)
+    y = y - 38
+
+    Section("Layout")
+    Slider("Scale", 0.5, 2.0, 0.05, "scale")
+    Slider("Width", 60, 260, 1, "width")
+    Slider("Height", 24, 90, 1, "height")
+    Slider("Spacing in a Group", 0, 20, 1, "spacing")
+    Slider("Spacing Between Groups", 0, 30, 1, "groupSpacing")
+    Slider("Groups Shown", 1, 8, 1, "maxGroups")
+    Slider("Font Size", 8, 18, 1, "fontSize")
+    Check("Group Numbers on Top", "showGroupNumbers")
+
+    Section("Elements")
+    Check("Class Colour Names", "classColorName")
+    Check("Class Colour Health Bars", "classColorHealth")
+    Check("Show Level", "showLevel")
+    Check("Show Role (tank / healer)", "showRole")
+    Place(GUI:CreateFormDropdown(tabContent, "Power Bar", {
+        { value = "role", text = "Tanks and healers" },
+        { value = "all", text = "Everyone" },
+        { value = "none", text = "Nobody" },
+    }, "powerFor", rf, Refresh))
+    Slider("Power Bar Height", 2, 10, 1, "powerHeight")
+    Check("Fade Members Out Of Range", "rangeFade")
+
+    Section("Pets")
+    Check("Show Pets", "showPets")
+    Slider("Pet Width", 50, 200, 1, "petWidth")
+    Slider("Pet Height", 14, 50, 1, "petHeight")
+
+    tabContent:SetHeight(math.abs(y) + 50)
+end
+
+-- Own sidebar page (between General & QoL and Cooldown Manager): Party + Raid sub-tabs
 local function CreatePartyFramesPage(parent)
     local scroll, content = ns.H3z0UI_Options.CreateScrollableContent(parent)
-    BuildPartyFramesTab(content)
+    GUI:CreateSubTabs(content, {
+        { name = "Party Frames", builder = BuildPartyFramesTab },
+        { name = "Raid Frames", builder = BuildRaidFramesTab },
+    })
+    content:SetHeight(600)
     return scroll
 end
 
 ns.H3z0UI_PartyFramesOptions = {
     BuildPartyFramesTab = BuildPartyFramesTab,
+    BuildRaidFramesTab = BuildRaidFramesTab,
     CreatePartyFramesPage = CreatePartyFramesPage,
 }

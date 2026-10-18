@@ -847,12 +847,21 @@ local function ApplyLayout()
             UnregisterUnitWatch(f)
             f:Hide()
         end
+        UnregisterAttributeDriver(container, "state-visibility")
         container:Hide()
         return
     end
 
     container:SetScale(s.scale or 1)
     container:Show()
+    -- 0.24.5: in a raid the H3z0 UI raid frames take over (party1-4 would be your own raid group)
+    local rf = Helpers.GetModuleDB("raidFrames")
+    if rf and rf.enabled and not testMode then
+        RegisterAttributeDriver(container, "state-visibility", "[group:raid] hide; show")
+    else
+        UnregisterAttributeDriver(container, "state-visibility")
+        container:Show()
+    end
 
     wipe(byUnit)
     local slots = s.showPlayer and 5 or 4

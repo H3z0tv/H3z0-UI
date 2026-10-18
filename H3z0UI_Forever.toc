@@ -6,7 +6,7 @@
 ## AddonCompartmentFuncOnLeave: H3z0UI_CompartmentOnLeave
 ## Notes: Comprehensive UI customization addon
 ## Author: H3z0
-## Version: 0.24.4
+## Version: 0.24.5
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
 ## OptionalDeps: CombatMode

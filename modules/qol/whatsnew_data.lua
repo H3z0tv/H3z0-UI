@@ -9,18 +9,15 @@
 local ADDON_NAME, ns = ...
 
 ns.WhatsNew = {
-    version = "0.24.4",
-    build = 4,
+    version = "0.24.5",
+    build = 2,
     new = {
-        "|cff34D399Stacking & Overlap|r (Nameplates page): Stacked or Overlapping nameplates, and Vertical / Horizontal Spacing sliders for how close they may sit. Works for every nameplate and is kept on every login.",
+        "|cff34D399Raid Frames|r: one column per group with the group number on top, slate tiles with the name in class colour, level, class coloured health, tank / healer badge and a power bar for tanks and healers, and the pets in their own column. Works in combat (click to target, right click menu).",
+        "Move them in |cff34D399Layout Mode|r - a 20-player preview with pets shows while you are not in a raid. Settings: Party Frames > Raid Frames.",
     },
     fixed = {
-        "Options window: the sidebar names (Cooldown Manager, Skinning & Autohide) no longer run over the divider line.",
-        "WoW: Forever: the addon is now called H3z0 UI Forever there.",
-        "WoW: Forever menu icons: no Housing and Great Vault buttons, and the Adventure Guide opens on the Legacy tab.",
-        "Options header: Accent, Class and Panel Scale no longer overlap the link buttons on a narrow window.",
-        "Options window: long option names no longer run into the switches, sliders and dropdowns (wider name column, retail and WoW: Forever).",
-        "WoW: Forever nameplates: Blizzard's level box no longer sticks out on the right of the bar.",
-        "From 0.24.3: smoother H3z0 Nameplates in big pulls and the tracked buff bar overlap fix.",
+        "Raid frames preview shows without a group again (Layout Mode, Party Frames > Raid Frames > Preview, /h3z0raid test).",
+        "In a raid the party frames step aside while the raid frames are on.",
+        "From 0.24.4: nameplate Stacking & Overlap, cleaner options window, H3z0 UI Forever name, Forever menu icons and nameplate level box.",
     },
 }

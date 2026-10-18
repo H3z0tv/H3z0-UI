@@ -201,6 +201,41 @@ AddElement({
     end,
 })
 
+-- Raid frames (0.24.5): a 20-player preview with pets while you are not in a raid
+groups.raid = {
+    enter = function()
+        if not IsInRaid() and _G.H3z0UI_RaidFramesSetTest and _G.H3z0UI_RaidFramesIsTest
+            and not _G.H3z0UI_RaidFramesIsTest() then
+            _G.H3z0UI_RaidFramesSetTest(true)
+            LM.started.raidTest = true
+        end
+    end,
+    exit = function()
+        if LM.started.raidTest and _G.H3z0UI_RaidFramesSetTest then
+            _G.H3z0UI_RaidFramesSetTest(false)
+        end
+        LM.started.raidTest = nil
+    end,
+}
+
+AddElement({
+    key = "raid", label = "Raid Frames", group = "raid",
+    frame = function()
+        local p = Profile()
+        if p and p.raidFrames and p.raidFrames.enabled == false then return nil end
+        return _G.H3z0UI_RaidFrames
+    end,
+    save = function(frame)
+        local p = Profile()
+        if not (p and p.raidFrames) then return end
+        local point, _, relPoint, x, y = frame:GetPoint()
+        p.raidFrames.pos = { point = point, relPoint = relPoint, x = x, y = y }
+    end,
+    afterSave = function()
+        if _G.H3z0UI_RefreshRaidFrames then _G.H3z0UI_RefreshRaidFrames() end
+    end,
+})
+
 AddElement({
     key = "raidtab", label = "Raid Control", group = "party",
     frame = function() return _G.H3z0UI_RaidControlTab end,
@@ -661,7 +696,7 @@ end
 ---------------------------------------------------------------------------
 local UF_SUB = { player = 2, target = 3, targettarget = 4, pet = 5, focus = 6, boss = 7 }
 local SETTINGS = {
-    party = { 4, 1 }, raidtab = { 4, 1 },
+    party = { 4, 1 }, raidtab = { 4, 1 }, raid = { 4, 2 },
     powerbar = { 5, 5, "Primary Class Resource Bar" },
     secondarypowerbar = { 5, 5, "Secondary Class Resource Bar" },
     totems = { 8, 5 },

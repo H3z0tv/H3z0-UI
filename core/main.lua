@@ -1635,6 +1635,30 @@ local defaults = {
             auraMax = 6,
         },
 
+        -- Raid Frames (0.24.5: H3z0 UI own raid frames, one column per group, pets on the right)
+        raidFrames = {
+            enabled = true,
+            hideBlizzard = true,       -- hide Blizzard's raid frames while these are on
+            width = 150,
+            height = 52,
+            spacing = 4,               -- between members of a group
+            groupSpacing = 6,          -- between the group columns
+            maxGroups = 8,
+            scale = 1.0,
+            fontSize = 12,
+            showGroupNumbers = true,
+            classColorName = true,
+            classColorHealth = true,
+            showLevel = true,
+            showRole = true,
+            powerFor = "role",         -- "role" (tanks + healers) | "all" | "none"
+            powerHeight = 4,
+            showPets = true,
+            petWidth = 110,
+            petHeight = 26,
+            rangeFade = true,
+        },
+
         -- Hover Name (based on HoverName by MorphieBlossom, MIT)
         hoverName = {
             enabled = true,

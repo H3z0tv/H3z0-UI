@@ -4377,6 +4377,38 @@ function GUI:CreateMainFrame()
         end
     end)
 
+    -- 0.24.4: keep the right-hand controls (Accent, Class, Panel Scale) clear of the name and the
+    -- link buttons on a narrow window (WoW: Forever, small Panel Scale): centred when there is room,
+    -- else on the name row when that has room, else on the link row with the links that do not fit hidden
+    local function LayoutHeaderControls()
+        local function Place(y)
+            scaleContainer:ClearAllPoints()
+            scaleContainer:SetPoint("RIGHT", frame, "TOPRIGHT", -52, y)
+        end
+        local function LeftOfControls() return accentSwatch:GetLeft() end
+        local function RightOf(f) return f and f:IsShown() and f:GetRight() end
+        for _, sb in ipairs(socialButtons) do sb:Show() end
+        local lastSocial = socialButtons[#socialButtons]
+        local nameRight = RightOf(versionPill) or RightOf(nameSub)
+        Place(CTRL_Y)
+        local left = LeftOfControls()
+        if not (left and nameRight) then return end
+        local socialsRight = RightOf(lastSocial) or 0
+        if left - 8 > math.max(nameRight, socialsRight) then return end      -- centred fits
+        Place(CTRL_Y + 11)                                                   -- name row
+        left = LeftOfControls()
+        if left and left - 8 > nameRight then return end
+        Place(CTRL_Y - 10)                                                   -- link row, hide what does not fit
+        left = LeftOfControls()
+        for i = #socialButtons, 1, -1 do
+            local sb = socialButtons[i]
+            if left and sb:GetRight() and sb:GetRight() > left - 8 then sb:Hide() end
+        end
+    end
+    frame:HookScript("OnSizeChanged", function() C_Timer.After(0, LayoutHeaderControls) end)
+    frame:HookScript("OnShow", function() C_Timer.After(0, LayoutHeaderControls) end)
+    C_Timer.After(0, LayoutHeaderControls)
+
     -- Close button [x]
     local close = CreateFrame("Button", nil, titleBar, "BackdropTemplate")
     close:SetSize(24, 24)

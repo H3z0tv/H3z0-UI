@@ -231,6 +231,45 @@ local MICRO = {
     { name = "Great Vault", custom = "vault", counter = "vault", letter = "V", click = function() OpenVault() end },
 }
 
+-- 0.24.4: WoW: Forever has no housing and no Great Vault, and its Adventure Guide opens on the
+-- Legacy tab (the tab button is found by its name and clicked once the guide is open)
+local IS_FOREVER = ns.Client and ns.Client.isForever
+local function FindTab(root, depth)
+    if not root or depth > 3 then return nil end
+    for _, c in ipairs({ root:GetChildren() }) do
+        if c.IsObjectType and c:IsObjectType("Button") and c:IsShown() then
+            local t = c.GetText and c:GetText()
+            if type(t) == "string" and t:lower():find("legacy", 1, true) then return c end
+        end
+        local found = FindTab(c, depth + 1)
+        if found then return found end
+    end
+    return nil
+end
+local function OpenLegacyTab()
+    local ej = _G.EncounterJournal
+    if not (ej and ej:IsShown()) then return end
+    local tab = FindTab(ej, 0)
+    if tab and tab.Click then pcall(tab.Click, tab) end
+end
+if IS_FOREVER then
+    for i = #MICRO, 1, -1 do
+        local c = MICRO[i].custom
+        if c == "housing" or c == "vault" then
+            table.remove(MICRO, i)
+        elseif c == "adventure" then
+            local open = MICRO[i].click
+            MICRO[i].name = "Adventure Guide (Legacy)"
+            MICRO[i].click = function()
+                local ej = _G.EncounterJournal
+                local wasShown = ej and ej:IsShown()
+                open()
+                if not wasShown then C_Timer.After(0, OpenLegacyTab) end
+            end
+        end
+    end
+end
+
 -- Own icon set (assets\\menuicons\\*.tga); a def's "custom" field picks the file
 local MENU_ICON_PATH = "Interface\\AddOns\\H3z0UI\\assets\\menuicons\\"
 

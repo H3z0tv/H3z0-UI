@@ -8,6 +8,8 @@ New
 
 Fixed
 - Options window: the sidebar was too narrow - "Cooldown Manager" and "Skinning & Autohide" ran over the divider line. The sidebar is wider and a name that still does not fit gets a slightly smaller font (retail and WoW: Forever).
+- WoW: Forever bottom bar menu icons: Housing and Great Vault are gone (Forever has neither), and the Adventure Guide button opens the guide on its Legacy tab.
+- Options window header: on a narrow window (WoW: Forever with the longer H3z0 UI Forever name, or a small Panel Scale) Accent, Class and Panel Scale sat on top of the Discord / Layout Mode buttons. They now stay centred when there is room, move up to the name row when that row has room, and otherwise sit on the button row with the buttons that do not fit hidden.
 - Options window: long option names ran into the switches, sliders and dropdowns next to them (and were cut off with "..."). The name column is wider now, on retail and on WoW: Forever.
 - WoW: Forever nameplates: Blizzard's level box stuck out on the right of the H3z0 nameplate bar. It is hidden now (the level is already in front of the name).
 - UI Look: "Player / Target / Focus use the nameplate colours" is now "Unit Frames in Nameplate Colours" so it fits.

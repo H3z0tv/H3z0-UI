@@ -10,13 +10,15 @@ local ADDON_NAME, ns = ...
 
 ns.WhatsNew = {
     version = "0.24.4",
-    build = 2,
+    build = 4,
     new = {
         "|cff34D399Stacking & Overlap|r (Nameplates page): Stacked or Overlapping nameplates, and Vertical / Horizontal Spacing sliders for how close they may sit. Works for every nameplate and is kept on every login.",
     },
     fixed = {
         "Options window: the sidebar names (Cooldown Manager, Skinning & Autohide) no longer run over the divider line.",
         "WoW: Forever: the addon is now called H3z0 UI Forever there.",
+        "WoW: Forever menu icons: no Housing and Great Vault buttons, and the Adventure Guide opens on the Legacy tab.",
+        "Options header: Accent, Class and Panel Scale no longer overlap the link buttons on a narrow window.",
         "Options window: long option names no longer run into the switches, sliders and dropdowns (wider name column, retail and WoW: Forever).",
         "WoW: Forever nameplates: Blizzard's level box no longer sticks out on the right of the bar.",
         "From 0.24.3: smoother H3z0 Nameplates in big pulls and the tracked buff bar overlap fix.",

@@ -250,6 +250,24 @@ local function ApplyRound(frame, unitKey, s)
     end
     r:Show()
 
+    -- v2: the portrait covers the end of the bar; health text on that side moves out from
+    -- under it (same anchor and offsets as in the unit frame settings, plus the covered part)
+    if v2 and frame.healthText then
+        local core = ns.Addon
+        local ufdb = core and core.db and core.db.profile and core.db.profile.h3z0uiUnitFrames
+        local us = ufdb and ufdb[unitKey]
+        local anchor = (us and us.healthAnchor) or "RIGHT"
+        local ox, oy = (us and us.healthOffsetX) or -4, (us and us.healthOffsetY) or 0
+        local cover = size * 0.32 + 4
+        if RIGHT_SIDE[unitKey] and anchor:find("RIGHT") then
+            ox = ox - cover
+        elseif not RIGHT_SIDE[unitKey] and anchor:find("LEFT") then
+            ox = ox + cover
+        end
+        frame.healthText:ClearAllPoints()
+        frame.healthText:SetPoint(anchor, frame, anchor, ox, oy)
+    end
+
     if s.nameAbove and frame.nameText then
         frame.nameText:ClearAllPoints()
         -- v2: the portrait covers the bar's start, so the name starts after it

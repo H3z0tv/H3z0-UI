@@ -126,15 +126,22 @@ local function Fill(f, data)
     content:SetHeight(y + 10)
 end
 
+-- 0.24.2: version + build, so an update of the same version (same number, new fixes) shows
+-- the window again after it is installed
+local function SeenKey(data)
+    return tostring(data.version) .. (data.build and ("." .. tostring(data.build)) or "")
+end
+
 function WN.Show()
     local data = ns.WhatsNew
     if not data then return end
     local f = Build()
-    f.title:SetText("|cff34D399H3z0 UI|r  What's New in " .. tostring(data.version))
+    f.title:SetText("|cff34D399H3z0 UI|r  What's New in " .. tostring(data.version)
+        .. (data.build and ("  |cff888888(update " .. tostring(data.build) .. ")|r") or ""))
     Fill(f, data)
     f:Show()
     local G = Global()
-    if G then G.whatsNewSeen = data.version end
+    if G then G.whatsNewSeen = SeenKey(data) end
 end
 
 _G.H3z0UI_ShowWhatsNew = WN.Show
@@ -148,11 +155,11 @@ ev:SetScript("OnEvent", function(self, _, isLogin, isReload)
     C_Timer.After(4, function()
         local data, G = ns.WhatsNew, Global()
         if not (data and G) then return end
-        if G.whatsNewSeen == data.version then return end
+        if G.whatsNewSeen == SeenKey(data) then return end
         -- brand-new install: the Setup Wizard opens instead; this version counts as seen
         local wiz = _G.H3z0UI_Setup
         if wiz and wiz.ShouldAutoShow and wiz.ShouldAutoShow() then
-            G.whatsNewSeen = data.version
+            G.whatsNewSeen = SeenKey(data)
             return
         end
         if InCombatLockdown() then

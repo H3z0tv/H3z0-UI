@@ -1,5 +1,16 @@
 # H3z0 UI - Patch Notes
 
+## 0.24.3 - Smoother nameplates, tracked bar fix
+Faster
+- H3z0 Nameplates: the settings were looked up in a way that built a new table and walked every colour on each health, cast and colour update of every nameplate - in a big pull that is hundreds of times a second and fed the garbage collector (short stutters). The settings are now prepared once.
+- H3z0 Nameplates: "is another nameplate addon loaded", "am I in a dungeon or raid" and "am I a tank" were asked again on every update; they are now remembered and only checked again when an addon loads, the zone changes or the spec changes.
+- H3z0 Nameplates: the border (target white, aggro red, lost aggro orange) and the target arrows are only redrawn when that state changes; threat events fire constantly in combat and redrew them every time.
+- H3z0 Nameplates: changing your target looks up the target's nameplate once instead of once for every nameplate on screen.
+
+Fixed
+- Cooldown Manager tracked bars (buff bars like Berserk / Tiger's Fury): a bar could stay in Blizzard's own look and position and overlap the H3z0 UI bars, because only the bars in the viewer's list were styled. Every shown bar is styled and stacked now.
+- Tracked bars are only fully re-styled when something changed (a new bar, another buff on it, a setting) or once a second, instead of 10 times a second for every bar.
+
 ## 0.24.2 - Character and Inspect v2
 New
 - Character pane and Inspect pane "v2" (new default style; General & QoL > Character Pane > Style, Classic still available):
@@ -7,7 +18,48 @@ New
 - Header: the name in class colour with the title next to it, and under it "Lv 90", the spec icon and "Spec Class" in class colour.
 - Item slots: compact - the item level in the item's quality colour beside each icon with a quality-coloured line under it, and a hint only when something is missing ("Add enchant" in red, "Add 1 gem" in green). Gems stay as small icons.
 - Stats: an Item Level block at the top (equipped / overall, big, in class colour), and Attributes / Enhancements with centred headers between class-coloured lines, soft class-coloured strips behind the values and tall see-through bars for Crit, Haste, Mastery and Versatility.
-- The H3z0 UI logo in the bottom-right corner.
+- The H3z0 UI logo in the free bottom-left corner (clear of the stats and the Talents button).
+- Softly rounded window corners, with the background art inside them.
+- The name, title, level, item level and spec sit at the top edge of the window (clear of the inspect "View in Dressing Room" button). The item level is shown in the header for the character and the inspected player.
+- The 3D character has more room: the model area starts lower and ends lower, so the head is no longer cut off and the character stands in the middle (character and inspect). On the inspect pane "View in Dressing Room" sits right under the level line, above the head.
+- Crit, Haste, Mastery and Versatility show the percentage only in v2, so the values never run into the names.
+- New first page in H3z0 Features: UI Look. Pick the version (Classic, Modern or Modern v2) and the page shows only the options that version uses: font, character pane style and nameplate colours on unit frames for every version; portrait style, frame size, shadows, sheen, glow, rounded corners and radius, modern cast bars and action buttons, chat and damage meter windows with their opacity and idle fade for Modern and Modern v2; party frame name and health font size, bar height, bar width and level for Modern v2. Every change applies right away.
+
+Changed
+- The whole menu follows the UI version: with Classic you see only Classic options, with Modern only Modern options, with Modern v2 only Modern v2 options. Changing the version in H3z0 Features > UI Look (or the Setup Wizard) rebuilds the menu right away.
+- Unit Frames: the Portraits tab is shown only for Classic (Modern and Modern v2 portraits are in UI Look).
+- Party Frames: the Style dropdown is gone, the style follows the version. Classic shows portrait size, bar width and bar heights; Modern v2 shows its own bar width, health and power bar height (the portrait follows the bar height). The portrait size moved here from Unit Frames > Portraits.
+- Party Frames v2: Bar Width now sets the width directly (before, the classic bar width could make it wider).
+- Chat: while the chat is skinned (Modern / Modern v2 with the chat window on) the old Chat Style presets, Chat Background and Input Box Background options are gone - the skin replaces them and they did nothing. They come back with Classic or when the chat skin is off.
+- Chat > Look & Hide: the chat skin option is shown only for Modern and Modern v2; Hide Chat When Idle is there for every version. Chat and damage meter opacity are in UI Look.
+- Cast Bars: Border Size and Icon Border Size are hidden while Modern Cast Bars are on (they draw their own rounded outline).
+- Character Pane: the style is picked in UI Look.
+- Frame Style, Modern Look and Window Skins moved from Unit Frames > Portraits to H3z0 Features > UI Look. Portraits keeps the classic square portraits and the party portrait size.
+- Removed the "Damage Meter Header + Accent Line" option (the accent line is gone since 0.24.1).
+
+Faster options window
+- Sub-pages are built the first time you open them instead of all at once, so the menu opens and switches pages much faster.
+- The search index is built in the background in small steps and pauses while you hold the mouse button, so it no longer causes stutter while you drag a slider.
+- Sliders apply their setting when you let go of the mouse (the number and the bar still move while you drag). Applying a setting rebuilds frames, and doing that during the drag halved the FPS. Opacity sliders stay live and now only change the opacity instead of re-skinning the chat, damage meter and every action button.
+
+Smoother in game
+- Shapeshifting (and stance / pet bar changes) started a full pass over every action button for the modern buttons and streamer mode one second later, once per event, so several passes piled up after each form change. Now it runs once after the last change.
+- Tooltips: with "Apply to Blizzard UI" every tooltip you hovered walked all its lines to set the font again. Now only when the tooltip has new lines, and a text that already has the right font is skipped everywhere (setting a font is the costly part).
+- Quest tracker: the font pass ran on every quest update (every kill or item); now at most twice a second.
+- Player / Target / Focus / Pet frames only receive health, power and name events for their own unit. Before, each of them got these events for every nameplate and raid member and threw them away.
+- Party frame auras are rebuilt at most 10 times a second instead of on every aura event.
+- H3z0 Nameplates: a nameplate that shows up again keeps its layout and its cast bar lookup instead of redoing them, so big pulls with many nameplates appearing cost less.
+- Cooldown Manager: the icon scan asked the game for the whole child list once per icon; now once per scan. Buff icon and buff bar checks run 10 times a second instead of 20.
+- Nameplate cast bars: the pieces of the hidden Blizzard cast bar are collected once per cast instead of 20 times a second for every casting nameplate, less work and memory churn in big pulls.
+- Hide Chat When Idle checks the chat windows without building new lists 10 times a second.
+
+Fixed
+- Handheld / Steam Deck mode: the Player frame had no health text. It now shows the health value and percent (290K | 100%) like the Target, which also shows the value now and not only the percent.
+- Modern v2 frames: the target's health text sat under the round portrait at the end of the bar; it now starts left of the portrait (the player's on the other side does the same if it is anchored left).
+- Handheld, PC Handheld and PC Controller mode: the ring under your target was missing. H3z0 UI now keeps the game's target ring on while one of these modes is on (H3z0 Features > Steam Deck + PC Controller > Keep the ring under your target, on by default). /h3z0ui ring shows the settings the ring depends on.
+- What's New opens again after installing an update of the same version, so every 0.24.2 update shows its fixes (the title shows the update number).
+- Error "windowskins.lua:436: attempt to call a nil value" when the chat skin was applied.
+- A similar hidden error in Layout Mode overlays when Edit Mode settings were read.
 
 ## 0.24.1 - Slate look, one font for everything, rounded fixes
 New

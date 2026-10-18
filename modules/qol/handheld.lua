@@ -31,6 +31,7 @@ local DEFAULTS = {
     pcController = false,     -- PC Controller: PC layout, but ConsolePort on / Action Combat Mode off
     pcHandheld = false,       -- PC Handheld: Steam Deck HUD + Deck layout + ConsolePort, but your PC UI scale
     deckChoice = false,       -- menu mirror: Steam Deck (Handheld Mode with the handheld scale) is on
+    targetRing = true,        -- keep the game's ring under the target on in the controller modes
 }
 
 local Handheld = {}
@@ -744,6 +745,67 @@ ns.Popups["H3Z0UI_DECK_RELOAD"] = {
     OnAccept = function() ReloadUI() end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
 }
+
+---------------------------------------------------------------------------
+-- Target ring (0.24.2): the game's selection circle under your target. In Handheld / PC Handheld /
+-- PC Controller mode the controller setup can leave it switched off, so H3z0 UI keeps it on.
+-- Only ever turns it ON, only while one of those modes is on, and only when it is off.
+---------------------------------------------------------------------------
+local RING_CVARS = { "ObjectSelectionCircle" }
+
+local function ControllerMode(c)
+    return c and (c.enabled or c.pcController or c.pcHandheld) and true or false
+end
+
+function Handheld.EnsureTargetRing()
+    local c = Cfg()
+    if not (ControllerMode(c) and c.targetRing) then return end
+    if not (C_CVar and C_CVar.GetCVar) then return end
+    for _, name in ipairs(RING_CVARS) do
+        local ok, v = pcall(C_CVar.GetCVar, name)
+        if ok and v ~= nil and v == "0" then pcall(C_CVar.SetCVar, name, "1") end
+    end
+end
+
+-- /h3z0ui ring: what the ring depends on
+function Handheld.DebugTargetRing()
+    local c = Cfg()
+    local function Get(n)
+        local ok, v = pcall(C_CVar.GetCVar, n)
+        if not ok or v == nil then return "|cff888888(not in this game version)|r" end
+        return tostring(v)
+    end
+    print("|cff34D399H3z0 UI|r target ring check:")
+    print("  controller mode: " .. tostring(ControllerMode(c)) .. "   keep ring on: " .. tostring(c and c.targetRing))
+    for _, n in ipairs({ "ObjectSelectionCircle", "projectedTextures", "graphicsProjectedTextures",
+        "GamePadEnable", "SoftTargetEnemy", "SoftTargetFriend", "SoftTargetForce" }) do
+        print("  " .. n .. " = " .. Get(n))
+    end
+    print("  ConsolePort loaded: " .. tostring(Handheld.ConsolePortLoaded and Handheld.ConsolePortLoaded() or false))
+end
+
+do
+    local ringEv = CreateFrame("Frame")
+    local queued = false
+    local function Queue()
+        if queued then return end
+        queued = true
+        C_Timer.After(0.2, function() queued = false; Handheld.EnsureTargetRing() end)
+    end
+    ringEv:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ringEv:RegisterEvent("PLAYER_TARGET_CHANGED")
+    ringEv:RegisterEvent("CVAR_UPDATE")
+    ringEv:SetScript("OnEvent", function(_, event, name)
+        if event == "CVAR_UPDATE" then
+            if name ~= "ObjectSelectionCircle" and name ~= "OBJECT_SELECTION_CIRCLE" then return end
+        elseif event == "PLAYER_ENTERING_WORLD" then
+            -- controller addons load their own settings after login: check again a bit later
+            C_Timer.After(3, Handheld.EnsureTargetRing)
+            C_Timer.After(8, Handheld.EnsureTargetRing)
+        end
+        Queue()
+    end)
+end
 
 ---------------------------------------------------------------------------
 -- Public entry points

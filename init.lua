@@ -131,6 +131,11 @@ function H3z0UI:SlashCommandOpen(input)
             print("|cFF56D1FFH3z0 UI:|r Layout Mode not loaded.")
         end
         return
+    elseif input and input == "ring" then
+        local hh = _G.H3z0UI_Handheld
+        if hh and hh.DebugTargetRing then hh.DebugTargetRing() end
+        if hh and hh.EnsureTargetRing then hh.EnsureTargetRing() end
+        return
     elseif input and input == "modern" then
         if _G.H3z0UI_ToggleModernLook then
             local on = _G.H3z0UI_ToggleModernLook()

@@ -1966,14 +1966,16 @@ local function CreateUnitFrame(unit, unitKey)
 
     -- Event handling
     frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    frame:RegisterEvent("UNIT_HEALTH")
-    frame:RegisterEvent("UNIT_MAXHEALTH")
-    frame:RegisterEvent("UNIT_ABSORB_AMOUNT_CHANGED")
-    frame:RegisterEvent("UNIT_HEAL_ABSORB_AMOUNT_CHANGED")
-    frame:RegisterEvent("UNIT_POWER_UPDATE")
-    frame:RegisterEvent("UNIT_POWER_FREQUENT")  -- Frequent updates for smoother power text sync
-    frame:RegisterEvent("UNIT_MAXPOWER")
-    frame:RegisterEvent("UNIT_NAME_UPDATE")
+    -- 0.24.2: health / power / name events only for this frame's own unit. Before, every frame got
+    -- these events for every unit in the game (all nameplates, the raid ...) and threw them away.
+    -- Target of target gets no unit events at all ("targettarget" never fires them, a ticker updates it).
+    if unitKey ~= "targettarget" then
+        for _, e in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_ABSORB_AMOUNT_CHANGED",
+            "UNIT_HEAL_ABSORB_AMOUNT_CHANGED", "UNIT_POWER_UPDATE", "UNIT_POWER_FREQUENT",
+            "UNIT_MAXPOWER", "UNIT_NAME_UPDATE" }) do
+            frame:RegisterUnitEvent(e, unit)
+        end
+    end
     frame:RegisterEvent("PLAYER_TARGET_CHANGED")
     frame:RegisterEvent("PLAYER_FOCUS_CHANGED")
     frame:RegisterEvent("UNIT_PET")

@@ -119,6 +119,11 @@ local function Build(frame)
     v = {}
     frame.h3zV2 = v
 
+    -- rounded window panel (replaces the square backdrop while v2 is on)
+    if ns.Round then
+        v.panel = ns.Round.Panel(frame, 10)
+        v.panel:EnableMouse(false)
+    end
     -- background (lowest level of the frame: below the model and the slots)
     v.bg = CreateFrame("Frame", nil, frame)
     v.bg:EnableMouse(false)
@@ -154,11 +159,26 @@ end
 local function Layout(frame, v)
     local host = BgAnchor(frame)
     v.bg:ClearAllPoints()
-    v.bg:SetPoint("TOPLEFT", host, "TOPLEFT", 1, -1)
-    v.bg:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -1, 1)
+    -- inset so the square art stays inside the panel's rounded corners
+    v.bg:SetPoint("TOPLEFT", host, "TOPLEFT", 3, -3)
+    v.bg:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -3, 3)
     v.bg:SetFrameStrata(host:GetFrameStrata())
-    v.bg:SetFrameLevel(math.max(0, host:GetFrameLevel() + 1))
+    v.bg:SetFrameLevel(math.max(0, host:GetFrameLevel() + 2))
     v.art:SetAllPoints(v.bg)
+    -- soft rounded corners: our own rounded panel + the art and shades rounded to match
+    if v.panel then
+        local R = ns.Round
+        v.panel:ClearAllPoints()
+        v.panel:SetAllPoints(host)
+        v.panel:SetFrameStrata(host:GetFrameStrata())
+        v.panel:SetFrameLevel(math.max(0, host:GetFrameLevel() + 1))
+        local f, b = R.SLATE_FILL, R.SLATE_BORDER
+        v.panel:SetFillColor(f[1] * 0.7, f[2] * 0.7, f[3] * 0.7, 0.97)
+        v.panel:SetBorderColor(b[1], b[2], b[3], 1)
+        v.panel:SetRadius(10)
+        v.panel:Show()
+        if host ~= frame and host.SetAlpha then host:SetAlpha(0) end
+    end
 
     local h = 90
     v.shadeTop:ClearAllPoints()
@@ -178,8 +198,10 @@ local function Layout(frame, v)
     -- header centred over the model area (between the slot columns)
     local model = (frame == CharacterFrame) and _G.CharacterModelScene or _G.InspectModelFrame
     v.head:ClearAllPoints()
-    if model then
-        v.head:SetPoint("BOTTOM", model, "TOP", 0, 4)
+    local mTop, fTop = model and model:GetTop(), frame:GetTop()
+    if model and mTop and fTop then
+        -- horizontally over the model, vertically at the window's top edge
+        v.head:SetPoint("TOP", model, "TOP", 0, (fTop - mTop) - 6)
     else
         v.head:SetPoint("TOP", frame, "TOP", 0, -6)
     end
@@ -198,15 +220,15 @@ local function Layout(frame, v)
     v.specIcon:SetPoint("RIGHT", v.line2, "LEFT", -4, 0)
 
     v.logoFrame:ClearAllPoints()
-    v.logoFrame:SetPoint("BOTTOMRIGHT", v.bg, "BOTTOMRIGHT", -10, 8)
+    v.logoFrame:SetPoint("BOTTOMLEFT", v.bg, "BOTTOMLEFT", 12, 8)
     v.logoFrame:SetFrameLevel(frame:GetFrameLevel() + 20)
     v.logoText:SetFont(font, 20, "OUTLINE")
+    v.logo:ClearAllPoints()
+    v.logo:SetPoint("LEFT", v.logoFrame, "LEFT", 0, 0)
     v.logoText:ClearAllPoints()
-    v.logoText:SetPoint("RIGHT", v.logoFrame, "RIGHT", 0, 0)
+    v.logoText:SetPoint("LEFT", v.logo, "RIGHT", 4, 0)
     v.logoText:SetText("H3Z0 UI")
     v.logoText:SetTextColor(0.85, 0.88, 0.92, 0.55)
-    v.logo:ClearAllPoints()
-    v.logo:SetPoint("RIGHT", v.logoText, "LEFT", -4, 0)
     v.logo:SetAlpha(0.6)
 end
 
@@ -215,14 +237,24 @@ function V2.Update(frame, unit)
     local on = IsV2()
     local v = frame.h3zV2
     if not on then
-        if v then v.bg:Hide(); v.head:Hide(); v.logoFrame:Hide() end
+        if v then
+            v.bg:Hide(); v.head:Hide(); v.logoFrame:Hide()
+            if v.panel then v.panel:Hide() end
+            local host = BgAnchor(frame)
+            if host ~= frame and host.SetAlpha then host:SetAlpha(1) end
+        end
         return
     end
     unit = unit or "player"
     if not UnitExists(unit) then return end
     -- character frame: only on the Character tab (Reputation / Currency keep their own look)
     if frame == CharacterFrame and PaperDollFrame and not PaperDollFrame:IsShown() then
-        if v then v.bg:Hide(); v.head:Hide(); v.logoFrame:Hide() end
+        if v then
+            v.bg:Hide(); v.head:Hide(); v.logoFrame:Hide()
+            if v.panel then v.panel:Hide() end
+            local host = BgAnchor(frame)
+            if host ~= frame and host.SetAlpha then host:SetAlpha(1) end
+        end
         return
     end
     v = Build(frame)
@@ -251,6 +283,18 @@ function V2.Update(frame, unit)
     local specName, specIcon = SpecInfo(unit)
     local className = UnitClass(unit)
     local lvlText = (level and not Secret(level) and level > 0) and ("Lv " .. level) or ""
+    -- item level next to the level (player: equipped, inspect: the inspected player's)
+    local ilvl
+    if unit == "player" then
+        local _, equipped = GetAverageItemLevel()
+        ilvl = equipped
+    elseif C_PaperDollInfo and C_PaperDollInfo.GetInspectItemLevel then
+        local okI, val = pcall(C_PaperDollInfo.GetInspectItemLevel, unit)
+        if okI then ilvl = val end
+    end
+    if ilvl and not Secret(ilvl) and ilvl > 0 then
+        lvlText = lvlText .. string.format("   |cffffd100%.1f|r |cff9aa3adilvl|r", ilvl)
+    end
     v.line2:SetText(string.format("%s   |cff%02x%02x%02x%s%s|r", lvlText,
         math.floor(r * 255), math.floor(g * 255), math.floor(b * 255),
         specName and (specName .. " ") or "", className or ""))

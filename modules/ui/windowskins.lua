@@ -418,6 +418,24 @@ function WS.ApplyDamageMeter()
     end
 end
 
+-- opacity only: what the opacity sliders call while you drag them (no re-skinning)
+function WS.UpdateAlpha()
+    local s = DB()
+    if not s then return end
+    local fill = ns.Round and ns.Round.SLATE_FILL
+    if not fill then return end
+    for _, cf in ipairs(ChatFrames()) do
+        local p = cf.h3zWSPanel
+        if p and p.SetFillColor then p:SetFillColor(fill[1], fill[2], fill[3], s.chatAlpha or 0.9) end
+    end
+    for i = 1, MAX_METERS do
+        local win = _G["DamageMeterSessionWindow" .. i]
+        local p = win and win.h3zWSPanel
+        if p and p.SetFillColor then p:SetFillColor(fill[1], fill[2], fill[3], s.meterAlpha or 0.9) end
+    end
+end
+_G.H3z0UI_WindowSkinsAlpha = WS.UpdateAlpha
+
 function WS.ApplyAll()
     WS.ApplyChat()
     WS.ApplyDamageMeter()
@@ -430,6 +448,7 @@ _G.H3z0UI_DebugWindowSkins = function() return WS.Debug() end
 -- Events / hooks
 ---------------------------------------------------------------------------
 local hooked = false
+local HookChatActivity      -- defined below (forward declaration: Hook uses it)
 local function Hook()
     if hooked then return end
     hooked = true
@@ -456,8 +475,13 @@ local function ChatPieces(cf)
     return { cf, cf.h3zWSPanel, _G[name .. "Tab"], _G[name .. "ButtonFrame"], cf.buttonFrame }
 end
 
+local busyList = {}
+local busyAt = 0
 local function AnyChatBusy()
-    for _, cf in ipairs(ChatFrames()) do
+    -- the chat window list is refreshed every 2 seconds instead of built 10 times a second
+    local now = GetTime()
+    if now - busyAt > 2 then busyAt = now; busyList = ChatFrames() end
+    for _, cf in ipairs(busyList) do
         if cf:IsShown() then
             local eb = _G[(cf:GetName() or "") .. "EditBox"]
             if eb and eb.HasFocus and eb:HasFocus() then return true end
@@ -482,7 +506,7 @@ local function SetChatAlpha(a)
     if _G.QuickJoinToastButton then _G.QuickJoinToastButton:SetAlpha(a) end
 end
 
-local function HookChatActivity()
+HookChatActivity = function()
     for _, cf in ipairs(ChatFrames()) do
         if not hookedAdd[cf] and cf.AddMessage then
             hookedAdd[cf] = true

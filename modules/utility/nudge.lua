@@ -611,6 +611,8 @@ local function CreateBlizzardFrameOverlay(frameInfo)
 end
 
 -- Create overlay for the H3z0UI minimap
+local EnsureEditModeReady   -- defined below (forward declaration: the overlays use it)
+
 local function CreateMinimapOverlay()
     if not Minimap then return nil end
 
@@ -924,7 +926,7 @@ function H3z0UICore:SelectViewer(viewerName)
 end
 
 -- Ensure LibEditModeOverride is ready and layouts are loaded
-local function EnsureEditModeReady()
+EnsureEditModeReady = function()
     if not LibEditModeOverride then
         return false
     end

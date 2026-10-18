@@ -5248,7 +5248,8 @@ end
 -- Apply font to a single FontString (preserving size/flags)
 local function ApplyFontToFontString(fontString, fontPath)
     if not fontString or not fontString.GetFont or not fontString.SetFont then return end
-    local _, size, flags = fontString:GetFont()
+    local file, size, flags = fontString:GetFont()
+    if file == fontPath then return end      -- 0.24.2: already set, nothing to do
     if size and size > 0 then
         fontString:SetFont(fontPath, size, flags or "")
     end
@@ -5328,10 +5329,16 @@ function H3z0UICore:ApplyGlobalFont()
         -- Hook ObjectiveTracker updates (check if function exists - API varies by expansion)
         if ObjectiveTrackerFrame then
             if type(ObjectiveTracker_Update) == "function" then
+                -- 0.24.2: the tracker updates on every quest progress; walk it at most twice a second
+                local otPending = false
                 hooksecurefunc("ObjectiveTracker_Update", function()
+                    if otPending then return end
                     if not H3z0UICore.db.profile.general.applyGlobalFontToBlizzard then return end
-                    local fp = GetGlobalFontPath()
-                    ApplyFontToFrameRecursive(ObjectiveTrackerFrame, fp)
+                    otPending = true
+                    C_Timer.After(0.5, function()
+                        otPending = false
+                        ApplyFontToFrameRecursive(ObjectiveTrackerFrame, GetGlobalFontPath())
+                    end)
                 end)
             else
                 -- Fallback: hook frame's OnShow for expansion versions without ObjectiveTracker_Update
@@ -5345,9 +5352,14 @@ function H3z0UICore:ApplyGlobalFont()
 
         -- Hook Tooltip display
         if GameTooltip then
+            -- 0.24.2: this ran a full walk of the tooltip on every mouseover; now only when the
+            -- tooltip has more lines than the last time it was done (or the font changed)
             hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tooltip)
                 if not H3z0UICore.db.profile.general.applyGlobalFontToBlizzard then return end
                 local fp = GetGlobalFontPath()
+                local n = (tooltip.NumLines and tooltip:NumLines()) or 0
+                if tooltip.h3zFontPath == fp and n <= (tooltip.h3zFontLines or 0) then return end
+                tooltip.h3zFontPath, tooltip.h3zFontLines = fp, n
                 ApplyFontToFrameRecursive(tooltip, fp)
             end)
         end

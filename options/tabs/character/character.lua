@@ -51,22 +51,9 @@ local function BuildCharacterPaneTab(tabContent)
     enableInfo:SetJustifyH("LEFT")
     y = y - 20
 
-    -- Style: v2 (modern) or classic
+    -- Style: v2 (modern) or classic - picked in H3z0 Features > UI Look
     if char.style == nil then char.style = "v2" end
-    local styleDrop = GUI:CreateFormDropdown(tabContent, "Style", {
-        { value = "v2", text = "v2 - modern (race background, item level + enchant hints, logo)" },
-        { value = "classic", text = "Classic (item names and enchants listed)" },
-    }, "style", char, function()
-        if _G.H3z0UI_RefreshCharacterV2 then pcall(_G.H3z0UI_RefreshCharacterV2) end
-        GUI:ShowConfirmation({
-            title = "Reload Recommended",
-            message = "The character and inspect panes switch style completely after a reload.",
-            acceptText = "Reload Now",
-            cancelText = "Later",
-            isDestructive = false,
-            onAccept = function() H3z0UI:SafeReload() end,
-        })
-    end)
+    local styleDrop = GUI:CreateLabel(tabContent, "Style (v2 or Classic): H3z0 Features > UI Look.", 11, C.accent)
     styleDrop:SetPoint("TOPLEFT", PADDING, y)
     styleDrop:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
     y = y - FORM_ROW

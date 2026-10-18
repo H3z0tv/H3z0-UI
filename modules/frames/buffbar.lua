@@ -191,27 +191,31 @@ local function GetBuffBarFrames()
         return {}
     end
 
-    local frames = {}
-
-    -- First, try CooldownViewer API if present
-    if BuffBarCooldownViewer.GetItemFrames then
-        local ok, items = pcall(BuffBarCooldownViewer.GetItemFrames, BuffBarCooldownViewer)
-        if ok and items then
-            frames = items
+    local frames, seen = {}, {}
+    local function Add(f)
+        if f and not seen[f] and f ~= BuffBarCooldownViewer.Selection then
+            seen[f] = true
+            frames[#frames + 1] = f
         end
     end
 
-    -- Fallback to raw children scan
-    if #frames == 0 then
-        local okc, children = pcall(BuffBarCooldownViewer.GetChildren, BuffBarCooldownViewer)
-        if okc and children then
-            for _, child in ipairs({ children }) do
-                if child and child:IsObjectType("Frame") then
-                    -- Skip Selection frame
-                    if child ~= BuffBarCooldownViewer.Selection then
-                        table.insert(frames, child)
-                    end
-                end
+    -- the viewer's own list of bars
+    if BuffBarCooldownViewer.GetItemFrames then
+        local ok, items = pcall(BuffBarCooldownViewer.GetItemFrames, BuffBarCooldownViewer)
+        if ok and type(items) == "table" then
+            for _, f in ipairs(items) do Add(f) end
+        end
+    end
+
+    -- 0.24.2: plus every child bar. Before, children were only read when the list was empty, and
+    -- then only the first one (pcall returned just the first child). A bar the list did not have
+    -- kept Blizzard's look and position and overlapped the styled bars.
+    local kids = { pcall(BuffBarCooldownViewer.GetChildren, BuffBarCooldownViewer) }
+    if kids[1] then
+        for i = 2, #kids do
+            local child = kids[i]
+            if child and child.IsObjectType and child:IsObjectType("Frame") and (child.Bar or child.Icon) then
+                Add(child)
             end
         end
     end
@@ -1265,10 +1269,17 @@ LayoutBuffBars = function()
         end
     end
 
-    -- Apply visual styling and frame strata/level to each bar (always, regardless of reposition)
+    -- Apply visual styling and frame strata/level to each bar
+    local now = GetTime()
+    local stamp = H3z0UI_BuffBar._styleGen or 0
     for _, bar in ipairs(bars) do
         if stylingEnabled then
-            ApplyBarStyle(bar, settings)
+            local cid = bar.cooldownID
+            if bar.h3zStyleGen ~= stamp or bar.h3zStyleCID ~= cid or bar.h3zStyleW ~= settings.barWidth
+                or now - (bar.h3zStyledAt or 0) > 1 then
+                ApplyBarStyle(bar, settings)
+                bar.h3zStyleGen, bar.h3zStyleCID, bar.h3zStyleW, bar.h3zStyledAt = stamp, cid, settings.barWidth, now
+            end
         end
         -- Apply frame strata/level to each bar AND its .Bar child for proper HUD layering
         bar:SetFrameStrata("MEDIUM")
@@ -1401,7 +1412,7 @@ local function Initialize()
         local iconElapsed = 0
         BuffIconCooldownViewer:HookScript("OnUpdate", function(self, elapsed)
             iconElapsed = iconElapsed + elapsed
-            if iconElapsed > 0.05 then  -- 20 FPS polling - hash prevents over-layout
+            if iconElapsed > 0.1 then  -- 0.24.2: 10 checks a second (was 20) - hash prevents over-layout
                 iconElapsed = 0
                 if self:IsShown() then
                     CheckIconChanges()
@@ -1415,7 +1426,7 @@ local function Initialize()
         local barElapsed = 0  -- kept local: never write state onto Blizzard's frame table
         BuffBarCooldownViewer:HookScript("OnUpdate", function(self, elapsed)
             barElapsed = barElapsed + elapsed
-            if barElapsed > 0.05 then  -- 20 FPS for bars
+            if barElapsed > 0.1 then  -- 0.24.2: 10 checks a second (was 20)
                 barElapsed = 0
                 if self:IsShown() then
                     CheckBarChanges()
@@ -1546,6 +1557,8 @@ H3z0UI_BuffBar.Initialize = Initialize
 
 -- Force refresh function (can be called from GUI)
 function H3z0UI_BuffBar.Refresh()
+    -- settings may have changed: every bar is styled again
+    H3z0UI_BuffBar._styleGen = (H3z0UI_BuffBar._styleGen or 0) + 1
     -- Reset states to force recalculation
     iconState.isInitialized = false
     iconState.lastCount = 0

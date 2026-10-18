@@ -668,8 +668,8 @@ local SETTINGS = {
     combattimer = { 3, 1, "Combat Timer" },
     mplus = { 10, 2, "H3z0 UI M+ Timer" },
     minimap = { 9, 1 },
-    coords = { 1, 5 },
-    panel_bottombar = { 1, 2 },
+    coords = { 1, 6 },
+    panel_bottombar = { 1, 3 },
 }
 for unit, sub in pairs(UF_SUB) do
     SETTINGS["uf_" .. unit] = { 6, sub }

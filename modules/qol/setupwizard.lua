@@ -276,7 +276,27 @@ local function ApplyLook(value, result)
         if o.value == value then result.lines[#result.lines + 1] = "Look: " .. o.label end
     end
     result.needReload = true
+
+    -- the options menu shows only this version's options: rebuild it if it was already made
+    if not result.fromMenu then
+        C_Timer.After(0, function()
+            local ui = _G.H3z0UI
+            local G = ui and ui.GUI
+            if G and G.MainFrame and G.RebuildOptions then pcall(G.RebuildOptions, G) end
+        end)
+    end
 end
+
+-- used by H3z0 Features > UI Look
+Setup.CurrentLook = function() return CurrentLook() end
+Setup.ApplyLookNow = function(value)
+    local result = { lines = {}, needReload = false, fromMenu = true }
+    ApplyLook(value, result)
+    local s = SetupTable()
+    if s then s.look = value end
+    return result
+end
+Setup.LOOKS = LOOKS
 
 ---------------------------------------------------------------------------
 -- Step 2: the font (used by everything: frames, bars, chat, tooltips, nameplates, options)

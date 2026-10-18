@@ -158,10 +158,15 @@ local function BuildCastbarOptions(tabContent, unitKey, y, PAD, FORM_ROW, Refres
         castTextureDropdown:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
 
-        local castBorderSlider = GUI:CreateFormSlider(tabContent, "Border Size", 0, 5, 1, "borderSize", castDB, RefreshUnit)
-        castBorderSlider:SetPoint("TOPLEFT", PAD, y)
-        castBorderSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-        y = y - FORM_ROW
+        -- Modern Cast Bars (Modern / Modern v2) draw their own rounded outline: no border options then
+        local mlc = ns.ModernLook and ns.ModernLook.GetSettings and ns.ModernLook.GetSettings()
+        local modernCast = (not GUI:LookIs("classic")) and mlc and mlc.enabled and mlc.castbars
+        if not modernCast then
+            local castBorderSlider = GUI:CreateFormSlider(tabContent, "Border Size", 0, 5, 1, "borderSize", castDB, RefreshUnit)
+            castBorderSlider:SetPoint("TOPLEFT", PAD, y)
+            castBorderSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+        end
 
         -- ========================================
         -- POSITIONING & SIZE
@@ -618,10 +623,12 @@ local function BuildCastbarOptions(tabContent, unitKey, y, PAD, FORM_ROW, Refres
         iconSpacingSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
 
-        local iconBorderSizeSlider = GUI:CreateFormSlider(tabContent, "Icon Border Size", 0, 5, 0.1, "iconBorderSize", castDB, RefreshUnit)
-        iconBorderSizeSlider:SetPoint("TOPLEFT", PAD, y)
-        iconBorderSizeSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-        y = y - FORM_ROW
+        if not modernCast then
+            local iconBorderSizeSlider = GUI:CreateFormSlider(tabContent, "Icon Border Size", 0, 5, 0.1, "iconBorderSize", castDB, RefreshUnit)
+            iconBorderSizeSlider:SetPoint("TOPLEFT", PAD, y)
+            iconBorderSizeSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+        end
 
         local iconScaleSlider = GUI:CreateFormSlider(tabContent, "Icon Scale", 0.5, 2.0, 0.1, "iconScale", castDB, RefreshUnit)
         iconScaleSlider:SetPoint("TOPLEFT", PAD, y)

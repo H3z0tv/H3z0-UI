@@ -740,7 +740,7 @@ local function StyleMember(f)
     if v2 then
         HH = s.v2HealthHeight or 22         -- a taller bar like the Player frame
         PH = s.v2PowerHeight or 4
-        BW = math.max(BW, s.v2BarWidth or 120)
+        BW = s.v2BarWidth or math.max(BW, 120)   -- v2 has its own width setting
         fontSize = fontSize + 2
         tex = PlayerFrameTexture()
     end
@@ -950,6 +950,26 @@ end
 ---------------------------------------------------------------------------
 -- Events
 ---------------------------------------------------------------------------
+-- 0.24.2: UNIT_AURA fires many times a second in groups; rebuild a frame's aura icons at most
+-- 10 times a second instead of on every single event
+local auraQueued = false
+local function FlushAuras()
+    auraQueued = false
+    for _, f in ipairs(members) do
+        if f.h3zAuraDirty then
+            f.h3zAuraDirty = nil
+            if f:IsShown() then pcall(UpdateAuras, f) end
+        end
+    end
+end
+local function QueueAuras(f)
+    f.h3zAuraDirty = true
+    if not auraQueued then
+        auraQueued = true
+        C_Timer.After(0.1, FlushAuras)
+    end
+end
+
 local function ForUnit(unit, fn)
     local f = byUnit[unit]
     if f and f:IsShown() then fn(f) end
@@ -968,7 +988,7 @@ local EVENT_HANDLERS = {
     UNIT_POWER_UPDATE = UpdatePower,
     UNIT_MAXPOWER = UpdatePower,
     UNIT_DISPLAYPOWER = UpdatePower,
-    UNIT_AURA = UpdateAuras,
+    UNIT_AURA = function(f) QueueAuras(f) end,
     UNIT_PORTRAIT_UPDATE = UpdatePortrait,
     UNIT_MODEL_CHANGED = UpdatePortrait,
     UNIT_NAME_UPDATE = UpdateName,

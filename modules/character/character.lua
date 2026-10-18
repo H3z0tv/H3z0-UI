@@ -1413,8 +1413,10 @@ local function PositionModelScene()
 
     -- Position model scene between slot columns
     CharacterModelScene:ClearAllPoints()
-    CharacterModelScene:SetPoint("TOPLEFT", CharacterFrame, "TOPLEFT", 86, -85)
-    CharacterModelScene:SetPoint("BOTTOMRIGHT", CharacterFrame, "BOTTOMRIGHT", -204, 65)
+    -- v2: the model starts right under the header so the head is never cut off
+    -- (taller frame moved down: room above the head, feet a bit lower)
+    CharacterModelScene:SetPoint("TOPLEFT", CharacterFrame, "TOPLEFT", 86, IsV2() and -72 or -85)
+    CharacterModelScene:SetPoint("BOTTOMRIGHT", CharacterFrame, "BOTTOMRIGHT", -204, IsV2() and 40 or 65)
     CharacterModelScene:SetFrameLevel(2)
     CharacterModelScene:Show()
 
@@ -2063,7 +2065,7 @@ local function UpdateStatsPanel(panel, unit)
         end
         if equipped and not IsSecret(equipped) then
             local big = scrollChild:CreateFontString(nil, "OVERLAY")
-            big:SetFont(GetGlobalFont(), 20, "OUTLINE")
+            big:SetFont(GetGlobalFont(), 16, "OUTLINE")
             big:SetPoint("TOP", scrollChild, "TOP", 0, y - 2)
             local r, g, b = UnitClassRGB(unit)
             big:SetTextColor(r, g, b, 1)
@@ -2254,6 +2256,7 @@ local function UpdateStatsPanel(panel, unit)
     }
 
     local statFormat = settings.secondaryStatFormat or "percent"
+    if IsV2() then statFormat = "percent" end   -- v2: short values so they never run into the names
 
     for _, stat in ipairs(secondaryStats) do
         local percentValue = SafeGetStat(stat.statKey .. "_PCT", stat.percentFunc)

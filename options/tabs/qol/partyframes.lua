@@ -65,19 +65,27 @@ local function BuildPartyFramesTab(tabContent)
     resetBtn:SetPoint("LEFT", previewBtn, "RIGHT", 10, 0)
     y = y - 38
 
-    Section("Layout")
-    if pf.style == nil then pf.style = "classic" end
-    Place(GUI:CreateFormDropdown(tabContent, "Style", {
-        { value = "classic", text = "Classic (portrait beside the bars)" },
-        { value = "v2", text = "Round Portrait v2 (bars start at the portrait, round end)" },
-    }, "style", pf, Refresh))
+    -- the style follows the UI version (H3z0 Features > UI Look): Modern v2 = v2, else classic
+    local v2 = GUI:LookIs("v2")
+    Section(v2 and "Layout (Modern v2)" or "Layout")
+    Info(v2 and "Bars start under a big round portrait and end round, like the Player frame. The portrait size follows the bar height."
+        or "Portrait beside the bars. Modern v2 party frames come with the Modern v2 version (H3z0 Features > UI Look).", 34)
     Slider("Scale", 0.5, 2.0, 0.05, "scale")
     Slider("Spacing", 0, 40, 1, "spacing")
     Check("Grow Upwards", "growUp")
-    Info("Portrait size is in Unit Frames > Portraits.", 20)
-    Slider("Bar Width", 50, 220, 1, "barWidth")
-    Slider("Health Bar Height", 6, 30, 1, "healthHeight")
-    Slider("Power Bar Height", 2, 14, 1, "powerHeight")
+    if v2 then
+        if pf.v2BarWidth == nil then pf.v2BarWidth = 120 end
+        if pf.v2HealthHeight == nil then pf.v2HealthHeight = 22 end
+        if pf.v2PowerHeight == nil then pf.v2PowerHeight = 4 end
+        Slider("Bar Width", 80, 260, 1, "v2BarWidth")
+        Slider("Health Bar Height", 12, 40, 1, "v2HealthHeight")
+        Slider("Power Bar Height", 2, 12, 1, "v2PowerHeight")
+    else
+        Slider("Portrait Size", 24, 90, 1, "portraitSize")
+        Slider("Bar Width", 50, 220, 1, "barWidth")
+        Slider("Health Bar Height", 6, 30, 1, "healthHeight")
+        Slider("Power Bar Height", 2, 14, 1, "powerHeight")
+    end
     Slider("Font Size", 8, 18, 1, "fontSize")
     if pf.nameFontSize == nil then pf.nameFontSize = 0 end
     if pf.healthFontSize == nil then pf.healthFontSize = 0 end
@@ -94,7 +102,7 @@ local function BuildPartyFramesTab(tabContent)
     Section("Colors")
     Check("Class Color Names", "classColorName")
     Check("Class Color Health Bars", "classColorHealth")
-    Check("Class Color Portrait Ring", "classColorRing")
+    if not v2 then Check("Class Color Portrait Ring", "classColorRing") end
 
     Section("Auras")
     Check("Show Auras", "showAuras")

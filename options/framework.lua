@@ -143,6 +143,37 @@ local function UnregisterWidgetInstance(widget)
 end
 
 -- Broadcast value change to all sibling widget instances
+-- 0.24.2: while a slider is dragged its onChange runs at most 10 times a second (the refreshes
+-- behind sliders rebuild frames; running them on every pixel of a drag made the menu lag).
+-- Returns push(value) for drag ticks and flush() for mouse up.
+local function DragThrottle(onChange)
+    local pending, timer
+    local function fire()
+        timer = false
+        if pending ~= nil then
+            local v = pending
+            pending = nil
+            onChange(v)
+        end
+    end
+    local function push(v)
+        pending = v
+        if not timer then
+            timer = true
+            C_Timer.After(0.1, fire)
+        end
+    end
+    local function flush()
+        if pending ~= nil then
+            local v = pending
+            pending = nil
+            onChange(v)
+        end
+    end
+    local function drop() pending = nil end
+    return push, flush, drop
+end
+
 local function BroadcastToSiblings(widget, val)
     if not widget._widgetKey then return end
     local instances = GUI.WidgetInstances[widget._widgetKey]
@@ -179,6 +210,32 @@ function GUI:ClearSearchContext()
     }
 end
 
+-- 0.24.2: the UI version picked in H3z0 Features > UI Look (classic / modern / v2).
+-- Sub-tabs and options of another version are not shown.
+function GUI:CurrentLook()
+    local Setup = _G.H3z0UI_Setup
+    local ok, look = pcall(function() return Setup and Setup.CurrentLook and Setup.CurrentLook() end)
+    return (ok and look) or "classic"
+end
+
+function GUI:LookIs(...)
+    local look = self:CurrentLook()
+    for i = 1, select("#", ...) do
+        local v = select(i, ...)
+        if type(v) == "table" then
+            for _, x in ipairs(v) do if x == look then return true end end
+        elseif v == look then
+            return true
+        end
+    end
+    return false
+end
+
+-- Rebuild the whole options window (after the version changed), keeping the open tab
+function GUI:RebuildOptions()
+    if self.RefreshAccentColor then self:RefreshAccentColor() end
+end
+
 -- Flag to track if search index has been built
 GUI._searchIndexBuilt = false
 
@@ -199,6 +256,7 @@ function GUI:ForceLoadAllTabs()
     for tabIndex, page in pairs(frame.pages) do
         if tabIndex ~= self._searchTabIndex then  -- Skip Search tab itself
             self:BuildPageHidden(frame, page)
+            if page and page._subTabGroup and page._subTabGroup.BuildAll then page._subTabGroup.BuildAll() end
         end
     end
 end
@@ -244,23 +302,30 @@ function GUI:StartBackgroundIndex()
             if self._bgGen == gen then self._bgIndexing = false end
             return
         end
-        -- only work while the menu is open and we are not in combat
-        if not frame:IsShown() or (InCombatLockdown and InCombatLockdown()) then
-            C_Timer.After(1, Step)
+        -- only work while the menu is open, we are not in combat and you are not dragging a
+        -- slider / holding a button (building a page then is what made sliders stutter)
+        if not frame:IsShown() or (InCombatLockdown and InCombatLockdown())
+            or (IsMouseButtonDown and (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton"))) then
+            C_Timer.After(0.5, Step)
             return
         end
 
-        local nextPage
+        -- one page shell or one sub-tab per step, so no single step is a long freeze
+        local nextPage, nextGroup
         for tabIndex, page in pairs(frame.pages) do
-            if tabIndex ~= self._searchTabIndex and page and page.createFunc and not page.built then
-                nextPage = page
-                break
+            if tabIndex ~= self._searchTabIndex and page and page.createFunc then
+                if not page.built then nextPage = page break end
+                local g = page._subTabGroup
+                if g and g.NextUnbuilt and g.NextUnbuilt() then nextGroup = g break end
             end
         end
 
         if nextPage then
             self:BuildPageHidden(frame, nextPage)
-            C_Timer.After(0.15, Step)
+            C_Timer.After(0.25, Step)
+        elseif nextGroup then
+            nextGroup.BuildSubTab(nextGroup.NextUnbuilt())
+            C_Timer.After(0.25, Step)
         else
             self._searchIndexBuilt = true
             self._bgIndexing = false
@@ -951,6 +1016,11 @@ function GUI:CreateSubTabs(parent, tabs)
 
         btn.index = i
         tabButtons[i] = btn
+        -- a sub-tab can belong to some UI versions only: looks = { "classic" } etc.
+        if tabInfo.looks and not GUI:LookIs(tabInfo.looks) then
+            btn.h3zHidden = true
+            btn:Hide()
+        end
 
         -- Content frame for this tab (parented to page container)
         local content = CreateFrame("Frame", nil, container)
@@ -961,9 +1031,38 @@ function GUI:CreateSubTabs(parent, tabs)
         content._hasContent = false
         tabContents[i] = content
 
-        -- Create content if builder function provided
-        if tabInfo.builder then
-            tabInfo.builder(content)
+    end
+
+    -- 0.24.2: sub-tabs are built the first time they are opened (or by the search index in
+    -- the background), not all at once when the page opens. Each one is built with the search
+    -- context that was active when the page was created, like before.
+    local ctxSnap = {}
+    for k, v in pairs(GUI._searchContext or {}) do ctxSnap[k] = v end
+    local suppressSnap = GUI._suppressSearchRegistration
+    local built = {}
+    local function BuildSubTab(i)
+        if built[i] then return end
+        built[i] = true
+        local info = tabs[i]
+        if not (info and info.builder) then return end
+        local savedCtx = {}
+        for k, v in pairs(GUI._searchContext or {}) do savedCtx[k] = v end
+        local savedSuppress = GUI._suppressSearchRegistration
+        local savedLast = GUI._lastSubTabGroup
+        GUI._searchContext = GUI._searchContext or {}
+        wipe(GUI._searchContext)
+        for k, v in pairs(ctxSnap) do GUI._searchContext[k] = v end
+        GUI._suppressSearchRegistration = suppressSnap
+        local ok, err = pcall(info.builder, tabContents[i])
+        wipe(GUI._searchContext)
+        for k, v in pairs(savedCtx) do GUI._searchContext[k] = v end
+        GUI._suppressSearchRegistration = savedSuppress
+        GUI._lastSubTabGroup = savedLast
+        if not ok then geterrorhandler()(err) end
+    end
+    local function NextUnbuilt()
+        for i = 1, #tabs do
+            if not built[i] and tabs[i].builder and not tabButtons[i].h3zHidden then return i end
         end
     end
 
@@ -979,6 +1078,7 @@ function GUI:CreateSubTabs(parent, tabs)
 
         local xOffset, row = SIDE_PAD, 0
         for i, btn in ipairs(tabButtons) do
+          if not btn.h3zHidden then
             local tw = btn.text:GetStringWidth()
             if not tw or tw <= 0 then tw = #(tabs[i].name or "") * 6 end
             local w = math.max(MIN_BTN_W, math.ceil(tw) + TEXT_PAD)
@@ -996,6 +1096,7 @@ function GUI:CreateSubTabs(parent, tabs)
             if tabs[i] and tabs[i].isSeparator then
                 xOffset = xOffset + separatorSpacing
             end
+          end
         end
 
         local rows = row + 1
@@ -1018,6 +1119,12 @@ function GUI:CreateSubTabs(parent, tabs)
 
     -- Tab selection function
     local function SelectSubTab(index)
+        -- a hidden (other version) sub-tab: open the first one that is shown instead
+        if tabButtons[index] and tabButtons[index].h3zHidden then
+            for j, b in ipairs(tabButtons) do
+                if not b.h3zHidden then index = j break end
+            end
+        end
         -- 0.21: no font reloads (fonts are set once at creation) and no repaint of buttons
         -- whose state did not change.
         local prev = buttonGroup.selectedTab
@@ -1027,6 +1134,7 @@ function GUI:CreateSubTabs(parent, tabs)
                 pcall(btn.SetBackdropBorderColor, btn, unpack(C.accent))
                 btn.text:SetTextColor(unpack(C.accentLight))
                 if btn.underline then btn.underline:Show() end
+                BuildSubTab(i)
                 tabContents[i]:Show()
             elseif prev == nil or i == prev then
                 pcall(btn.SetBackdropColor, btn, 0.08, 0.11, 0.17, 1)
@@ -1060,6 +1168,13 @@ function GUI:CreateSubTabs(parent, tabs)
     buttonGroup.tabContents = tabContents
     buttonGroup.SelectTab = SelectSubTab
     buttonGroup.RelayoutSubTabs = RelayoutSubTabs
+    buttonGroup.BuildSubTab = BuildSubTab
+    buttonGroup.NextUnbuilt = NextUnbuilt
+    buttonGroup.BuildAll = function()
+        for i = 1, #tabs do
+            if not tabButtons[i].h3zHidden then BuildSubTab(i) end
+        end
+    end
     container.tabButtons = tabButtons
     container.tabContents = tabContents
     container.SelectTab = SelectSubTab
@@ -1415,7 +1530,11 @@ function GUI:CreateSlider(parent, label, min, max, step, dbKey, dbTable, onChang
 
     -- Parse options
     options = options or {}
-    local deferOnDrag = options.deferOnDrag or false
+    -- 0.24.2: a slider applies its setting when you let go (the number and bar still move
+    -- live). Most settings rebuild frames, and doing that while dragging dropped the FPS.
+    -- { live = true } keeps live updates for cheap ones (opacity).
+    local deferOnDrag = options.deferOnDrag
+    if deferOnDrag == nil then deferOnDrag = not options.live end
 
     -- Label (top, centered, mint colored)
     local text = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1521,6 +1640,9 @@ function GUI:CreateSlider(parent, label, min, max, step, dbKey, dbTable, onChang
 
     -- Track dragging state for deferOnDrag mode
     local isDragging = false
+    local noop = function() end
+    local dragPush, dragFlush = noop, noop
+    if onChange then dragPush, dragFlush = DragThrottle(onChange) end
 
     -- Update filled track and thumb position
     local function UpdateTrackFill(value)
@@ -1590,7 +1712,9 @@ function GUI:CreateSlider(parent, label, min, max, step, dbKey, dbTable, onChang
                 if onChange then onChange(value) end
             end
         else
-            if onChange then onChange(value) end
+            if onChange then
+                if isDragging then dragPush(value) else onChange(value) end
+            end
         end
     end)
 
@@ -1604,6 +1728,7 @@ function GUI:CreateSlider(parent, label, min, max, step, dbKey, dbTable, onChang
     slider:SetScript("OnMouseUp", function(self, button)
         if button == "LeftButton" and isDragging then
             isDragging = false
+            if not deferOnDrag then dragFlush() end
             if deferOnDrag and onChange then
                 local value = self:GetValue()
                 if container.step >= 1 then
@@ -2567,7 +2692,11 @@ function GUI:CreateFormSlider(parent, label, min, max, step, dbKey, dbTable, onC
     container:EnableMouse(true)  -- Block clicks from passing through to frames behind
 
     options = options or {}
-    local deferOnDrag = options.deferOnDrag or false
+    -- 0.24.2: a slider applies its setting when you let go (the number and bar still move
+    -- live). Most settings rebuild frames, and doing that while dragging dropped the FPS.
+    -- { live = true } keeps live updates for cheap ones (opacity).
+    local deferOnDrag = options.deferOnDrag
+    if deferOnDrag == nil then deferOnDrag = not options.live end
     local precision = options.precision
     local formatStr = precision and string.format("%%.%df", precision) or (step < 1 and "%.2f" or "%d")
 
@@ -2673,6 +2802,9 @@ function GUI:CreateFormSlider(parent, label, min, max, step, dbKey, dbTable, onC
     container.step = step or 1
 
     local isDragging = false
+    local noop = function() end
+    local dragPush, dragFlush, dragDrop = noop, noop, noop
+    if onChange then dragPush, dragFlush, dragDrop = DragThrottle(onChange) end
 
     -- Update filled track and thumb position
     local function UpdateTrackFill(value)
@@ -2737,7 +2869,9 @@ function GUI:CreateFormSlider(parent, label, min, max, step, dbKey, dbTable, onC
         if userInput then
             BroadcastToSiblings(container, value)
             if deferOnDrag and isDragging then return end
-            if onChange then onChange(value) end
+            if onChange then
+                if isDragging then dragPush(value) else onChange(value) end
+            end
         end
     end)
 
@@ -2745,9 +2879,11 @@ function GUI:CreateFormSlider(parent, label, min, max, step, dbKey, dbTable, onC
     slider:SetScript("OnMouseUp", function()
         if isDragging and deferOnDrag then
             isDragging = false
+            dragDrop()
             if onChange then onChange(slider:GetValue()) end
         end
         isDragging = false
+        dragFlush()
     end)
 
     -- Hover effects on thumb

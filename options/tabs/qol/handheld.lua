@@ -147,6 +147,10 @@ Build = function(tabContent)
         handheld.FitOptionsWindow()
     end))
 
+    Place(GUI:CreateFormCheckbox(tabContent, "Keep the ring under your target (controller modes)", "targetRing", cfg, function()
+        local hh = _G.H3z0UI_Handheld
+        if hh and hh.EnsureTargetRing then hh.EnsureTargetRing() end
+    end))
     Place(GUI:CreateFormCheckbox(tabContent, "Use the Steam Deck HUD layout (unit frames)", "deckUnitFrames", cfg, function()
         handheld.ApplyUnitFrames()
     end))

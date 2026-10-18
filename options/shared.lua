@@ -382,6 +382,9 @@ ns.H3z0UI_Options = {
 
     -- Helper functions
     GetDB = GetDB,
+    -- the UI version picked in H3z0 Features > UI Look: "classic", "modern" or "v2"
+    Look = function() return GUI:CurrentLook() end,
+    LookIs = function(...) return GUI:LookIs(...) end,
     CreateScrollableContent = CreateScrollableContent,
     GetTextureList = GetTextureList,
     GetFontList = GetFontList,

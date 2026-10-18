@@ -574,8 +574,9 @@ local function CollectIcons(viewer, trackerKey)
     if not viewer or not viewer.GetNumChildren then return icons end
 
     local numChildren = viewer:GetNumChildren()
+    local kids = { viewer:GetChildren() }   -- 0.24.2: one call instead of one per child
     for i = 1, numChildren do
-        local child = select(i, viewer:GetChildren())
+        local child = kids[i]
         -- Skip custom CDM icons from child enumeration (we inject them separately)
         if child and child ~= viewer.Selection and not child._isCustomCDMIcon and IsIconFrame(child) then
             -- Collect shown icons OR icons we previously hid, but only if they
@@ -1119,11 +1120,13 @@ local function HookViewer(viewerName, trackerKey)
         -- Collect visible Blizzard icons (lightweight: ~10-20 children)
         -- Excludes custom CDM icons to avoid phantom count changes
         -- Also excludes empty placeholder frames without a spell texture
+        -- 0.24.2: one GetChildren call (it was called once per child: every child list n times)
         local icons = {}
-        for i = 1, viewer:GetNumChildren() do
-            local child = select(i, viewer:GetChildren())
+        local kids = { viewer:GetChildren() }
+        for i = 1, #kids do
+            local child = kids[i]
             if child and child ~= viewer.Selection and not child._isCustomCDMIcon and IsIconFrame(child) and child:IsShown() and HasValidTexture(child) then
-                table.insert(icons, child)
+                icons[#icons + 1] = child
             end
         end
         local count = #icons
@@ -1329,8 +1332,9 @@ local function ViewersHaveIcons()
     for _, name in ipairs({VIEWER_ESSENTIAL, VIEWER_UTILITY}) do
         local viewer = _G[name]
         if viewer then
+            local kids = { viewer:GetChildren() }   -- 0.24.2: one call instead of one per child
             for i = 1, viewer:GetNumChildren() do
-                local child = select(i, viewer:GetChildren())
+                local child = kids[i]
                 if child and child ~= viewer.Selection and IsIconFrame(child) then
                     return true
                 end
@@ -1404,8 +1408,9 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 if viewer then
                     viewer.__ncdmGraceUntil = GetTime() + 2.0
                     -- Clear icon state flags for fresh layout in new zone
+                    local kids = { viewer:GetChildren() }   -- 0.24.2: one call instead of one per child
                     for i = 1, viewer:GetNumChildren() do
-                        local child = select(i, viewer:GetChildren())
+                        local child = kids[i]
                         if child and child ~= viewer.Selection then
                             child.__cdmSkinned = nil
                             child.__cdmSkinPending = nil

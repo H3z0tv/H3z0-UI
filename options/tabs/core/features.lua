@@ -3,7 +3,7 @@
 
     Everything H3z0 UI added on top of the base addon, in one place:
       Combat Mode, Bottom Bar, Steam Deck + PC Controller (moved from General & QoL)
-      Portraits     - frame style (round / docked), classic unit frame portraits, party portraits
+      UI Look       - pick Classic / Modern / Modern v2, then only that version's options
       Layout & Bars - Layout Mode, Compact Action Bars
       Map           - minimap coordinates
       Extras        - party (ready check, raid manager tab), WoW: Forever, setup wizard
@@ -69,8 +69,8 @@ local function Builder(tabContent)
         return b.Place(GUI:CreateFormCheckbox(tabContent, label, key, tbl, onChange))
     end
 
-    function b.Slider(label, min, max, step, key, tbl, onChange)
-        return b.Place(GUI:CreateFormSlider(tabContent, label, min, max, step, key, tbl, onChange))
+    function b.Slider(label, min, max, step, key, tbl, onChange, opts)
+        return b.Place(GUI:CreateFormSlider(tabContent, label, min, max, step, key, tbl, onChange, opts))
     end
 
     function b.Drop(label, options, key, tbl, onChange)
@@ -106,74 +106,13 @@ local function BuildPortraits(tabContent)
     local b = Builder(tabContent)
     local db = Shared.GetDB()
 
-    -- Modern Look (shadow / sheen / glow on frames, minimap and info bar)
-    local ML = ns.ModernLook
-    local mldb = ML and ML.GetSettings and ML.GetSettings()
-    if mldb then
-        local function RefreshML()
-            if _G.H3z0UI_RefreshModernLook then _G.H3z0UI_RefreshModernLook() end
-            if _G.H3z0UI_RefreshWindowSkins then _G.H3z0UI_RefreshWindowSkins() end
-        end
-        if ns.Round and ns.Round.Settings then ns.Round.Settings() end
-        b.Section("Modern Look")
-        b.Info("Soft shadows, a subtle sheen on the bars and a glow behind the portraits - on the unit frames, power and cast bars, minimap and info bar. Your settings stay as they are. /h3z0ui modern", 34)
-        b.Check("Use Modern Look", "enabled", mldb, RefreshML)
-        b.Check("Soft Shadows", "shadow", mldb, RefreshML)
-        b.Check("Bar Sheen + Top Highlight", "sheen", mldb, RefreshML)
-        b.Check("Portrait Glow (round portraits)", "glow", mldb, RefreshML)
-        b.Check("Modern Cast Bars (rounded bar, icon as its own tile)", "castbars", mldb, RefreshML)
-        b.Check("Modern Action Buttons (rounded tiles, shadow, rounded cooldown)", "buttons", mldb, RefreshML)
-        b.Check("Rounded Corners (unit frames, bars, buttons, square minimap, windows)", "rounded", mldb, RefreshML)
-        b.Slider("Corner Radius", 2, 14, 1, "radius", mldb, RefreshML)
-    end
-
-    -- Window Skins (chat + damage meter)
-    local WS = ns.WindowSkins
-    local wsdb = WS and WS.GetSettings and WS.GetSettings()
-    if wsdb then
-        local function RefreshWS() if _G.H3z0UI_RefreshWindowSkins then _G.H3z0UI_RefreshWindowSkins() end end
-        b.Section("Window Skins")
-        b.Info("A dark, see-through window with soft rounded corners for the chat and Blizzard's damage meter: header strip, accent line and flat bars on the meter, an accent underline on the selected chat tab.", 34)
-        b.Check("Use Window Skins", "enabled", wsdb, RefreshWS)
-        b.Check("Chat", "chat", wsdb, RefreshWS)
-        b.Check("Damage Meter", "damageMeter", wsdb, RefreshWS)
-        b.Check("Damage Meter Header + Accent Line", "header", wsdb, RefreshWS)
-        if wsdb.chatAlpha == nil then wsdb.chatAlpha = wsdb.alpha or 0.9 end
-        if wsdb.meterAlpha == nil then wsdb.meterAlpha = wsdb.alpha or 0.9 end
-        if wsdb.slotAlpha == nil then wsdb.slotAlpha = 1 end
-        b.Slider("Chat Opacity", 0, 1, 0.05, "chatAlpha", wsdb, RefreshWS)
-        b.Slider("Damage Meter Opacity", 0, 1, 0.05, "meterAlpha", wsdb, RefreshWS)
-        b.Info("Action button slots use the same slate colour; their opacity is Action Bars > Button Appearance > Backdrop Opacity.", 22)
-    end
-
-    -- Frame style (round / docked)
-    local FS = ns.FrameStyle
-    local fsdb = FS and FS.GetSettings and FS.GetSettings()
-    if fsdb then
-        b.Section("Frame Style")
-        b.Info("A different look for Player / Target / Focus without losing your setup. Turning it off puts your frames back exactly as they were. /h3z0ui style", 34)
-        b.Check("Use Frame Style", "enabled", fsdb, function() FS.SetEnabled(fsdb.enabled) end)
-        b.Drop("Style", {
-            { value = "round", text = "Round Portrait (ring beside the bar)" },
-            { value = "roundv2", text = "Round Portrait v2 (bar starts at the portrait, round end)" },
-            { value = "square", text = "Docked Portrait (portrait inside the bar)" },
-        }, "style", fsdb, RefreshUF)
-        b.Check("Use on Player", "player", fsdb, RefreshUF)
-        b.Check("Use on Target", "target", fsdb, RefreshUF)
-        b.Check("Use on Focus", "focus", fsdb, RefreshUF)
-        b.Slider("Frame Height (0 = your own)", 0, 60, 1, "height", fsdb, RefreshUF)
-        b.Slider("Portrait Size (0 = fit the frame)", 0, 90, 1, "pSize", fsdb, RefreshUF)
-        b.Slider("Portrait Border Thickness", 0, 6, 1, "ringThickness", fsdb, RefreshUF)
-        b.Check("Class / Reaction Colored Border", "classRing", fsdb, RefreshUF)
-        b.Check("Name on Top", "nameAbove", fsdb, RefreshUF)
-        b.Check("Pet Bar Under the Player", "dockPet", fsdb, RefreshUF)
-    end
+    b.Info("Square portraits of the Classic look. Modern and Modern v2 portraits are set in H3z0 Features > UI Look.", 22, C.accent)
 
     -- Classic square portraits of the unit frames (used when Frame Style is off)
     local ufdb = db and db.h3z0uiUnitFrames
     if ufdb then
         b.Section("Unit Frame Portraits (Classic)")
-        b.Info("The square portrait beside the unit frame. Used when Frame Style is off (Frame Style draws its own portrait).", 22)
+        b.Info("The square portrait beside the unit frame. Used by the Classic look (Modern and Modern v2 draw their own portrait).", 22)
         for _, info in ipairs({ { "player", "Player" }, { "target", "Target" }, { "focus", "Focus" } }) do
             local unitKey, title = info[1], info[2]
             local u = ufdb[unitKey]
@@ -209,21 +148,211 @@ local function BuildPortraits(tabContent)
         end
     end
 
-    -- Party frames portrait
-    local pf = db and db.partyFrames
-    if pf then
-        b.Section("Party Frame Portraits")
-        b.Slider("Portrait Size", 24, 90, 1, "portraitSize", pf, RefreshParty)
+    b.Finish()
+end
+
+---------------------------------------------------------------------------
+-- UI LOOK: pick a version, see only the options that version uses
+---------------------------------------------------------------------------
+local function RefreshAllLook()
+    local FS = ns.FrameStyle
+    if FS and FS.ApplyAll then pcall(FS.ApplyAll) end
+    for _, name in ipairs({
+        "H3z0UI_RefreshUnitFrames", "H3z0UI_RefreshModernLook", "H3z0UI_RefreshWindowSkins",
+        "H3z0UI_ApplyModernButtons", "H3z0UI_RefreshMinimapShape", "H3z0UI_RefreshPartyFrames",
+        "H3z0UI_RefreshCharacterV2", "H3z0UI_RefreshPlates",
+    }) do
+        local fn = _G[name]
+        if fn then pcall(fn) end
+    end
+end
+
+local function Fonts()
+    local list = {}
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if LSM then
+        for name in pairs(LSM:HashTable("font")) do list[#list + 1] = { value = name, text = name } end
+        table.sort(list, function(a, b) return a.text < b.text end)
+    end
+    if #list == 0 then list[1] = { value = "Friz Quadrata TT", text = "Friz Quadrata TT" } end
+    return list
+end
+
+local function BuildLookInto(holder, firstBuild)
+    local b = Builder(holder)
+    local db = Shared.GetDB()
+    local Setup = ns.SetupWizard or _G.H3z0UI_Setup
+    local look = (Setup and Setup.CurrentLook and Setup.CurrentLook()) or "classic"
+    local uiState = { look = look }
+
+    -- rebuilding the page must not add the same options to search again
+    if not firstBuild then GUI._suppressSearchRegistration = true end
+
+    b.Section("Version")
+    b.Info("Pick a version. Every tab of the menu then shows only the options that version uses, and every change applies right away.", 22)
+    local looks = {}
+    for _, o in ipairs((Setup and Setup.LOOKS) or {}) do looks[#looks + 1] = { value = o.value, text = o.label } end
+    if #looks == 0 then
+        looks = { { value = "classic", text = "Classic" }, { value = "modern", text = "Modern" }, { value = "v2", text = "Modern v2" } }
+    end
+    b.Drop("UI Version", looks, "look", uiState, function(value)
+        value = value or uiState.look
+        if Setup and Setup.ApplyLookNow then Setup.ApplyLookNow(value) end
+        RefreshAllLook()
+        -- every tab shows only this version's options: rebuild the whole menu
+        C_Timer.After(0, function()
+            GUI:RebuildOptions()
+            GUI:ShowConfirmation({
+                title = "Version Changed",
+                message = "The new look is applied and the menu now shows only its options. A reload makes sure every frame picks it up.",
+                acceptText = "Reload Now",
+                cancelText = "Later",
+                isDestructive = false,
+                onAccept = function() H3z0UI:SafeReload() end,
+            })
+        end)
+    end)
+    for _, o in ipairs((Setup and Setup.LOOKS) or {}) do
+        if o.value == look then b.Info(o.desc, 22) end
     end
 
+    -- Common to every version --------------------------------------------
+    b.Section("Font")
+    if db and db.general then
+        b.Drop("Font (used everywhere)", Fonts(), "font", db.general, function()
+            local core = ns.Addon
+            if core and core.SetAllFonts then pcall(core.SetAllFonts, core, db.general.font) end
+            if core and core.ApplyGlobalFont then pcall(core.ApplyGlobalFont, core) end
+            RefreshAllLook()
+            if ns.ShowPopup and ns.Popups and ns.Popups["H3Z0UI_FONT_RELOAD"] then
+                ns.ShowPopup("H3Z0UI_FONT_RELOAD", db.general.font)
+            end
+        end)
+    end
+
+    local NP = ns.H3zPlates
+    local npdb = NP and NP.GetSettings and NP.GetSettings()
+    if npdb then
+        b.Check("Player / Target / Focus use the nameplate colours", "unitFrameColors", npdb, RefreshAllLook)
+    end
+
+    local char = db and db.character
+    if char then
+        if char.style == nil then char.style = "v2" end
+        b.Drop("Character + Inspect Pane", {
+            { value = "v2", text = "v2 (race background, item level, enchant hints)" },
+            { value = "classic", text = "Classic (item names and enchants listed)" },
+        }, "style", char, function()
+            RefreshAllLook()
+            GUI:ShowConfirmation({
+                title = "Reload Recommended",
+                message = "The character and inspect panes switch style completely after a reload.",
+                acceptText = "Reload Now",
+                cancelText = "Later",
+                isDestructive = false,
+                onAccept = function() H3z0UI:SafeReload() end,
+            })
+        end)
+    end
+
+    if look == "classic" then
+        b.Section("Classic")
+        b.Info("Square portraits beside flat bars, plain chat and damage meter. The square portraits are set in Unit Frames > Portraits.", 34)
+    end
+
+    -- Modern and Modern v2 -----------------------------------------------
+    if look ~= "classic" then
+        local FS = ns.FrameStyle
+        local fsdb = FS and FS.GetSettings and FS.GetSettings()
+        if fsdb then
+            b.Section("Unit Frames")
+            if look == "modern" then
+                b.Drop("Portrait", {
+                    { value = "round", text = "Round portrait beside the bar" },
+                    { value = "square", text = "Portrait docked inside the bar" },
+                }, "style", fsdb, RefreshAllLook)
+            else
+                b.Info("Bars start under a big round portrait and end round.", 22)
+            end
+            b.Check("Use on Player", "player", fsdb, RefreshAllLook)
+            b.Check("Use on Target", "target", fsdb, RefreshAllLook)
+            b.Check("Use on Focus", "focus", fsdb, RefreshAllLook)
+            b.Slider("Frame Height (0 = your own)", 0, 60, 1, "height", fsdb, RefreshAllLook)
+            b.Slider("Portrait Size (0 = fit the frame)", 0, 90, 1, "pSize", fsdb, RefreshAllLook)
+            b.Slider("Portrait Border Thickness", 0, 6, 1, "ringThickness", fsdb, RefreshAllLook)
+            b.Check("Class / Reaction Colored Border", "classRing", fsdb, RefreshAllLook)
+            b.Check("Name on Top", "nameAbove", fsdb, RefreshAllLook)
+            b.Check("Pet Bar Under the Player", "dockPet", fsdb, RefreshAllLook)
+        end
+
+        local ML = ns.ModernLook
+        local mldb = ML and ML.GetSettings and ML.GetSettings()
+        if mldb then
+            if ns.Round and ns.Round.Settings then ns.Round.Settings() end
+            b.Section("Modern Look")
+            b.Check("Soft Shadows", "shadow", mldb, RefreshAllLook)
+            b.Check("Bar Sheen + Top Highlight", "sheen", mldb, RefreshAllLook)
+            b.Check("Portrait Glow", "glow", mldb, RefreshAllLook)
+            b.Check("Rounded Corners (frames, bars, buttons, minimap)", "rounded", mldb, RefreshAllLook)
+            b.Slider("Corner Radius", 2, 14, 1, "radius", mldb, RefreshAllLook)
+            b.Check("Modern Cast Bars", "castbars", mldb, RefreshAllLook)
+            b.Check("Modern Action Buttons", "buttons", mldb, RefreshAllLook)
+            b.Info("Button slot opacity, borders and gloss: Action Bars > Button Appearance.", 22)
+        end
+
+        local WS = ns.WindowSkins
+        local wsdb = WS and WS.GetSettings and WS.GetSettings()
+        if wsdb then
+            if wsdb.chatAlpha == nil then wsdb.chatAlpha = wsdb.alpha or 0.9 end
+            if wsdb.meterAlpha == nil then wsdb.meterAlpha = wsdb.alpha or 0.9 end
+            b.Section("Chat + Damage Meter")
+            local function Skins()
+                if _G.H3z0UI_RefreshWindowSkins then _G.H3z0UI_RefreshWindowSkins() end
+                -- the Chat tab shows the old background options only while the chat is not skinned
+                C_Timer.After(0, function() GUI:RebuildOptions() end)
+            end
+            b.Check("Dark Rounded Windows", "enabled", wsdb, Skins)
+            b.Check("Chat", "chat", wsdb, Skins)
+            b.Check("Damage Meter", "damageMeter", wsdb, function()
+                if _G.H3z0UI_RefreshWindowSkins then _G.H3z0UI_RefreshWindowSkins() end
+            end)
+            local function Alpha() if _G.H3z0UI_WindowSkinsAlpha then _G.H3z0UI_WindowSkinsAlpha() end end
+            b.Slider("Chat Opacity", 0, 1, 0.05, "chatAlpha", wsdb, Alpha, { live = true })
+            b.Slider("Damage Meter Opacity", 0, 1, 0.05, "meterAlpha", wsdb, Alpha, { live = true })
+            b.Info("Hide Chat When Idle: Chat > Look & Hide. Party frames v2 sizes: Party Frames.", 22)
+        end
+    end
+
+    GUI._suppressSearchRegistration = false
     b.Finish()
+    return math.abs(b.y) + 40
+end
+
+local function BuildLook(tabContent)
+    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 1, subTabName = "UI Look"})
+    local holder
+    local first = true
+    local function Rebuild()
+        if holder then holder:Hide(); holder:SetParent(nil) end
+        holder = CreateFrame("Frame", nil, tabContent)
+        holder:SetPoint("TOPLEFT", 0, 0)
+        holder:SetPoint("TOPRIGHT", 0, 0)
+        holder.h3zRebuild = Rebuild
+        local ok, h = pcall(BuildLookInto, holder, first)
+        GUI._suppressSearchRegistration = false
+        first = false
+        h = (ok and h) or 600
+        holder:SetHeight(h)
+        tabContent:SetHeight(h)
+    end
+    Rebuild()
 end
 
 ---------------------------------------------------------------------------
 -- LAYOUT & BARS
 ---------------------------------------------------------------------------
 local function BuildLayout(tabContent)
-    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 4, subTabName = "Layout & Bars"})
+    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 5, subTabName = "Layout & Bars"})
     local b = Builder(tabContent)
 
     b.Section("Layout Mode")
@@ -262,7 +391,7 @@ end
 -- MAP
 ---------------------------------------------------------------------------
 local function BuildMap(tabContent)
-    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 5, subTabName = "Map"})
+    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 6, subTabName = "Map"})
     local b = Builder(tabContent)
     local db = Shared.GetDB()
     local mm = db and db.minimap
@@ -300,7 +429,7 @@ end
 -- EXTRAS
 ---------------------------------------------------------------------------
 local function BuildExtras(tabContent)
-    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 6, subTabName = "Extras"})
+    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 7, subTabName = "Extras"})
     local b = Builder(tabContent)
     local db = Shared.GetDB()
 
@@ -344,6 +473,7 @@ end
 local function CreateFeaturesPage(parent)
     local scroll, content = Shared.CreateScrollableContent(parent)
     GUI:CreateSubTabs(content, {
+        { name = "UI Look", builder = BuildLook },
         { name = "Combat Mode", builder = function(c) Sub(ns.H3z0UI_CombatModeOptions, "BuildCombatModeTab", c) end },
         { name = "Bottom Bar", builder = function(c) Sub(ns.H3z0UI_BottomBarOptions, "BuildBottomBarTab", c) end },
         { name = "Steam Deck + PC Controller", builder = function(c) Sub(ns.H3z0UI_HandheldOptions, "BuildHandheldTab", c) end },

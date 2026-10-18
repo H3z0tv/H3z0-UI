@@ -129,7 +129,10 @@ local function CreateUnitFramesPage(parent)
         end)
         y = y - FORM_ROW - 10
 
-        local featNote = GUI:CreateLabel(tabContent, "Frame Style (round / docked portraits) and all portrait settings are in the Portraits tab. Layout Mode and Compact Action Bars are in H3z0 Features.", 11, C.textMuted)
+        local featText = GUI:LookIs("classic")
+            and "Square portraits are in the Portraits tab. UI version, Layout Mode and Compact Action Bars are in H3z0 Features."
+            or "Portraits, frame style, shadows and rounded corners of this version are in H3z0 Features > UI Look."
+        local featNote = GUI:CreateLabel(tabContent, featText, 11, C.textMuted)
         featNote:SetPoint("TOPLEFT", PAD, y)
         featNote:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         featNote:SetJustifyH("LEFT")
@@ -1674,7 +1677,7 @@ local function CreateUnitFramesPage(parent)
         end
 
         -- Portrait settings live in Unit Frames > Portraits
-        if unitKey == "player" or unitKey == "target" or unitKey == "focus" then
+        if (unitKey == "player" or unitKey == "target" or unitKey == "focus") and GUI:LookIs("classic") then
             local portraitHeader = GUI:CreateSectionHeader(tabContent, "Portrait")
             portraitHeader:SetPoint("TOPLEFT", PAD, y)
             y = y - portraitHeader.gap
@@ -1697,7 +1700,7 @@ local function CreateUnitFramesPage(parent)
         {name = "Pet", builder = function(c) BuildUnitTab(c, "pet") end},
         {name = "Focus", builder = function(c) BuildUnitTab(c, "focus") end},
         {name = "Boss", builder = function(c) BuildUnitTab(c, "boss") end},
-        {name = "Portraits", builder = function(c)
+        {name = "Portraits", looks = { "classic" }, builder = function(c)
             local F = ns.H3z0UI_FeaturesOptions
             if F and F.BuildPortraits then F.BuildPortraits(c) end
         end},

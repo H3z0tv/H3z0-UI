@@ -2053,17 +2053,27 @@ local function ApplyStreamerMode()
 end
 _G.H3z0UI_ApplyStreamerMode = ApplyStreamerMode
 
+-- 0.24.2: run fn once after the last of many calls (shapeshifting fires UPDATE_SHAPESHIFT_FORMS
+-- a lot; every one of them started its own full pass over all action buttons)
+local function Debounced(fn, delay)
+    local pending = false
+    return function()
+        if pending then return end
+        pending = true
+        C_Timer.After(delay, function() pending = false; fn() end)
+    end
+end
+
 do
     local f = CreateFrame("Frame")
     f:RegisterEvent("PLAYER_ENTERING_WORLD")
     f:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
     f:RegisterEvent("PET_BAR_UPDATE")
-    f:SetScript("OnEvent", function()
-        C_Timer.After(1, ApplyStreamerMode)
-    end)
+    local later = Debounced(ApplyStreamerMode, 1)
+    f:SetScript("OnEvent", later)
     -- re-apply after H3z0 UI re-skins the bars
     if ActionBars.Refresh then
-        hooksecurefunc(ActionBars, "Refresh", function() C_Timer.After(0.1, ApplyStreamerMode) end)
+        hooksecurefunc(ActionBars, "Refresh", Debounced(ApplyStreamerMode, 0.1))
     end
 end
 
@@ -2254,15 +2264,16 @@ do
     f:RegisterEvent("PLAYER_REGEN_ENABLED")
     f:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
     f:RegisterEvent("PET_BAR_UPDATE")
+    local later = Debounced(ApplyModernButtons, 1.2)
     f:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_REGEN_ENABLED" then
             if pendingModern then ApplyModernButtons() end
             return
         end
-        C_Timer.After(1.2, ApplyModernButtons)
+        later()
     end)
     -- the classic skin re-anchors the icon when bar settings change: put the modern look back
     if ActionBars.Refresh then
-        hooksecurefunc(ActionBars, "Refresh", function() C_Timer.After(0.15, ApplyModernButtons) end)
+        hooksecurefunc(ActionBars, "Refresh", Debounced(ApplyModernButtons, 0.15))
     end
 end

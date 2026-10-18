@@ -29,6 +29,12 @@ local function BuildChatTab(tabContent)
 
     if db and db.chat then
         local chat = db.chat
+        -- Modern / Modern v2 with the chat window skin: the skin draws the background and the
+        -- typing box, so the old Chat Style / Chat Background / Input Box Background options
+        -- would do nothing and are not shown
+        local WS = ns.WindowSkins
+        local ws = WS and WS.GetSettings and WS.GetSettings()
+        local skinned = (not GUI:LookIs("classic")) and ws and ws.enabled and ws.chat
 
         -- SECTION: Enable/Disable
         local enableHeader = GUI:CreateSectionHeader(tabContent, "Enable/Disable H3z0 UI Chat Module")
@@ -46,52 +52,55 @@ local function BuildChatTab(tabContent)
         enableInfo:SetJustifyH("LEFT")
         y = y - 20
 
-        -- SECTION: Chat Style (presets)
-        local styleHeader = GUI:CreateSectionHeader(tabContent, "Chat Style")
-        styleHeader:SetPoint("TOPLEFT", PADDING, y)
-        y = y - styleHeader.gap
+        if not skinned then
+            -- SECTION: Chat Style (presets)
+            local styleHeader = GUI:CreateSectionHeader(tabContent, "Chat Style")
+            styleHeader:SetPoint("TOPLEFT", PADDING, y)
+            y = y - styleHeader.gap
 
-        local function ApplyChatPreset(kind)
-            chat.glass = chat.glass or {}
-            chat.editBox = chat.editBox or {}
-            chat.timestamps = chat.timestamps or {}
-            chat.font = chat.font or {}
-            if kind == "clean" then
-                -- Transparent chat, outlined text, blue [HH:MM] timestamps
-                chat.glass.enabled = false
-                chat.editBox.enabled = false
-                chat.font.forceOutline = true
-                chat.timestamps.enabled = true
-                chat.timestamps.format = "24h"
-                chat.timestamps.color = {0.2, 0.6, 1.0}
-                chat.hideButtons = true
-            else
-                -- Glass: the default H3z0 UI look
-                chat.glass.enabled = true
-                chat.glass.bgAlpha = 0.25
-                chat.glass.bgColor = {0, 0, 0}
-                chat.editBox.enabled = true
-                chat.font.forceOutline = false
-                chat.timestamps.enabled = false
-                chat.timestamps.color = {0.6, 0.6, 0.6}
+            local function ApplyChatPreset(kind)
+                chat.glass = chat.glass or {}
+                chat.editBox = chat.editBox or {}
+                chat.timestamps = chat.timestamps or {}
+                chat.font = chat.font or {}
+                if kind == "clean" then
+                    -- Transparent chat, outlined text, blue [HH:MM] timestamps
+                    chat.glass.enabled = false
+                    chat.editBox.enabled = false
+                    chat.font.forceOutline = true
+                    chat.timestamps.enabled = true
+                    chat.timestamps.format = "24h"
+                    chat.timestamps.color = {0.2, 0.6, 1.0}
+                    chat.hideButtons = true
+                else
+                    -- Glass: the default H3z0 UI look
+                    chat.glass.enabled = true
+                    chat.glass.bgAlpha = 0.25
+                    chat.glass.bgColor = {0, 0, 0}
+                    chat.editBox.enabled = true
+                    chat.font.forceOutline = false
+                    chat.timestamps.enabled = false
+                    chat.timestamps.color = {0.6, 0.6, 0.6}
+                end
+                RefreshChat()
+                do
+                    print("|cff34D399H3z0 UI:|r Chat style applied (" .. (kind == "clean" and "Clean" or "Glass") .. "). Reopen this tab to see the updated settings below.")
+                end
             end
-            RefreshChat()
-            do
-                print("|cff34D399H3z0 UI:|r Chat style applied (" .. (kind == "clean" and "Clean" or "Glass") .. "). Reopen this tab to see the updated settings below.")
-            end
+
+            local glassBtn = GUI:CreateButton(tabContent, "Glass (default)", 170, 26, function() ApplyChatPreset("glass") end)
+            glassBtn:SetPoint("TOPLEFT", PADDING, y)
+            local cleanBtn = GUI:CreateButton(tabContent, "Clean (no background)", 190, 26, function() ApplyChatPreset("clean") end)
+            cleanBtn:SetPoint("LEFT", glassBtn, "RIGHT", 10, 0)
+            y = y - 34
+
+            local styleInfo = GUI:CreateLabel(tabContent, "Clean: transparent chat, outlined text and blue timestamps. Glass: dark see-through panel. You can still fine-tune everything below.", 10, C.textMuted)
+            styleInfo:SetPoint("TOPLEFT", PADDING, y)
+            styleInfo:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+            styleInfo:SetJustifyH("LEFT")
+            y = y - 30
+
         end
-
-        local glassBtn = GUI:CreateButton(tabContent, "Glass (default)", 170, 26, function() ApplyChatPreset("glass") end)
-        glassBtn:SetPoint("TOPLEFT", PADDING, y)
-        local cleanBtn = GUI:CreateButton(tabContent, "Clean (no background)", 190, 26, function() ApplyChatPreset("clean") end)
-        cleanBtn:SetPoint("LEFT", glassBtn, "RIGHT", 10, 0)
-        y = y - 34
-
-        local styleInfo = GUI:CreateLabel(tabContent, "Clean: transparent chat, outlined text and blue timestamps. Glass: dark see-through panel. You can still fine-tune everything below.", 10, C.textMuted)
-        styleInfo:SetPoint("TOPLEFT", PADDING, y)
-        styleInfo:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
-        styleInfo:SetJustifyH("LEFT")
-        y = y - 30
 
         -- SECTION: Intro Message
         local introHeader = GUI:CreateSectionHeader(tabContent, "Intro Message")
@@ -109,34 +118,38 @@ local function BuildChatTab(tabContent)
         introInfo:SetJustifyH("LEFT")
         y = y - 20
 
-        -- SECTION: Chat Background
-        local glassHeader = GUI:CreateSectionHeader(tabContent, "Chat Background")
-        glassHeader:SetPoint("TOPLEFT", PADDING, y)
-        y = y - glassHeader.gap
+        if not skinned then
+            -- SECTION: Chat Background
+            local glassHeader = GUI:CreateSectionHeader(tabContent, "Chat Background")
+            glassHeader:SetPoint("TOPLEFT", PADDING, y)
+            y = y - glassHeader.gap
 
-        if chat.glass then
-            local glassCheck = GUI:CreateFormCheckbox(tabContent, "Chat Background Texture", "enabled", chat.glass, RefreshChat)
-            glassCheck:SetPoint("TOPLEFT", PADDING, y)
-            glassCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
-            y = y - FORM_ROW
+            if chat.glass then
+                local glassCheck = GUI:CreateFormCheckbox(tabContent, "Chat Background Texture", "enabled", chat.glass, RefreshChat)
+                glassCheck:SetPoint("TOPLEFT", PADDING, y)
+                glassCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+                y = y - FORM_ROW
 
-            local alphaSlider = GUI:CreateFormSlider(tabContent, "Background Opacity", 0, 1.0, 0.05, "bgAlpha", chat.glass, RefreshChat)
-            alphaSlider:SetPoint("TOPLEFT", PADDING, y)
-            alphaSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
-            y = y - FORM_ROW
+                local alphaSlider = GUI:CreateFormSlider(tabContent, "Background Opacity", 0, 1.0, 0.05, "bgAlpha", chat.glass, RefreshChat)
+                alphaSlider:SetPoint("TOPLEFT", PADDING, y)
+                alphaSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+                y = y - FORM_ROW
 
-            local bgColorPicker = GUI:CreateFormColorPicker(tabContent, "Background Color", "bgColor", chat.glass, RefreshChat)
-            bgColorPicker:SetPoint("TOPLEFT", PADDING, y)
-            bgColorPicker:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
-            y = y - FORM_ROW
+                local bgColorPicker = GUI:CreateFormColorPicker(tabContent, "Background Color", "bgColor", chat.glass, RefreshChat)
+                bgColorPicker:SetPoint("TOPLEFT", PADDING, y)
+                bgColorPicker:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+                y = y - FORM_ROW
+            end
+
         end
 
         -- SECTION: Input Box Background
-        local editBoxHeader = GUI:CreateSectionHeader(tabContent, "Input Box Background")
+        local editBoxHeader = GUI:CreateSectionHeader(tabContent, skinned and "Input Box" or "Input Box Background")
         editBoxHeader:SetPoint("TOPLEFT", PADDING, y)
         y = y - editBoxHeader.gap
 
         if chat.editBox then
+          if not skinned then
             local editBoxCheck = GUI:CreateFormCheckbox(tabContent, "Input Box Background Texture", "enabled", chat.editBox, RefreshChat)
             editBoxCheck:SetPoint("TOPLEFT", PADDING, y)
             editBoxCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
@@ -151,6 +164,7 @@ local function BuildChatTab(tabContent)
             editBoxColorPicker:SetPoint("TOPLEFT", PADDING, y)
             editBoxColorPicker:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
             y = y - FORM_ROW
+          end
 
             local positionTopCheck = GUI:CreateFormCheckbox(tabContent, "Position Input Box at Top", "positionTop", chat.editBox, RefreshChat)
             positionTopCheck:SetPoint("TOPLEFT", PADDING, y)
@@ -289,7 +303,11 @@ local function BuildChatLookTab(tabContent)
     if ws.chatIdleFade == nil then ws.chatIdleFade = false end
     if ws.chatIdleDelay == nil then ws.chatIdleDelay = 10 end
     if ws.chatIdleAlpha == nil then ws.chatIdleAlpha = 0 end
-    local function Refresh() if _G.H3z0UI_RefreshWindowSkins then _G.H3z0UI_RefreshWindowSkins() end end
+    local function Refresh() end   -- the idle fade reads these settings live
+    local function Skins()
+        if _G.H3z0UI_RefreshWindowSkins then _G.H3z0UI_RefreshWindowSkins() end
+        C_Timer.After(0, function() GUI:RebuildOptions() end)
+    end
 
     local function Section(title)
         GUI:SetSearchSection(title)
@@ -310,17 +328,18 @@ local function BuildChatLookTab(tabContent)
         y = y - FORM_ROW
     end
 
-    Section("Chat Window Skin")
-    Info("The slate look: one dark panel behind the chat with a thin grey border, readable tab names and a typing box without background. (Also in Unit Frames > Portraits > Window Skins.)", 34)
-    Place(GUI:CreateFormCheckbox(tabContent, "Use Window Skins", "enabled", ws, Refresh))
-    Place(GUI:CreateFormCheckbox(tabContent, "Skin the Chat", "chat", ws, Refresh))
-    Place(GUI:CreateFormSlider(tabContent, "Chat Opacity", 0, 1, 0.05, "chatAlpha", ws, Refresh))
+    if not GUI:LookIs("classic") then
+        Section("Chat Window Skin")
+        Info("The dark rounded chat window of the Modern versions. Its opacity and the damage meter are in H3z0 Features > UI Look.", 34)
+        Place(GUI:CreateFormCheckbox(tabContent, "Skin the Chat", "chat", ws, Skins))
+    end
 
     Section("Hide Chat When Idle")
     Info("The whole chat window (background, tabs, text and buttons) fades away when nothing happens, and comes back on a new message, when you move the mouse over it or press Enter.", 34)
     Place(GUI:CreateFormCheckbox(tabContent, "Hide Chat When Idle", "chatIdleFade", ws, Refresh))
-    Place(GUI:CreateFormSlider(tabContent, "Hide After (seconds)", 2, 60, 1, "chatIdleDelay", ws, Refresh))
-    Place(GUI:CreateFormSlider(tabContent, "Opacity While Hidden", 0, 0.8, 0.05, "chatIdleAlpha", ws, Refresh))
+    -- (the sliders below change nothing but the numbers the fade reads, so they can be live)
+    Place(GUI:CreateFormSlider(tabContent, "Hide After (seconds)", 2, 60, 1, "chatIdleDelay", ws, Refresh, { live = true }))
+    Place(GUI:CreateFormSlider(tabContent, "Opacity While Hidden", 0, 0.8, 0.05, "chatIdleAlpha", ws, Refresh, { live = true }))
     Info("Message Fade (on the Chat tab) only fades old lines of text; this hides the window itself.", 22)
 
     tabContent:SetHeight(math.abs(y) + 50)

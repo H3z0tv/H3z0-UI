@@ -67,20 +67,23 @@ local DEFAULT_COLORS = {
 }
 NP.DEFAULT_COLORS = DEFAULT_COLORS
 
+local SETTING_DEFAULTS = {
+    enabled = false, width = 150, height = 16, font = "global", nameSize = 11, textSize = 10,
+    showLevel = true, showHealth = true, showPercent = true, castbar = true, castHeight = 16,
+    mythicColors = "instance", threat = true, arrows = true, friendly = true, rounded = true,
+    targetScale = 1.1, matchPlayer = false, unitFrameColors = true,
+    instClassColors = true, instNamesOnly = false,
+}
+local cachedS     -- 0.24.2: the settings table once its defaults are filled in
+
 local function DB()
     local core = ns.Addon
     local p = core and core.db and core.db.profile
     if not p then return nil end
+    if cachedS and p.h3zPlates == cachedS then return cachedS end
     p.h3zPlates = p.h3zPlates or {}
     local s = p.h3zPlates
-    local defaults = {
-        enabled = false, width = 150, height = 16, font = "global", nameSize = 11, textSize = 10,
-        showLevel = true, showHealth = true, showPercent = true, castbar = true, castHeight = 16,
-        mythicColors = "instance", threat = true, arrows = true, friendly = true, rounded = true,
-        targetScale = 1.1, matchPlayer = false, unitFrameColors = true,
-        instClassColors = true, instNamesOnly = false,
-    }
-    for k, v in pairs(defaults) do if s[k] == nil then s[k] = v end end
+    for k, v in pairs(SETTING_DEFAULTS) do if s[k] == nil then s[k] = v end end
     -- rollback: the nameplates keep their own look (the unit frames take the nameplate colours instead)
     if not s.matchRollback then
         s.matchRollback = true
@@ -97,6 +100,7 @@ local function DB()
     for k, v in pairs(DEFAULT_COLORS) do
         if type(s.colors[k]) ~= "table" then s.colors[k] = { v[1], v[2], v[3], v[4] } end
     end
+    cachedS = s
     return s
 end
 NP.GetSettings = DB
@@ -135,11 +139,16 @@ local function Color(key)
     return c[1], c[2], c[3]
 end
 
+-- 0.24.2: cached; cleared when an addon loads, the zone or the spec changes (see the events below)
+local otherAddonCache, groupContentCache, tankCache
+
 local function OtherPlateAddon()
+    if otherAddonCache ~= nil then return otherAddonCache or nil end
+    otherAddonCache = false
     for _, a in ipairs(OTHER_PLATE_ADDONS) do
-        if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(a) then return a end
+        if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(a) then otherAddonCache = a break end
     end
-    return nil
+    return otherAddonCache or nil
 end
 
 local function Active()
@@ -148,9 +157,11 @@ local function Active()
 end
 
 local function InGroupContent()
+    if groupContentCache ~= nil then return groupContentCache end
     local inInst, kind = IsInInstance()
     if S(inInst) then return true end
-    return inInst and (kind == "party" or kind == "raid" or kind == "scenario") or false
+    groupContentCache = inInst and (kind == "party" or kind == "raid" or kind == "scenario") or false
+    return groupContentCache
 end
 
 local function MythicColorsOn()
@@ -162,9 +173,22 @@ local function MythicColorsOn()
 end
 
 local function PlayerIsTank()
+    if tankCache ~= nil then return tankCache end
     if not (GetSpecialization and GetSpecializationRole) then return false end
     local spec = GetSpecialization()
-    return spec and GetSpecializationRole(spec) == "TANK" or false
+    tankCache = spec and GetSpecializationRole(spec) == "TANK" or false
+    return tankCache
+end
+
+do
+    local cf = CreateFrame("Frame")
+    for _, e in ipairs({ "ADDON_LOADED", "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA",
+        "PLAYER_SPECIALIZATION_CHANGED", "PLAYER_ROLES_ASSIGNED" }) do pcall(cf.RegisterEvent, cf, e) end
+    cf:SetScript("OnEvent", function(_, e)
+        if e == "ADDON_LOADED" then otherAddonCache = nil return end
+        groupContentCache, tankCache = nil, nil
+        if e == "PLAYER_ENTERING_WORLD" then otherAddonCache = nil end
+    end)
 end
 
 ---------------------------------------------------------------------------
@@ -245,8 +269,62 @@ local function FadeCastPieces(frame, hidden, depth)
     end
 end
 
+-- 0.24.2: the pieces are collected once per cast start; the fast tick only walks that list
+-- (no new tables 20 times a second for every casting nameplate)
+local function CollectPieces(frame, pieces, anims, depth)
+    if depth > 3 then return end
+    if frame.GetAnimationGroups then
+        for _, ag in ipairs({ frame:GetAnimationGroups() }) do anims[#anims + 1] = ag end
+    end
+    for _, r in ipairs({ frame:GetRegions() }) do
+        if r.SetAlpha then pieces[#pieces + 1] = r end
+    end
+    for _, c in ipairs({ frame:GetChildren() }) do
+        if c.SetAlpha and not c.h3zNPOwn then
+            pieces[#pieces + 1] = c
+            CollectPieces(c, pieces, anims, depth + 1)
+        end
+    end
+end
+
+local function CacheCastPieces(bar)
+    local pieces, anims = bar.h3zNPPieces or {}, bar.h3zNPAnims or {}
+    wipe(pieces); wipe(anims)
+    pcall(CollectPieces, bar, pieces, anims, 0)
+    bar.h3zNPPieces, bar.h3zNPAnims = pieces, anims
+end
+
+local function QuickFadeCastPieces(bar)
+    local pieces = bar.h3zNPPieces
+    if not pieces then
+        FadeCastPieces(bar, true)
+        CacheCastPieces(bar)
+        return
+    end
+    for i = 1, #bar.h3zNPAnims do
+        local ag = bar.h3zNPAnims[i]
+        if ag:IsPlaying() then ag:Stop() end
+    end
+    for i = 1, #pieces do
+        local r = pieces[i]
+        local a = r:GetAlpha()
+        if a > 0 then
+            if r.h3zNPA == nil then r.h3zNPA = a end
+            r:SetAlpha(0)
+        end
+    end
+    local t = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
+    if t and t.SetAlpha and t:GetAlpha() > 0 then
+        if t.h3zNPA == nil then t.h3zNPA = t:GetAlpha() end
+        t:SetAlpha(0)
+    end
+end
+
 local function CastPiecesGuard(self)
-    if self.h3zNPHidden then pcall(FadeCastPieces, self, true) end
+    if self.h3zNPHidden then
+        pcall(FadeCastPieces, self, true)
+        CacheCastPieces(self)
+    end
 end
 
 local function CastPiecesTick(self, elapsed)
@@ -254,7 +332,7 @@ local function CastPiecesTick(self, elapsed)
     self.h3zNPTick = (self.h3zNPTick or 0) + (elapsed or 0)
     if self.h3zNPTick < 0.05 then return end
     self.h3zNPTick = 0
-    pcall(FadeCastPieces, self, true)
+    pcall(QuickFadeCastPieces, self)
 end
 
 local function SetCastHidden(bar, hidden)
@@ -288,14 +366,18 @@ local function HideBlizzard(uf, hidden, castToo)
         local r = uf[k]
         if type(r) == "table" and r.SetAlpha and k ~= "castBar" and k ~= "CastBar" then pcall(SetHidden, r, hidden) end
     end
-    local bars = {}
-    for _, k in ipairs({ "castBar", "CastBar" }) do
-        if type(uf[k]) == "table" and uf[k].SetAlpha then bars[#bars + 1] = uf[k] end
+    local bars = uf.h3zNPCastBars
+    if not bars then
+        bars = {}
+        for _, k in ipairs({ "castBar", "CastBar" }) do
+            if type(uf[k]) == "table" and uf[k].SetAlpha then bars[#bars + 1] = uf[k] end
+        end
+        local np = uf:GetParent()
+        FindCastBars(uf, bars, 0)
+        if np then FindCastBars(np, bars, 1) end
+        uf.h3zNPCastBars = bars
     end
-    local np = uf:GetParent()
-    FindCastBars(uf, bars, 0)
-    if np then FindCastBars(np, bars, 1) end
-    for _, b in ipairs(bars) do SetCastHidden(b, hidden and castToo) end
+    for i = 1, #bars do SetCastHidden(bars[i], hidden and castToo) end
 end
 
 -- where Blizzard's own health bar sits, so ours lands in the same spot
@@ -493,6 +575,7 @@ local function Create(namePlate)
 
     pool[namePlate] = p
     Layout(p)
+    p.h3zLayoutGen = NP.layoutGen
     return p
 end
 
@@ -633,6 +716,9 @@ end
 local function UpdateBorder(p)
     local s = DB()
     local isTarget = p.isTarget
+    local key = (isTarget and "T" or "-") .. (s.arrows and "A" or "-") .. ((s.threat and p.threat) or "")
+    if p.h3zBorderKey == key and p.h3zBorderGen == NP.layoutGen then return end
+    p.h3zBorderKey, p.h3zBorderGen = key, NP.layoutGen
     p.arrowL:SetShown(isTarget and s.arrows)
     p.arrowR:SetShown(isTarget and s.arrows)
     if isTarget then
@@ -663,8 +749,8 @@ local function UpdateThreat(p)
     UpdateBorder(p)
 end
 
-local function UpdateTarget(p)
-    local tp = C_NamePlate.GetNamePlateForUnit("target")
+local function UpdateTarget(p, tp)
+    if tp == nil then tp = C_NamePlate.GetNamePlateForUnit("target") end
     p.isTarget = (tp ~= nil and tp == p.namePlate)
     local s = DB()
     local sc = p.isTarget and (s.targetScale or 1) or 1
@@ -817,7 +903,10 @@ local function OnAdded(unit)
     HideBlizzard(np.UnitFrame, true, s.castbar)
     p.cast.plate = p
     p.cast:SetScript("OnUpdate", CastOnUpdate)
-    Layout(p)
+    if p.h3zLayoutGen ~= NP.layoutGen then
+        Layout(p)
+        p.h3zLayoutGen = NP.layoutGen
+    end
     p:Show()
     FullUpdate(p)
 end
@@ -839,7 +928,9 @@ local function RestoreAll()
     end
 end
 
+NP.layoutGen = 1
 function NP.Refresh()
+    NP.layoutGen = (NP.layoutGen or 1) + 1   -- settings may have changed: lay every plate out again
     RestoreAll()
     if not Active() then return end
     for _, np in ipairs(C_NamePlate.GetNamePlates() or {}) do
@@ -898,7 +989,8 @@ ev:SetScript("OnEvent", function(_, event, unit, ...)
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         OnRemoved(unit)
     elseif event == "PLAYER_TARGET_CHANGED" then
-        for _, p in pairs(plates) do pcall(UpdateTarget, p) end
+        local tp = C_NamePlate.GetNamePlateForUnit("target") or false
+        for _, p in pairs(plates) do pcall(UpdateTarget, p, tp) end
     elseif event == "PLAYER_ENTERING_WORLD" then
         C_Timer.After(1, NP.Refresh)
     elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_SPECIALIZATION_CHANGED" then

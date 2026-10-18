@@ -384,8 +384,11 @@ local function PositionInspectModelScene()
     -- Center model between slot columns
     -- For 500px frame with slots at x=20 and x=493
     InspectModelFrame:ClearAllPoints()
-    InspectModelFrame:SetPoint("TOPLEFT", InspectFrame, "TOPLEFT", 55, -85)
-    InspectModelFrame:SetPoint("BOTTOMRIGHT", InspectFrame, "BOTTOMRIGHT", -55, 65)
+    -- v2: the model starts right under the header so the head is never cut off
+    local s = GetSettings()
+    local v2 = s and s.style ~= "classic"
+    InspectModelFrame:SetPoint("TOPLEFT", InspectFrame, "TOPLEFT", 55, v2 and -74 or -85)
+    InspectModelFrame:SetPoint("BOTTOMRIGHT", InspectFrame, "BOTTOMRIGHT", -55, v2 and 40 or 65)
     InspectModelFrame:SetFrameLevel(2)
 
     -- Hide control frame like character pane does
@@ -400,6 +403,13 @@ local function PositionInspectModelScene()
     end
 
     InspectModelFrame:Show()
+
+    -- v2: "View in Dressing Room" right under the level line, above the model's head
+    local vb = InspectPaperDollFrame and InspectPaperDollFrame.ViewButton
+    if vb and v2 then
+        vb:ClearAllPoints()
+        vb:SetPoint("BOTTOM", InspectModelFrame, "TOP", 0, 1)
+    end
 end
 
 ---------------------------------------------------------------------------

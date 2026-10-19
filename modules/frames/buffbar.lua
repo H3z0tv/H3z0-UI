@@ -31,11 +31,40 @@ local floor = math.floor
 -- Tolerance-based position check: skip repositioning if within tolerance
 -- Prevents jitter from floating-point drift
 local abs = math.abs
+
+-- 0.24.8: in combat Blizzard's cooldown frames can hand back secret values for their size,
+-- anchors and shown state. Comparing a secret value is an error, and one error stopped the
+-- whole bar layout half way (the rest kept Blizzard's look and position and overlapped).
+-- Everything read from those frames goes through these first: secret -> nil (unknown).
+local issecret = issecretvalue or function() return false end
+local function SafeVal(v)
+    if v == nil or issecret(v) then return nil end
+    return v
+end
+local function SafeShown(f)
+    local ok, v = pcall(f.IsShown, f)
+    if not ok then return true end
+    v = SafeVal(v)
+    if v == nil then return true end   -- unknown: treat as shown (a gap is better than an overlap)
+    return v
+end
+local function SafeWidth(f) local ok, v = pcall(f.GetWidth, f); return ok and SafeVal(v) or nil end
+local function SafeHeight(f) local ok, v = pcall(f.GetHeight, f); return ok and SafeVal(v) or nil end
+local function SafePoint(f)
+    local ok, point, rel, relPoint, x, y = pcall(f.GetPoint, f, 1)
+    if not ok then return nil end
+    return SafeVal(point), rel, SafeVal(relPoint), SafeVal(x), SafeVal(y)
+end
+local function SafeNumPoints(f)
+    local ok, n = pcall(f.GetNumPoints, f)
+    return ok and SafeVal(n) or nil
+end
+
 local function PositionMatchesTolerance(icon, expectedX, tolerance)
     if not icon then return false end
-    local point, _, _, xOfs = icon:GetPoint(1)
-    if not point then return false end
-    return abs((xOfs or 0) - expectedX) <= (tolerance or 2)
+    local point, _, _, xOfs = SafePoint(icon)
+    if not point or not xOfs then return false end
+    return abs(xOfs - expectedX) <= (tolerance or 2)
 end
 
 ---------------------------------------------------------------------------
@@ -136,6 +165,13 @@ local function UnsuppressLayout()
     layoutSuppressed = math.max(0, layoutSuppressed - 1)
 end
 
+local BarLookDrifted
+local lastBarError
+local function Guard(fn)
+    local ok, err = pcall(fn)
+    if not ok then lastBarError = err end
+end
+
 local function IsLayoutSuppressed()
     return layoutSuppressed > 0
 end
@@ -167,14 +203,16 @@ local function GetBuffIconFrames()
         end
     end
 
-    table.sort(all, function(a, b)
-        return (a.layoutIndex or 0) < (b.layoutIndex or 0)
-    end)
+    local function ILI(f)
+        local v = SafeVal(f.layoutIndex)
+        return type(v) == "number" and v or 0
+    end
+    pcall(table.sort, all, function(a, b) return ILI(a) < ILI(b) end)
 
     -- Only keep visible icons that have been fully initialized (have cooldownID)
     local visible = {}
     for _, icon in ipairs(all) do
-        if icon:IsShown() and icon.cooldownID then
+        if SafeShown(icon) and icon.cooldownID then
             table.insert(visible, icon)
         end
     end
@@ -185,6 +223,8 @@ end
 ---------------------------------------------------------------------------
 -- BAR FRAME COLLECTION
 ---------------------------------------------------------------------------
+
+local barSeenOrder = setmetatable({ n = 0 }, { __mode = "k" })
 
 local function GetBuffBarFrames()
     if not BuffBarCooldownViewer then
@@ -223,13 +263,27 @@ local function GetBuffBarFrames()
     -- Filter to active/visible frames
     local active = {}
     for _, frame in ipairs(frames) do
-        if frame:IsShown() and frame:IsVisible() then
+        local okV, vis = pcall(frame.IsVisible, frame)
+        vis = okV and SafeVal(vis)
+        if SafeShown(frame) and vis ~= false then
             table.insert(active, frame)
         end
     end
 
-    table.sort(active, function(a, b)
-        return (a.layoutIndex or 0) < (b.layoutIndex or 0)
+    -- 0.24.8: stable order. Bars with the same (or no) layoutIndex used to swap places on every
+    -- check, so they jumped around and were re-skinned over and over. Ties keep the order we first saw.
+    for _, f in ipairs(active) do
+        if not barSeenOrder[f] then barSeenOrder.n = barSeenOrder.n + 1; barSeenOrder[f] = barSeenOrder.n end
+    end
+    local function LI(f)
+        local v = SafeVal(f.layoutIndex)
+        if type(v) ~= "number" then return 0 end
+        return v
+    end
+    pcall(table.sort, active, function(a, b)
+        local la, lb = LI(a), LI(b)
+        if la ~= lb then return la < lb end
+        return barSeenOrder[a] < barSeenOrder[b]
     end)
 
     return active
@@ -555,6 +609,59 @@ end
 -- BAR STYLING (for BuffBarCooldownViewer item cooldowns)
 ---------------------------------------------------------------------------
 
+-- Blizzard sets its own bar texture / colour again when a buff is refreshed or a bar is
+-- reused for another spell. Before 0.24.8 we noticed that only up to a second later, so the
+-- bars flickered between Blizzard's look and ours. Now the look is put back straight away.
+local hookedStatusBars = setmetatable({}, { __mode = "k" })
+local appliedTex = setmetatable({}, { __mode = "k" })   -- statusBar -> texture we put on
+
+local function CurrentBarTex(statusBar)
+    local ok, t = pcall(function() return statusBar:GetStatusBarTexture():GetTexture() end)
+    if ok then return SafeVal(t) end
+end
+local inReapply = false
+
+local function BarTexturePath(settings)
+    return LSM:Fetch("statusbar", settings.texture or "H3z0UI v5") or LSM:Fetch("statusbar", "H3z0UI v5")
+end
+
+local function ApplyBarColor(statusBar, settings)
+    local a = settings.barOpacity or 1.0
+    if settings.useClassColor then
+        local _, class = UnitClass("player")
+        local color = RAID_CLASS_COLORS[class]
+        if color then statusBar:SetStatusBarColor(color.r, color.g, color.b, a) end
+    else
+        local c = settings.barColor or {0.204, 0.827, 0.6, 1}
+        statusBar:SetStatusBarColor(c[1] or 0.2, c[2] or 0.8, c[3] or 0.6, a)
+    end
+end
+
+local function ReapplyBarLook(statusBar)
+    if inReapply then return end
+    local settings = GetTrackedBarSettings()
+    if not (settings and settings.enabled) then return end
+    inReapply = true
+    pcall(function()
+        local path = BarTexturePath(settings)
+        if path then statusBar:SetStatusBarTexture(path) end
+        ApplyBarColor(statusBar, settings)
+        appliedTex[statusBar] = CurrentBarTex(statusBar)
+    end)
+    inReapply = false
+end
+
+local function HookStatusBar(statusBar)
+    if not statusBar or hookedStatusBars[statusBar] then return end
+    hookedStatusBars[statusBar] = true
+    if statusBar.SetStatusBarTexture then
+        hooksecurefunc(statusBar, "SetStatusBarTexture", function(self) ReapplyBarLook(self) end)
+    end
+    if statusBar.SetStatusBarColor then
+        hooksecurefunc(statusBar, "SetStatusBarColor", function(self) ReapplyBarLook(self) end)
+    end
+end
+
 local function ApplyBarStyle(frame, settings)
     if not frame then return end
     if frame.IsForbidden and frame:IsForbidden() then return end
@@ -792,28 +899,12 @@ local function ApplyBarStyle(frame, settings)
         end)
     end
 
-    -- 4. Apply StatusBar texture
+    -- 4 + 5. StatusBar texture and colour (class or custom) with opacity, kept in place by the hooks
     if statusBar and statusBar.SetStatusBarTexture then
-        local texturePath = LSM:Fetch("statusbar", texture) or LSM:Fetch("statusbar", "H3z0UI v5")
-        if texturePath then
-            pcall(statusBar.SetStatusBarTexture, statusBar, texturePath)
-        end
-    end
-
-    -- 5. Apply bar color (class or custom) with opacity
-    if statusBar and statusBar.SetStatusBarColor then
-        pcall(function()
-            if useClassColor then
-                local _, class = UnitClass("player")
-                local color = RAID_CLASS_COLORS[class]
-                if color then
-                    statusBar:SetStatusBarColor(color.r, color.g, color.b, barOpacity)
-                end
-            else
-                local c = barColor
-                statusBar:SetStatusBarColor(c[1] or 0.2, c[2] or 0.8, c[3] or 0.6, barOpacity)
-            end
-        end)
+        local _ = texture and useClassColor and barColor and barOpacity
+        inReapply = false
+        ReapplyBarLook(statusBar)
+        HookStatusBar(statusBar)
     end
 
     -- 6. Apply clean backdrop (solid background BEHIND the statusBar fill)
@@ -935,7 +1026,7 @@ local iconState = {
     lastCount     = 0,
 }
 
-LayoutBuffIcons = function()
+local function LayoutBuffIconsBody()
     if not BuffIconCooldownViewer then return end
     if isIconLayoutRunning then return end  -- Re-entry guard
     if IsLayoutSuppressed() then return end
@@ -1035,8 +1126,8 @@ LayoutBuffIcons = function()
                 expectedY = H3z0UICore:PixelRound(startY - (i - 1) * (iconHeight + padding))
             end
             -- Check Y position for vertical layout
-            local point, _, _, xOfs, yOfs = icon:GetPoint(1)
-            if not point or abs((yOfs or 0) - expectedY) > 2 then
+            local point, _, _, _, yOfs = SafePoint(icon)
+            if not point or not yOfs or abs(yOfs - expectedY) > 2 then
                 needsReposition = true
                 break
             end
@@ -1087,6 +1178,11 @@ LayoutBuffIcons = function()
     isIconLayoutRunning = false
 end
 
+LayoutBuffIcons = function()
+    local ok = pcall(LayoutBuffIconsBody)
+    if not ok then isIconLayoutRunning = false end
+end
+
 ---------------------------------------------------------------------------
 -- BAR ALIGNMENT MANAGER (FORCED UPWARD GROWTH)
 ---------------------------------------------------------------------------
@@ -1098,7 +1194,30 @@ local barState = {
     lastSpacing    = nil,
 }
 
-LayoutBuffBars = function()
+-- cheap check (10 times a second): did Blizzard put its own size / background back?
+BarLookDrifted = function(bar, settings)
+    local isVertical = settings.orientation == "vertical"
+    local wantH = isVertical and (settings.barWidth or 200) or (settings.barHeight or 24)
+    local wantW = isVertical and (settings.barHeight or 24) or (settings.barWidth or 200)
+    -- unknown (secret) sizes count as fine here; the regular re-skin still covers them
+    local h, w = SafeHeight(bar), SafeWidth(bar)
+    if h and math.abs(h - wantH) > 0.5 then return true end
+    if w and math.abs(w - wantW) > 0.5 then return true end
+    if bar._trackedBg and not bar._trackedBg:IsShown() then return true end
+    local sb = bar.Bar
+    if sb and appliedTex[sb] ~= nil then
+        local cur = CurrentBarTex(sb)
+        if cur ~= nil and cur ~= appliedTex[sb] then return true end
+    end
+    local icon = bar.Icon
+    local ih = icon and not settings.hideIcon and SafeHeight(icon)
+    if ih and math.abs(ih - (isVertical and (settings.barHeight or 24) or wantH)) > 0.5 then
+        return true
+    end
+    return false
+end
+
+local function LayoutBuffBarsBody()
     if not BuffBarCooldownViewer then return end
     if isBarLayoutRunning then return end  -- Re-entry guard
     if IsLayoutSuppressed() then return end
@@ -1136,8 +1255,8 @@ LayoutBuffBars = function()
     local stylingEnabled = settings.enabled
 
     -- Use settings for dimensions if styling enabled, otherwise use frame defaults
-    local barWidth = refBar:GetWidth()
-    local barHeight = stylingEnabled and settings.barHeight or refBar:GetHeight()
+    local barWidth = (stylingEnabled and settings.barWidth) or SafeWidth(refBar) or 220
+    local barHeight = (stylingEnabled and settings.barHeight) or SafeHeight(refBar) or 30
     local spacing = stylingEnabled and settings.spacing or (BuffBarCooldownViewer.childYPadding or 0)
     local growFromBottom = (not stylingEnabled) or (settings.growUp ~= false)
 
@@ -1190,12 +1309,13 @@ LayoutBuffBars = function()
 
         -- Blizzard sometimes anchors a bar by two points (left + right edge), which
         -- overrides the width and shifts it: only one anchor of ours on the viewer is OK
-        local p1, rel = bar:GetPoint(1)
-        if bar:GetNumPoints() ~= 1 or p1 ~= wantPoint or rel ~= BuffBarCooldownViewer then
+        local p1, rel, _, px, py = SafePoint(bar)
+        if SafeNumPoints(bar) ~= 1 or p1 ~= wantPoint or rel ~= BuffBarCooldownViewer then
             needsReposition = true
             break
         end
-        if wantWidth and math.abs((bar:GetWidth() or 0) - wantWidth) > 1 then
+        local bw = SafeWidth(bar)
+        if wantWidth and (not bw or math.abs(bw - wantWidth) > 1) then
             needsReposition = true
             break
         end
@@ -1208,8 +1328,7 @@ LayoutBuffBars = function()
             else
                 expectedX = H3z0UICore:PixelRound(-offsetIndex * (effectiveBarWidth + spacing))
             end
-            local point, _, _, xOfs = bar:GetPoint(1)
-            if not point or abs((xOfs or 0) - expectedX) > 2 then
+            if not px or abs(px - expectedX) > 2 then
                 needsReposition = true
                 break
             end
@@ -1221,8 +1340,7 @@ LayoutBuffBars = function()
             else
                 expectedY = H3z0UICore:PixelRound(-offsetIndex * (effectiveBarHeight + spacing))
             end
-            local point, _, _, _, yOfs = bar:GetPoint(1)
-            if not point or abs((yOfs or 0) - expectedY) > 2 then
+            if not py or abs(py - expectedY) > 2 then
                 needsReposition = true
                 break
             end
@@ -1232,12 +1350,14 @@ LayoutBuffBars = function()
     if needsReposition then
         -- PASS 1: Clear all points
         for _, bar in ipairs(bars) do
-            bar:ClearAllPoints()
+            pcall(bar.ClearAllPoints, bar)
         end
 
-        -- PASS 2: Position each bar
-        for index, bar in ipairs(bars) do
+        -- PASS 2: Position each bar (each one guarded, so one bad bar can't stop the rest)
+        for index, bar in ipairs(bars) do Guard(function()
             local offsetIndex = index - 1
+            -- Blizzard sets its own width when a bar is reused: put ours back with the anchor
+            if wantWidth then bar:SetWidth(wantWidth) end
 
             if isVertical then
                 -- VERTICAL BARS: Stack horizontally (left/right)
@@ -1266,17 +1386,17 @@ LayoutBuffBars = function()
                     bar:SetPoint("TOP", BuffBarCooldownViewer, "TOP", 0, y)
                 end
             end
-        end
+        end) end
     end
 
     -- Apply visual styling and frame strata/level to each bar
     local now = GetTime()
     local stamp = H3z0UI_BuffBar._styleGen or 0
-    for _, bar in ipairs(bars) do
+    for _, bar in ipairs(bars) do Guard(function()
         if stylingEnabled then
-            local cid = bar.cooldownID
+            local cid = SafeVal(bar.cooldownID)
             if bar.h3zStyleGen ~= stamp or bar.h3zStyleCID ~= cid or bar.h3zStyleW ~= settings.barWidth
-                or now - (bar.h3zStyledAt or 0) > 1 then
+                or BarLookDrifted(bar, settings) or now - (bar.h3zStyledAt or 0) > 3 then
                 ApplyBarStyle(bar, settings)
                 bar.h3zStyleGen, bar.h3zStyleCID, bar.h3zStyleW, bar.h3zStyledAt = stamp, cid, settings.barWidth, now
             end
@@ -1292,7 +1412,7 @@ LayoutBuffBars = function()
             bar.Icon:SetFrameStrata("MEDIUM")
             bar.Icon:SetFrameLevel(frameLevel + 1)
         end
-    end
+    end) end
 
     -- Update container dimensions to prevent Blizzard's Layout() from resizing and causing drift
     -- Both vertical and horizontal set ONE dimension fixed, letting bars overflow the other dimension
@@ -1300,6 +1420,43 @@ LayoutBuffBars = function()
     -- OnSizeChanged handler in tainted execution, which tainted the aura table of the Tracked Bars viewer.
 
     isBarLayoutRunning = false
+end
+
+-- 0.24.8: run guarded. Before, one error inside the layout left isBarLayoutRunning set for the
+-- rest of the session: every bar Blizzard made after that kept Blizzard's look and position and
+-- sat on top of our bars.
+LayoutBuffBars = function()
+    local ok, err = pcall(LayoutBuffBarsBody)
+    if not ok then
+        isBarLayoutRunning = false
+        lastBarError = err
+    end
+end
+H3z0UI_BuffBar.LastBarError = function() return lastBarError end
+
+-- /h3z0bars: what the tracked bars look like right now (for bug reports)
+SLASH_H3Z0BARS1 = "/h3z0bars"
+SlashCmdList["H3Z0BARS"] = function()
+    local P = function(m) print("|cff34D399H3z0 bars:|r " .. m) end
+    if not BuffBarCooldownViewer then P("no Tracked Bars viewer") return end
+    local list = {}
+    for _, f in ipairs(GetBuffBarFrames()) do list[f] = true end
+    local n = 0
+    for _, c in ipairs({ BuffBarCooldownViewer:GetChildren() }) do
+        if c.Bar then
+            n = n + 1
+            local okS, sh = pcall(c.IsShown, c)
+            local p1, rel, _, x, y = SafePoint(c)
+            P(string.format("#%d idx=%s shown=%s inList=%s styled=%s w=%s h=%s pts=%s %s->%s %s,%s",
+                n, tostring(SafeVal(c.layoutIndex)), okS and (issecret(sh) and "secret" or tostring(sh)) or "err",
+                tostring(list[c] or false), tostring(c._trackedBarStyled or false),
+                tostring(SafeWidth(c) and floor(SafeWidth(c)) or "?"), tostring(SafeHeight(c) and floor(SafeHeight(c)) or "?"),
+                tostring(SafeNumPoints(c) or "?"), tostring(p1),
+                rel == BuffBarCooldownViewer and "viewer" or tostring(rel and rel.GetName and rel:GetName() or rel),
+                tostring(x and floor(x) or "?"), tostring(y and floor(y) or "?")))
+        end
+    end
+    P("last layout error: " .. tostring(lastBarError or "none"))
 end
 
 ---------------------------------------------------------------------------
@@ -1331,7 +1488,7 @@ local function CheckIconChanges()
     local visibleCount = 0
     for _, child in ipairs({ BuffIconCooldownViewer:GetChildren() }) do
         if child and child ~= BuffIconCooldownViewer.Selection then
-            if (child.icon or child.Icon) and child:IsShown() then
+            if (child.icon or child.Icon) and SafeShown(child) then
                 visibleCount = visibleCount + 1
             end
         end
@@ -1396,8 +1553,59 @@ end
 ---------------------------------------------------------------------------
 
 local initialized = false
-local iconOnUpdateHooked, barOnUpdateHooked = false, false
 local iconAuraHook, iconRescanPending
+
+-- 0.24.9: the checks run on a frame of our own. They used to be hooked into the viewers'
+-- OnUpdate script, but Blizzard's layout code replaces that script (SetScript) every time it
+-- lays the bars out, which silently removed our hook: from then on a bar Blizzard reused kept
+-- Blizzard's look and size. The viewers can also load after us, so hooks are added whenever
+-- they show up.
+local iconHooked, barHooked = false, false
+local function HookViewers()
+    if BuffIconCooldownViewer and not iconHooked then
+        iconHooked = true
+        BuffIconCooldownViewer:HookScript("OnSizeChanged", function()
+            if IsLayoutSuppressed() or isIconLayoutRunning then return end
+            LayoutBuffIcons()
+        end)
+        BuffIconCooldownViewer:HookScript("OnShow", function()
+            if IsLayoutSuppressed() or isIconLayoutRunning then return end
+            LayoutBuffIcons()
+        end)
+        if BuffIconCooldownViewer.Layout then
+            hooksecurefunc(BuffIconCooldownViewer, "Layout", function()
+                if IsLayoutSuppressed() or isIconLayoutRunning then return end
+                LayoutBuffIcons()
+            end)
+        end
+    end
+    if BuffBarCooldownViewer and not barHooked then
+        barHooked = true
+        if BuffBarCooldownViewer.Layout then
+            hooksecurefunc(BuffBarCooldownViewer, "Layout", function()
+                if IsLayoutSuppressed() or isBarLayoutRunning then return end
+                LayoutBuffBars()
+            end)
+        end
+        BuffBarCooldownViewer:HookScript("OnShow", function()
+            if IsLayoutSuppressed() or isBarLayoutRunning then return end
+            LayoutBuffBars()
+        end)
+    end
+end
+
+local driver = CreateFrame("Frame")
+do
+    local acc = 0
+    driver:SetScript("OnUpdate", function(_, elapsed)
+        acc = acc + elapsed
+        if acc < 0.1 then return end   -- 10 checks a second
+        acc = 0
+        if not (iconHooked and barHooked) then HookViewers() end
+        if BuffIconCooldownViewer and SafeShown(BuffIconCooldownViewer) then CheckIconChanges() end
+        if BuffBarCooldownViewer and SafeShown(BuffBarCooldownViewer) then CheckBarChanges() end
+    end)
+end
 
 local function Initialize()
     if initialized then return end
@@ -1406,70 +1614,7 @@ local function Initialize()
     -- Force populate buff icons first (teaches the viewer what spells to show)
     ForcePopulateBuffIcons()
 
-    -- OnUpdate polling at 0.05s (20 FPS) - works alongside UNIT_AURA event detection
-    if BuffIconCooldownViewer and not iconOnUpdateHooked then
-        iconOnUpdateHooked = true
-        local iconElapsed = 0
-        BuffIconCooldownViewer:HookScript("OnUpdate", function(self, elapsed)
-            iconElapsed = iconElapsed + elapsed
-            if iconElapsed > 0.1 then  -- 0.24.2: 10 checks a second (was 20) - hash prevents over-layout
-                iconElapsed = 0
-                if self:IsShown() then
-                    CheckIconChanges()
-                end
-            end
-        end)
-    end
-
-    if BuffBarCooldownViewer and not barOnUpdateHooked then
-        barOnUpdateHooked = true
-        local barElapsed = 0  -- kept local: never write state onto Blizzard's frame table
-        BuffBarCooldownViewer:HookScript("OnUpdate", function(self, elapsed)
-            barElapsed = barElapsed + elapsed
-            if barElapsed > 0.1 then  -- 0.24.2: 10 checks a second (was 20)
-                barElapsed = 0
-                if self:IsShown() then
-                    CheckBarChanges()
-                end
-            end
-        end)
-    end
-
-    -- CRITICAL: OnSizeChanged hook - immediate response when Blizzard resizes viewer
-    if BuffIconCooldownViewer then
-        BuffIconCooldownViewer:HookScript("OnSizeChanged", function(self)
-            if IsLayoutSuppressed() then return end
-            if isIconLayoutRunning then return end  -- Re-entry guard
-            LayoutBuffIcons()  -- Direct call
-        end)
-    end
-
-    -- OnShow hook - refresh when viewer becomes visible
-    if BuffIconCooldownViewer then
-        BuffIconCooldownViewer:HookScript("OnShow", function(self)
-            if IsLayoutSuppressed() then return end
-            if isIconLayoutRunning then return end
-            LayoutBuffIcons()  -- Direct call
-        end)
-    end
-
-    -- Hook Layout - immediate call after Blizzard's layout completes
-    -- hooksecurefunc runs AFTER original function returns, so Blizzard is already done
-    if BuffIconCooldownViewer and BuffIconCooldownViewer.Layout then
-        hooksecurefunc(BuffIconCooldownViewer, "Layout", function()
-            if IsLayoutSuppressed() then return end
-            if isIconLayoutRunning then return end
-            LayoutBuffIcons()  -- Immediate - no defer needed
-        end)
-    end
-
-    if BuffBarCooldownViewer and BuffBarCooldownViewer.Layout then
-        hooksecurefunc(BuffBarCooldownViewer, "Layout", function()
-            if IsLayoutSuppressed() then return end
-            if isBarLayoutRunning then return end
-            LayoutBuffBars()
-        end)
-    end
+    HookViewers()
 
     ---------------------------------------------------------------------------
     -- EVENT-BASED UPDATES: UNIT_AURA hook for immediate buff change detection

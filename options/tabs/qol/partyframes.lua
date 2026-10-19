@@ -50,9 +50,15 @@ local function BuildPartyFramesTab(tabContent)
     end
 
     Section("Enable/Disable Party Frames")
-    Check("H3z0 UI Party Frames", "enabled")
+    Place(GUI:CreateFormCheckbox(tabContent, "H3z0 UI Party Frames", "enabled", pf, function()
+        Refresh()
+        if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Party frames switched " .. (pf.enabled and "on." or "off.")) end
+    end))
     Info("Own party frames with a round portrait, level, role, name, health/power and auras. Click targets, right click opens the menu. Shift+drag a frame to move the list. If you use another party frame addon, turn this off.", 44)
-    Check("Hide Blizzard Party Frames", "hideBlizzard")
+    Place(GUI:CreateFormCheckbox(tabContent, "Hide Blizzard Party Frames", "hideBlizzard", pf, function()
+        Refresh()
+        if not pf.hideBlizzard then if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Blizzard party frames come back after a reload.") end end
+    end))
     Check("Show Yourself In The List", "showPlayer")
 
     local previewBtn = GUI:CreateButton(tabContent, "Preview (on/off)", 150, 26, function()
@@ -152,9 +158,15 @@ local function BuildRaidFramesTab(tabContent)
     end
 
     Section("Raid Frames")
-    Check("H3z0 UI Raid Frames", "enabled")
+    Place(GUI:CreateFormCheckbox(tabContent, "H3z0 UI Raid Frames", "enabled", rf, function()
+        Refresh()
+        if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Raid frames switched " .. (rf.enabled and "on." or "off.")) end
+    end))
     Info("One column per group with the group number on top, every member a slate tile: name in class colour, level, health bar in class colour, role badge and a power bar for tanks and healers. Pets in their own column on the right. Clicks target, right click opens the menu, and everything keeps working in combat. Move them in Layout Mode (a 20-player preview shows while you are not in a raid). Changes are applied out of combat.", 58)
-    Check("Hide Blizzard Raid Frames", "hideBlizzard")
+    Place(GUI:CreateFormCheckbox(tabContent, "Hide Blizzard Raid Frames", "hideBlizzard", rf, function()
+        Refresh()
+        if not rf.hideBlizzard then if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Blizzard raid frames come back after a reload.") end end
+    end))
     local previewBtn = GUI:CreateButton(tabContent, "Preview (on/off)", 150, 26, function()
         if SlashCmdList and SlashCmdList["H3Z0RAID"] then SlashCmdList["H3Z0RAID"]("test") end
     end)

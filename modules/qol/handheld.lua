@@ -270,7 +270,7 @@ function Handheld.ApplyUnitFrames()
         end
         if not Handheld._dataOnly and _G.H3z0UI_RefreshUnitFrames then pcall(_G.H3z0UI_RefreshUnitFrames) end
         if reloadNeeded and not Handheld._dataOnly then
-            print("|cff34D399H3z0 UI:|r Some unit frames or castbars were switched on/off by the Steam Deck layout - type |cffFFFF00/reload|r to finish.")
+            if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Some unit frames or cast bars were switched on / off by the Steam Deck layout.") end
         end
     end)
 end

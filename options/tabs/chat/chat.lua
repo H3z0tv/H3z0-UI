@@ -41,7 +41,10 @@ local function BuildChatTab(tabContent)
         enableHeader:SetPoint("TOPLEFT", PADDING, y)
         y = y - enableHeader.gap
 
-        local enableCheck = GUI:CreateFormCheckbox(tabContent, "H3z0 UI Chat Module", "enabled", chat, RefreshChat)
+        local enableCheck = GUI:CreateFormCheckbox(tabContent, "H3z0 UI Chat Module", "enabled", chat, function()
+            RefreshChat()
+            if not chat.enabled then if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Chat module switched off.") end end
+        end)
         enableCheck:SetPoint("TOPLEFT", PADDING, y)
         enableCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
         y = y - FORM_ROW
@@ -260,6 +263,18 @@ local function BuildChatTab(tabContent)
         hideButtonsInfo:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
         hideButtonsInfo:SetJustifyH("LEFT")
         y = y - 20
+
+        y = y - 12
+        local sideCheck = GUI:CreateFormCheckbox(tabContent, "H3z0 Side Buttons", "sideButtons", chat, RefreshChat)
+        sideCheck:SetPoint("TOPLEFT", PADDING, y)
+        sideCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+        y = y - FORM_ROW
+
+        local sideInfo = GUI:CreateLabel(tabContent, "Friends (with the number online), Voice / Channels and the Chat Menu as icons on the right side of the chat. Shown while Hide Chat Buttons is on.", 10, C.textMuted)
+        sideInfo:SetPoint("TOPLEFT", PADDING, y)
+        sideInfo:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
+        sideInfo:SetJustifyH("LEFT")
+        y = y - 30
 
         y = y - FORM_ROW
 

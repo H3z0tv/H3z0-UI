@@ -504,6 +504,7 @@ local function SetChatAlpha(a)
     if _G.ChatFrameMenuButton then _G.ChatFrameMenuButton:SetAlpha(a) end
     if _G.ChatFrameChannelButton then _G.ChatFrameChannelButton:SetAlpha(a) end
     if _G.QuickJoinToastButton then _G.QuickJoinToastButton:SetAlpha(a) end
+    if _G.H3z0UI_ChatSideBar then _G.H3z0UI_ChatSideBar:SetAlpha(a) end
 end
 
 HookChatActivity = function()

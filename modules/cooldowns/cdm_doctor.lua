@@ -108,7 +108,7 @@ local function Run()
     Say("Cooldown Manager check:")
     for _, l in ipairs(lines) do print("   " .. l) end
     if reload then
-        Say("Type |cffFFFF00/reload|r to finish.")
+        if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Cooldown Manager check made changes.") end
     end
 end
 

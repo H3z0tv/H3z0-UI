@@ -370,9 +370,15 @@ local function UpdateSegmentMarkers(maxCharges)
     local segmentWidth = barWidth / maxCharges
     local thickness = H3z0UICore:Pixels(settings.segmentThickness or 1, vigorBar)
 
-    -- Use soft colors: 30% of bar color instead of harsh black
+    -- Segment Marker Color when set (0.24.9: the option was not used), otherwise a soft
+    -- shade of the bar colour instead of harsh black
     local barColor = settings.barColor or {0.2, 0.8, 1.0, 1}
-    local softColor = {
+    local sc = settings.segmentColor
+    -- the untouched default (plain black) keeps the soft look
+    if sc and (sc[1] or 0) == 0 and (sc[2] or 0) == 0 and (sc[3] or 0) == 0 and (sc[4] or 1) == 1 then sc = nil end
+    local softColor = sc and {
+        sc[1] or 0, sc[2] or 0, sc[3] or 0, sc[4] or 0.6
+    } or {
         barColor[1] * 0.25,
         barColor[2] * 0.25,
         barColor[3] * 0.25,

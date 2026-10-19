@@ -69,7 +69,10 @@ local function CreateUnitFramesPage(parent)
         end
 
         -- Enable checkbox
-        local enableCheck = GUI:CreateFormCheckbox(tabContent, "Enable Unitframes (Req. Reload)", "enabled", ufdb, RefreshNewUF)
+        local enableCheck = GUI:CreateFormCheckbox(tabContent, "Enable Unitframes (Req. Reload)", "enabled", ufdb, function()
+            RefreshNewUF()
+            if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Unit frames switched " .. (ufdb.enabled and "on." or "off.")) end
+        end)
         enableCheck:SetPoint("TOPLEFT", PAD, y)
         enableCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW

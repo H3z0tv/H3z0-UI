@@ -105,3 +105,44 @@ function ns.ShowPopup(name, textArg, data)
 end
 
 _G.H3z0UI_ShowPopup = ns.ShowPopup
+
+---------------------------------------------------------------------------
+-- 0.24.9: one "reload needed" popup for every option that only fully applies after a
+-- reload. Several changes in a row are collected into one popup.
+--   ns.NeedReload("Tracked bar styling switched off.")
+--   ns.NeedReloadIf(condition, reason)   -- e.g. only when something was switched off
+---------------------------------------------------------------------------
+local reloadReasons, reloadSeen, reloadQueued = {}, {}, false
+
+ns.Popups["H3Z0UI_NEED_RELOAD"] = {
+    text = "%s\n\nThis change needs a reload to take full effect.\nReload now?",
+    button1 = "Reload Now",
+    button2 = "Later",
+    OnAccept = function()
+        local ui = _G.H3z0UI
+        if ui and ui.SafeReload then ui:SafeReload() else ReloadUI() end
+    end,
+}
+
+function ns.NeedReload(reason)
+    reason = reason or "Settings changed."
+    if not reloadSeen[reason] then
+        reloadSeen[reason] = true
+        reloadReasons[#reloadReasons + 1] = reason
+    end
+    if reloadQueued then return end
+    reloadQueued = true
+    C_Timer.After(0.3, function()
+        reloadQueued = false
+        local text = table.concat(reloadReasons, "\n")
+        wipe(reloadReasons)
+        wipe(reloadSeen)
+        ns.ShowPopup("H3Z0UI_NEED_RELOAD", text)
+    end)
+end
+
+function ns.NeedReloadIf(cond, reason)
+    if cond then ns.NeedReload(reason) end
+end
+
+_G.H3z0UI_NeedReload = ns.NeedReload

@@ -577,7 +577,8 @@ function EM.SaveSystemOffset(systemType, systemIndex, frame, dx, dy)
         local cx, cy = CenterOffset(frame)
         if cx and (math.abs(cx - dx) > 3 or math.abs(cy - dy) > 3) then
             applyWarned = true
-            Say("Action bar position saved to your Edit Mode layout. Type |cffFFFF00/reload|r to see it in place.")
+            Say("Action bar position saved to your Edit Mode layout.")
+            if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Action bar position saved - a reload puts it in place.") end
         end
     end)
 end
@@ -1097,7 +1098,7 @@ local function ModuleToggle(path, refresh, reloadNote)
             if not t then return end
             t[path[#path]] = on and true or false
             if type(refresh) == "function" then pcall(refresh) elseif refresh then Refresh(refresh) end
-            if reloadNote then Say(reloadNote) end
+            if reloadNote and _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload(reloadNote) elseif reloadNote then Say(reloadNote) end
         end,
     }
 end
@@ -1116,11 +1117,11 @@ local function ToggleFor(el)
             end,
         }
     end
-    if key == "party" then return ModuleToggle({ "partyFrames", "enabled" }, "H3z0UI_RefreshPartyFrames") end
+    if key == "party" then return ModuleToggle({ "partyFrames", "enabled" }, "H3z0UI_RefreshPartyFrames", "Party frames switched on / off.") end
     if key == "raid" then
         return ModuleToggle({ "raidFrames", "enabled" }, function()
             Refresh("H3z0UI_RefreshRaidFrames"); Refresh("H3z0UI_RefreshPartyFrames")
-        end)
+        end, "Raid frames switched on / off.")
     end
     if key == "powerbar" then
         return ModuleToggle({ "powerBar", "enabled" }, function()
@@ -1134,7 +1135,7 @@ local function ToggleFor(el)
     end
     if key == "totems" then return ModuleToggle({ "totemBar", "enabled" }, "H3z0UI_RefreshTotemBar") end
     if key == "combattimer" then return ModuleToggle({ "combatTimer", "enabled" }, "H3z0UI_RefreshCombatTimer") end
-    if key == "mplus" then return ModuleToggle({ "mplusTimer", "enabled" }, nil, "M+ Timer: /reload to finish.") end
+    if key == "mplus" then return ModuleToggle({ "mplusTimer", "enabled" }, nil, "M+ Timer switched on / off.") end
     -- unit frames and cast bars replace Blizzard's frames, which are switched off once at login:
     -- switching them reloads right away so there are never two (or none)
     local function ReloadNow()

@@ -124,6 +124,17 @@ local function BuildCell(f, isPet)
     f.role:SetPoint("TOPLEFT", 1, -1)
     f.role:SetPoint("BOTTOMRIGHT", -1, 1)
     f.roleBox:Hide()
+
+    -- ready check icon, centred on the tile and above every other layer
+    if not isPet then
+        f.readyHolder = CreateFrame("Frame", nil, f)
+        f.readyHolder:SetAllPoints()
+        f.readyHolder:SetFrameLevel(text:GetFrameLevel() + 10)
+        f.ready = f.readyHolder:CreateTexture(nil, "OVERLAY", nil, 7)
+        f.ready:SetPoint("CENTER", f, "CENTER", 0, 0)
+        f.ready:SetSize(24, 24)
+        f.ready:Hide()
+    end
 end
 
 local function EdgeColor(f, r, g, b, a)
@@ -173,6 +184,12 @@ local function LayoutCell(f, w, h, s)
     f.roleBox:SetSize(rb, rb)
     f.roleBox:ClearAllPoints()
     f.roleBox:SetPoint("BOTTOMLEFT", f.health, "BOTTOMLEFT", 2, 2)
+    if f.ready then
+        local rs = math.max(12, math.min(28, h - 8))
+        f.ready:SetSize(rs, rs)
+        f.ready:ClearAllPoints()
+        f.ready:SetPoint("CENTER", f, "CENTER", 0, 0)
+    end
 end
 
 local function SetPowerShown(f, show, s)
@@ -296,10 +313,108 @@ local function UpdateRange(f)
     end
 end
 
+---------------------------------------------------------------------------
+-- Ready check (tick / cross / waiting icon in the middle of each tile)
+---------------------------------------------------------------------------
+local READY_ATLAS = {
+    ready    = "UI-LFG-ReadyMark",
+    notready = "UI-LFG-DeclineMark",
+    waiting  = "UI-LFG-PendingMark",
+}
+local READY_TEX = {
+    ready    = READY_CHECK_READY_TEXTURE or "Interface\\RaidFrame\\ReadyCheck-Ready",
+    notready = READY_CHECK_NOT_READY_TEXTURE or "Interface\\RaidFrame\\ReadyCheck-NotReady",
+    waiting  = READY_CHECK_WAITING_TEXTURE or "Interface\\RaidFrame\\ReadyCheck-Waiting",
+}
+local rcActive = false
+local rcShowing = false     -- results stay up for a moment after the check ends
+local rcStamp = 0
+local rcAnswers = {}        -- [cell] = "ready" / "notready"
+
+-- the cell that shows this unit (event units can be "player", "raidN" or a name token)
+local function CellFor(unit)
+    if not unit or S(unit) then return nil end
+    local f = byUnit[unit]
+    if f then return f end
+    for u, c in pairs(byUnit) do
+        local ok, same = pcall(UnitIsUnit, unit, u)
+        if ok and same and not S(same) then return c end
+    end
+end
+
+local function ApiReadyStatus(unit)
+    local fn = GetReadyCheckStatus or (C_PartyInfo and C_PartyInfo.GetReadyCheckStatus)
+    if not fn then return nil end
+    local ok, st = pcall(fn, unit)
+    if ok and st and not S(st) then return st end
+end
+
+local function SetReadyIcon(f, status)
+    if not f.ready then return end
+    if not (status and READY_TEX[status]) then f.ready:Hide() return end
+    local okAtlas = false
+    if f.ready.SetAtlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(READY_ATLAS[status]) then
+        okAtlas = pcall(f.ready.SetAtlas, f.ready, READY_ATLAS[status], false)
+    end
+    if not okAtlas then f.ready:SetTexture(READY_TEX[status]) end
+    f.ready:SetAlpha(1)
+    f.ready:Show()
+end
+
+local function UpdateReady(f)
+    if not f.ready then return end
+    if not (rcActive or rcShowing) or not f.unit then f.ready:Hide() return end
+    local status = rcAnswers[f] or ApiReadyStatus(f.unit) or "waiting"
+    -- once the check is over, anyone who never answered counts as not ready
+    if not rcActive and status == "waiting" then status = "notready" end
+    SetReadyIcon(f, status)
+end
+
+local function UpdateAllReady()
+    for _, f in ipairs(cells) do if f:IsVisible() then UpdateReady(f) end end
+end
+
+local function FadeReady(stamp)
+    local t = 0
+    local fader = CreateFrame("Frame")
+    fader:SetScript("OnUpdate", function(self, el)
+        t = t + el
+        if rcStamp ~= stamp or rcActive then self:SetScript("OnUpdate", nil) return end
+        local a = math.max(0, 1 - t / 1.5)
+        for _, f in ipairs(cells) do if f.ready then f.ready:SetAlpha(a) end end
+        if t >= 1.5 then
+            self:SetScript("OnUpdate", nil)
+            rcShowing = false
+            wipe(rcAnswers)
+            for _, f in ipairs(cells) do if f.ready then f.ready:Hide(); f.ready:SetAlpha(1) end end
+        end
+    end)
+end
+
+local function OnReadyEvent(event, unit, arg2)
+    if event == "READY_CHECK" then
+        rcActive, rcShowing = true, true
+        rcStamp = rcStamp + 1
+        wipe(rcAnswers)
+        local f = CellFor(unit)
+        if f then rcAnswers[f] = "ready" end      -- whoever starts it is ready
+    elseif event == "READY_CHECK_CONFIRM" then
+        local f = CellFor(unit)
+        if f and arg2 ~= nil and not S(arg2) then rcAnswers[f] = arg2 and "ready" or "notready" end
+    elseif event == "READY_CHECK_FINISHED" then
+        rcActive = false
+        rcShowing = true
+        rcStamp = rcStamp + 1
+        local stamp = rcStamp
+        C_Timer.After(4, function() if rcStamp == stamp and not rcActive then FadeReady(stamp) end end)
+    end
+    UpdateAllReady()
+end
+
 local function UpdateAll(f)
     if not f.unit then return end
     UpdateName(f); UpdateLevel(f); UpdateRole(f); UpdatePower(f); UpdateHealth(f)
-    UpdateTarget(f); UpdateRange(f)
+    UpdateTarget(f); UpdateRange(f); UpdateReady(f)
 end
 
 ---------------------------------------------------------------------------
@@ -317,6 +432,7 @@ local function SetupButton(b, isPet)
     b:HookScript("OnAttributeChanged", function(self, name, value)
         if name ~= "unit" then return end
         if self.unit and byUnit[self.unit] == self then byUnit[self.unit] = nil end
+        if self.unit ~= value then rcAnswers[self] = nil end
         self.unit = value
         if value then
             byUnit[value] = self
@@ -648,14 +764,16 @@ local function RosterChanged()
     end
 end
 
-events:SetScript("OnEvent", function(_, event, unit)
+events:SetScript("OnEvent", function(_, event, unit, ...)
     local fn = UNIT_HANDLERS[event]
     if fn then
         local f = unit and byUnit[unit]
         if f and f:IsVisible() then fn(f) end
         return
     end
-    if event == "PLAYER_TARGET_CHANGED" then
+    if event == "READY_CHECK" or event == "READY_CHECK_CONFIRM" or event == "READY_CHECK_FINISHED" then
+        OnReadyEvent(event, unit, select(1, ...))
+    elseif event == "PLAYER_TARGET_CHANGED" then
         for _, f in ipairs(cells) do if f:IsVisible() then UpdateTarget(f) end end
     elseif event == "PLAYER_REGEN_ENABLED" then
         if layoutPending then ApplyLayout() end
@@ -677,6 +795,8 @@ do
         acc = 0
         if not IsInRaid() then return end
         for _, f in ipairs(cells) do if f:IsVisible() then UpdateRange(f) end end
+        -- answers can arrive without an event on some clients: poll while a check runs
+        if rcActive then UpdateAllReady() end
     end)
 end
 
@@ -716,7 +836,7 @@ local function Init()
     for _, e in ipairs({ "UNIT_HEALTH", "UNIT_MAXHEALTH", "UNIT_CONNECTION", "UNIT_FLAGS", "UNIT_POWER_UPDATE",
         "UNIT_MAXPOWER", "UNIT_DISPLAYPOWER", "UNIT_NAME_UPDATE", "UNIT_LEVEL", "UNIT_PET",
         "PLAYER_TARGET_CHANGED", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE", "PLAYER_ROLES_ASSIGNED",
-        "PLAYER_ENTERING_WORLD" }) do
+        "PLAYER_ENTERING_WORLD", "READY_CHECK", "READY_CHECK_CONFIRM", "READY_CHECK_FINISHED" }) do
         pcall(events.RegisterEvent, events, e)
     end
     ApplyLayout()

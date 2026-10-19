@@ -127,6 +127,8 @@ local function Build(frame)
     -- background (lowest level of the frame: below the model and the slots)
     v.bg = CreateFrame("Frame", nil, frame)
     v.bg:EnableMouse(false)
+    v.fill = v.bg:CreateTexture(nil, "BACKGROUND", nil, 0)   -- Background Color under the art
+    v.fill:SetAllPoints(v.bg)
     v.art = v.bg:CreateTexture(nil, "BACKGROUND", nil, 1)
     v.shadeTop = v.bg:CreateTexture(nil, "BACKGROUND", nil, 2)
     v.shadeTop:SetColorTexture(1, 1, 1, 1)
@@ -180,19 +182,27 @@ local function Layout(frame, v)
         if host ~= frame and host.SetAlpha then host:SetAlpha(0) end
     end
 
+    -- 0.24.9: the Background Color option tints the panel (fill + edge shading) in v2 too
+    local core = ns.Addon
+    local gen = core and core.db and core.db.profile and core.db.profile.general
+    local bc = (gen and gen.skinBgColor) or { 0, 0, 0, 0.95 }
+    local br, bgc, bb = bc[1] or 0, bc[2] or 0, bc[3] or 0
+    v.fill:SetColorTexture(br, bgc, bb, bc[4] or 0.95)
+    local function C(a) return CreateColor(br, bgc, bb, a) end
+
     local h = 90
     v.shadeTop:ClearAllPoints()
     v.shadeTop:SetPoint("TOPLEFT"); v.shadeTop:SetPoint("TOPRIGHT"); v.shadeTop:SetHeight(h)
-    v.shadeTop:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0.85))
+    v.shadeTop:SetGradient("VERTICAL", C(0), C(0.85))
     v.shadeBottom:ClearAllPoints()
     v.shadeBottom:SetPoint("BOTTOMLEFT"); v.shadeBottom:SetPoint("BOTTOMRIGHT"); v.shadeBottom:SetHeight(h)
-    v.shadeBottom:SetGradient("VERTICAL", CreateColor(0, 0, 0, 0.85), CreateColor(0, 0, 0, 0))
+    v.shadeBottom:SetGradient("VERTICAL", C(0.85), C(0))
     v.shadeLeft:ClearAllPoints()
     v.shadeLeft:SetPoint("TOPLEFT"); v.shadeLeft:SetPoint("BOTTOMLEFT"); v.shadeLeft:SetWidth(150)
-    v.shadeLeft:SetGradient("HORIZONTAL", CreateColor(0, 0, 0, 0.75), CreateColor(0, 0, 0, 0))
+    v.shadeLeft:SetGradient("HORIZONTAL", C(0.75), C(0))
     v.shadeRight:ClearAllPoints()
     v.shadeRight:SetPoint("TOPRIGHT"); v.shadeRight:SetPoint("BOTTOMRIGHT"); v.shadeRight:SetWidth(260)
-    v.shadeRight:SetGradient("HORIZONTAL", CreateColor(0, 0, 0, 0), CreateColor(0, 0, 0, 0.88))
+    v.shadeRight:SetGradient("HORIZONTAL", C(0), C(0.88))
 
     local font = Font()
     -- header centred over the model area (between the slot columns)

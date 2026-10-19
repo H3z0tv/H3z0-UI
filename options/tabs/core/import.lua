@@ -217,7 +217,7 @@ local function BuildImportExportTab(tabContent)
             local ok, err = core:ImportProfileFromString(str)
             if ok then
                 print("|cff34D399H3z0 UI:|r Profile imported successfully!")
-                print("|cff34D399H3z0 UI:|r Please type |cFFFFD700/reload|r to apply changes.")
+                if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Profile imported.") end
             else
                 print("|cffff0000H3z0 UI: Import failed: " .. (err or "Unknown error") .. "|r")
             end

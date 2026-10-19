@@ -231,7 +231,10 @@ Build = function(tabContent)
         for _, a in ipairs({ "Plater", "Platynator", "BetterBlizzPlates" }) do
             if IsLoaded(a) then Info(a .. " is loaded - disable it to use H3z0 Nameplates.", 18, {1, 0.6, 0.2, 1}) end
         end
-        Place(GUI:CreateFormCheckbox(tabContent, "Use H3z0 Nameplates", "enabled", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Use H3z0 Nameplates", "enabled", npdb, function()
+            RefreshNP()
+            if not npdb.enabled then if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("H3z0 nameplates switched off.") end end
+        end))
         Place(GUI:CreateFormDropdown(tabContent, "Font", NP.FONTS, "font", npdb, RefreshNP))
         Place(GUI:CreateFormSlider(tabContent, "Width", 60, 300, 1, "width", npdb, RefreshNP))
         Place(GUI:CreateFormSlider(tabContent, "Height", 6, 40, 1, "height", npdb, RefreshNP))

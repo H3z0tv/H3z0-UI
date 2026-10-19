@@ -1535,6 +1535,7 @@ local defaults = {
             },
             -- UI cleanup
             hideButtons = true,          -- Hide social/channel/scroll buttons
+            sideButtons = true,          -- H3z0 Friends / Voice / Chat Menu buttons right of the chat
             -- Input box styling
             editBox = {
                 enabled = true,          -- Apply glass styling to input box
@@ -4909,6 +4910,7 @@ function H3z0UICore:ProcessPendingIcons()
 end
 
 function H3z0UICore:HookViewers()
+    self:StartViewerDriver()
     for _, name in ipairs(self.viewers) do
         local viewer = _G[name]
         if viewer and not viewer.__cdmHooked then
@@ -4922,31 +4924,36 @@ function H3z0UICore:HookViewers()
                 self:ApplyViewerLayout(f)
             end)
 
-            -- Reduced update rate - layout operations don't need high frequency
-            -- 1 FPS fallback polling (primary updates via events/hooks)
-            local updateInterval = 1.0
-
-            viewer:HookScript("OnUpdate", function(f, elapsed)
-                f.__cdmElapsed = (f.__cdmElapsed or 0) + elapsed
-                if f.__cdmElapsed > updateInterval then
-                    f.__cdmElapsed = 0
-                    if f:IsShown() then
-                        self:RescanViewer(f)
-                        -- Only process pending if there actually are pending items
-                        if not InCombatLockdown() then
-                            if self.__cdmPendingIcons then
-                            self:ProcessPendingIcons()
-                            end
-                            if self.__cdmPendingBackdrops then
-                                self:ProcessPendingBackdrops()
-                            end
-                        end
-                    end
-                end
-            end)
+            -- 0.24.9: the 1 second fallback rescan runs on a frame of our own (see below).
+            -- Hooking the viewer's OnUpdate did not last: Blizzard's layout code replaces
+            -- that script whenever it lays the viewer out.
 
             self:ApplyViewerSkin(viewer)
         end
+    end
+end
+
+do
+    local cdmDriver, acc = nil, 0
+    function H3z0UICore:StartViewerDriver()
+        if cdmDriver then return end
+        cdmDriver = CreateFrame("Frame")
+        cdmDriver:SetScript("OnUpdate", function(_, elapsed)
+            acc = acc + elapsed
+            if acc < 1.0 then return end
+            acc = 0
+            for _, name in ipairs(self.viewers or {}) do
+                local f = _G[name]
+                if f and f.__cdmHooked then
+                    local okS, shown = pcall(f.IsShown, f)
+                    if okS and shown == true then pcall(self.RescanViewer, self, f) end
+                end
+            end
+            if not InCombatLockdown() then
+                if self.__cdmPendingIcons then pcall(self.ProcessPendingIcons, self) end
+                if self.__cdmPendingBackdrops then pcall(self.ProcessPendingBackdrops, self) end
+            end
+        end)
     end
 end
 

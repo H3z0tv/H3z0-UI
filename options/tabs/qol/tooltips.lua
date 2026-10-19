@@ -53,7 +53,10 @@ local function BuildTooltipTab(tabContent)
     enableHeader:SetPoint("TOPLEFT", PADDING, y)
     y = y - enableHeader.gap
 
-    local enableCheck = GUI:CreateFormCheckbox(tabContent, "H3z0 UI Tooltip Module", "enabled", tooltip, RefreshTooltips)
+    local enableCheck = GUI:CreateFormCheckbox(tabContent, "H3z0 UI Tooltip Module", "enabled", tooltip, function()
+        RefreshTooltips()
+        if not tooltip.enabled then if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Tooltip module switched off.") end end
+    end)
     enableCheck:SetPoint("TOPLEFT", PADDING, y)
     enableCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)
     y = y - FORM_ROW

@@ -9,16 +9,16 @@
 local ADDON_NAME, ns = ...
 
 ns.WhatsNew = {
-    version = "0.24.7",
-    build = 3,
+    version = "0.24.9",
+    build = 1,
     new = {
-        "|cff34D399Resource orbs|r: the secondary class resource bar can show combo points, holy power, chi, soul shards, essence and arcane charges as round orbs (Style: Orbs). Cooldown Manager > Class Resource Bar.",
-        "|cff34D399Layout Mode controls everything|r: click a frame for an on / off switch and its settings (action bars: rows, icons, size, padding, visibility), and Show / Hide lists every frame to switch on or off. No need to open Blizzard's Edit Mode.",
-        "|cff34D399Bar Layout|r (Action Bars, first tab): orientation, rows, number of icons, icon size, padding and visibility of every bar, like Blizzard's Edit Mode, right in the H3z0 UI options. Right click a bar in Layout Mode to open it there.",
+        "|cff34D399Reload popup|r: when a change only fully applies after a reload (a module switched off, party / raid frames on or off, a profile imported, ...), H3z0 UI asks: Reload Now or Later. Several changes are collected into one popup.",
+        "|cff34D399Character Panel|r: every Slot Overlays option now works in the Modern v2 look - equipment name, item level with upgrade track, enchant names and colours, gems and durability bars. Display Format, Header Color and Background Color work there too.",
     },
     fixed = {
-        "Switching a cast bar (or a unit frame in Layout Mode) on or off reloads right away, so there are never two cast bars.",
-        "Character and Inspect windows no longer overlap when both are open.",
-        "From 0.24.5: H3z0 UI Raid Frames with a 20-player preview in Layout Mode.",
+        "Tracked bars: only Blizzard's look showed and the options did nothing. Blizzard replaces the bars' update script whenever it lays them out, which removed the H3z0 UI check - it now runs on its own frame, so the H3z0 look stays on every bar.",
+        "Stat tooltips switch on and off right away.",
+        "Skyriding: Segment Marker Color now colours the markers.",
+        "Every option in the addon was checked against the code that uses it; the one that did nothing (Minimap datatext Force Single Line) was removed.",
     },
 }

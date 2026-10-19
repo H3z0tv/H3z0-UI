@@ -976,6 +976,158 @@ local function RemoveEditBoxStyle(chatFrame)
 end
 
 ---------------------------------------------------------------------------
+-- Side buttons (0.24.8): Friends, Voice / Channels and the Chat Menu in the H3z0 look,
+-- in a small column on the right side of the main chat window. Shown while Blizzard's
+-- own chat buttons are hidden. They only call Blizzard's own actions (friends list,
+-- channel window, chat menu), so nothing of Blizzard's is moved or changed.
+---------------------------------------------------------------------------
+local sideBar
+local SIDE_SIZE, SIDE_GAP = 26, 4
+
+local function SideAtlasOr(tex, atlases, file, coords)
+    for _, a in ipairs(atlases) do
+        if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(a) then
+            tex:SetAtlas(a, false)
+            return
+        end
+    end
+    tex:SetTexture(file)
+    if coords then tex:SetTexCoord(unpack(coords)) end
+end
+
+local function OnlineFriends()
+    local n = 0
+    if C_FriendList and C_FriendList.GetNumOnlineFriends then
+        local ok, v = pcall(C_FriendList.GetNumOnlineFriends)
+        if ok and type(v) == "number" then n = n + v end
+    end
+    if BNGetNumFriends then
+        local ok, _, online = pcall(BNGetNumFriends)
+        if ok and type(online) == "number" then n = n + online end
+    end
+    return n
+end
+
+local function UpdateFriendCount()
+    if not (sideBar and sideBar.social) then return end
+    local n = OnlineFriends()
+    sideBar.social.count:SetText(n > 0 and tostring(n) or "")
+end
+
+local function SideButton(parent, atlases, file, coords, title, hint, onClick)
+    local R = ns.Round
+    local fill = (R and R.SLATE_FILL) or { 0.075, 0.095, 0.12 }
+    local edge = (R and R.SLATE_BORDER) or { 0.25, 0.29, 0.33 }
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(SIDE_SIZE, SIDE_SIZE)
+    b:RegisterForClicks("AnyUp")
+    -- 0.24.8 build 5: icons only, no tile behind them
+    local _ = fill and edge
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetPoint("TOPLEFT", 2, -2)
+    b.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+    SideAtlasOr(b.icon, atlases, file, coords)
+    b.icon:SetDesaturated(true)
+    b.icon:SetVertexColor(0.85, 0.88, 0.9)
+    b:SetScript("OnEnter", function(self)
+        local a = H3z0UI_COLORS.accent
+        self.icon:SetVertexColor(a[1], a[2], a[3])
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(title, 1, 1, 1)
+        local h = type(hint) == "function" and hint() or hint
+        if h then GameTooltip:AddLine(h, 0.8, 0.8, 0.8, true) end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function(self)
+        self.icon:SetVertexColor(0.85, 0.88, 0.9)
+        GameTooltip:Hide()
+    end)
+    b:SetScript("OnMouseDown", function(self) self.icon:SetPoint("TOPLEFT", 3, -3) end)
+    b:SetScript("OnMouseUp", function(self) self.icon:SetPoint("TOPLEFT", 2, -2) end)
+    b:SetScript("OnClick", function(self, button) pcall(onClick, self, button) end)
+    return b
+end
+
+local function OpenChatMenu(btn)
+    local blizz = _G.ChatFrameMenuButton
+    if not blizz then return end
+    -- modern client: show Blizzard's own chat menu next to our button
+    if blizz.menuGenerator and MenuUtil and MenuUtil.CreateContextMenu then
+        MenuUtil.CreateContextMenu(btn, blizz.menuGenerator)
+    else
+        blizz:Click()
+    end
+end
+
+local function BuildSideBar()
+    if sideBar then return sideBar end
+    sideBar = CreateFrame("Frame", "H3z0UI_ChatSideBar", UIParent)
+    sideBar:SetFrameStrata("MEDIUM")
+    sideBar:SetSize(SIDE_SIZE, SIDE_SIZE * 3 + SIDE_GAP * 2)
+
+    sideBar.social = SideButton(sideBar, { "socialqueuing-icon-group", "groupfinder-icon-friend" },
+        "Interface\\FriendsFrame\\UI-Toast-FriendOnlineIcon", nil, SOCIAL_LABEL or "Social",
+        function() return string.format("%d friends online. Click to open your friends list.", OnlineFriends()) end,
+        function()
+            if ToggleFriendsFrame then ToggleFriendsFrame() elseif _G.QuickJoinToastButton then _G.QuickJoinToastButton:Click() end
+        end)
+    sideBar.social.count = sideBar.social:CreateFontString(nil, "OVERLAY")
+    sideBar.social.count:SetFont(Helpers.GetGeneralFont(), 10, "OUTLINE")
+    sideBar.social.count:SetPoint("BOTTOMRIGHT", sideBar.social, "BOTTOMRIGHT", -1, 2)
+    local a = H3z0UI_COLORS.accent
+    sideBar.social.count:SetTextColor(a[1], a[2], a[3])
+
+    sideBar.voice = SideButton(sideBar, { "chatframe-button-icon-voicechat" },
+        "Interface\\Common\\VoiceChat-Speaker", nil, (VOICE_CHAT or "Voice") .. " / " .. (CHANNELS or "Channels"),
+        "Click to open the channels and voice chat window.",
+        function()
+            if ToggleChannelFrame then ToggleChannelFrame() elseif _G.ChatFrameChannelButton then _G.ChatFrameChannelButton:Click() end
+        end)
+
+    sideBar.menu = SideButton(sideBar, {},
+        "Interface\\GossipFrame\\GossipGossipIcon", nil, CHAT or "Chat",
+        "Click for the chat menu: say, party, emotes, languages and more.",
+        function(self) OpenChatMenu(self) end)
+
+    sideBar.social:SetPoint("TOP", sideBar, "TOP", 0, 0)
+    sideBar.voice:SetPoint("TOP", sideBar.social, "BOTTOM", 0, -SIDE_GAP)
+    sideBar.menu:SetPoint("TOP", sideBar.voice, "BOTTOM", 0, -SIDE_GAP)
+
+    -- buttons the client doesn't have stay out
+    if not (ToggleChannelFrame or _G.ChatFrameChannelButton) then sideBar.voice:Hide() end
+    if not _G.ChatFrameMenuButton then sideBar.menu:Hide() end
+
+    sideBar:RegisterEvent("FRIENDLIST_UPDATE")
+    sideBar:RegisterEvent("PLAYER_ENTERING_WORLD")
+    for _, e in ipairs({ "BN_FRIEND_ACCOUNT_ONLINE", "BN_FRIEND_ACCOUNT_OFFLINE", "BN_CONNECTED", "BN_DISCONNECTED", "BN_FRIEND_INFO_CHANGED" }) do
+        pcall(sideBar.RegisterEvent, sideBar, e)
+    end
+    local queued = false
+    sideBar:SetScript("OnEvent", function()
+        if queued then return end
+        queued = true
+        C_Timer.After(0.5, function() queued = false; UpdateFriendCount() end)
+    end)
+    return sideBar
+end
+
+local function ApplySideBar()
+    local settings = GetSettings()
+    local want = settings and settings.enabled and settings.hideButtons and settings.sideButtons ~= false
+    if not want then
+        if sideBar then sideBar:Hide() end
+        return
+    end
+    local bar = BuildSideBar()
+    local cf = _G.ChatFrame1
+    bar:ClearAllPoints()
+    -- just outside the glass backdrop (it reaches 8px past the chat text on the right)
+    bar:SetPoint("TOPLEFT", cf, "TOPRIGHT", 12, 0)
+    bar:Show()
+    UpdateFriendCount()
+end
+
+---------------------------------------------------------------------------
 -- Main skin function for a single chat frame
 ---------------------------------------------------------------------------
 local function SkinChatFrame(chatFrame)
@@ -1153,6 +1305,8 @@ local function RefreshAll()
         end
     end
 
+    ApplySideBar()
+
     -- Re-apply all styling if enabled
     if settings and settings.enabled then
         RestripAll()
@@ -1177,6 +1331,7 @@ eventFrame:SetScript("OnEvent", function(self, event)
 
             -- Skin existing chat frames
             SkinAllChatFrames()
+            ApplySideBar()
 
             -- Style chat tabs
             StyleAllChatTabs()

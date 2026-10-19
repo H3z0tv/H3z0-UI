@@ -126,7 +126,7 @@ local function CreateSpecProfilesPage(parent)
                     if dbRef then
                         dbRef:ResetProfile()
                         print("|cff34D399H3z0 UI:|r Profile reset to defaults.")
-                        print("|cff34D399H3z0 UI:|r Please type |cFFFFD700/reload|r to apply changes.")
+                        if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Profile reset to defaults.") end
                     end
                 end,
             })

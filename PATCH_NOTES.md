@@ -1,5 +1,41 @@
 # H3z0 UI - Patch Notes
 
+## 0.24.9 - Tracked bars fixed, every option checked, reload popup
+New
+- Reload popup: when a change only fully applies after a reload, H3z0 UI asks Reload Now or Later instead of a chat line. It shows for: unit frames on / off, party and raid frames on / off, Hide Blizzard Party / Raid Frames switched off, tracked bar and buff icon styling switched off, tooltip / chat / nameplate modules switched off, minimap module on / off, inspect overlays, profile reset and import, Layout Mode module switches, the Steam Deck layout and the Cooldown Manager check. Several changes in a row are collected into one popup, and in combat the reload waits until the fight ends.
+- New command /h3z0bars (from 0.24.8) lists every tracked bar with its place, size and look.
+
+Fixed
+- Tracked bars: only Blizzard's look showed, and changing the tracked bar options did nothing. H3z0 UI checked the bars from inside the viewer's update script, but Blizzard replaces that script every time it lays the bars out, so the check was silently removed and every bar Blizzard reused went back to Blizzard's look and size. The check now runs on a frame of H3z0 UI's own (10 times a second), the viewers are also picked up when they load late, and a bar whose texture, size or background Blizzard changes gets the H3z0 look back at once. The same problem was fixed for the Essential / Utility / Buff Icon rescan.
+- Character Panel (Modern v2 look): most Slot Overlays options did nothing there. Now all of them work:
+  - Show Equipment Name: the item name under the item level line, in quality colour.
+  - Show Item Level & Track: the upgrade track (for example Myth 6/6) next to the item level, in Upgrade Track Color.
+  - Show Enchant Status: the enchant name above the item level in Enchant Text Color (or class colour), or Add enchant in No Enchant Color when it is missing.
+  - Show Gem Indicators: gem icons and Add gem hints.
+  - Show Durability Bars: the durability bar on each slot.
+- Character Panel: Secondary Stats Display Format now also works in v2 (Both shows a short form like 1.2K 19.5% so it fits), Header Class Color / Header Color now colour the v2 section headers, and Background Color tints the v2 background and its edge shading.
+- Character Panel: Show Stat Tooltips works right away (before, only rows built after the change followed it).
+- Skyriding: Segment Marker Color was never used; it now colours the markers (the untouched default keeps the soft look).
+
+Checked
+- Every toggle, slider, dropdown and colour picker in the options (over 1000) was checked against the code that uses it. All of them are read by the addon, except Force Single Line in the Minimap datatext (the panel is always one row), which was removed. Settings without a direct callback are ones read at the moment they are used (auto repair, sell junk, consumable checks and so on).
+
+## 0.24.8 - Raid ready check
+New
+- H3z0 UI Raid Frames show the ready check on every player's box: a tick (ready), a cross (not ready) or a waiting mark in the middle of the tile, above the health bar and name. The icon size follows the tile height.
+- When the check ends, anyone who never answered shows as not ready; the results stay up for 4 seconds and then fade out.
+- Chat: three H3z0 side buttons in a small column on the right side of the main chat window - Friends (with the number of friends online, opens your friends list), Voice / Channels (opens the channels and voice chat window) and Chat Menu (say, party, emotes, languages and more). Just the icons, no background - they turn mint on hover and fade with the chat when Hide Chat When Idle is on. Shown while Hide Chat Buttons is on; switch them off with Chat > H3z0 Side Buttons.
+
+Fixed
+- Raid: ready check icons were not on the raid frame boxes. The raid frames had no ready check display of their own, so in a raid the icons were missing or showed out of place.
+- Tracked bars (Cooldown Manager buff bars): two bars could sit on top of each other, and bars kept switching between Blizzard's look and the H3z0 UI look.
+  - Bars with the same place in Blizzard's list swapped places on every check, so they jumped around and were skinned again and again. They now keep a fixed order.
+  - One error in the bar layout switched it off until the next reload, so every new bar kept Blizzard's look and position and lay on top of the others. The layout now carries on after an error. Buff icons got the same protection.
+  - When Blizzard puts its own texture or colour back (buff refreshed, bar reused for another spell), the H3z0 UI texture and colour go back on straight away instead of up to a second later. Size and background are checked 10 times a second.
+  - The real cause of the overlap in combat: Blizzard's tracked bars can give back hidden (secret) values for their size, position and shown state while you fight. The bar layout compared those values, which is an error, so it stopped half way and every bar after that one kept Blizzard's look and position on top of the others. Every value is now checked first, and each bar is placed and skinned on its own, so one bar can never stop the rest.
+  - Blizzard puts its own bar width back when a bar is reused for another buff; the H3z0 UI width now goes back on together with the position.
+- New command /h3z0bars: lists every tracked bar with its place, size and whether H3z0 UI skinned it, plus the last layout error. Handy if a bar still looks wrong.
+
 ## 0.24.7 - Action bar layout, Layout Mode controls everything
 New
 - Secondary class resource bar: new Style option - Bar (as before) or Orbs. Orbs shows point resources as round orbs, one per point: combo points, holy power, chi, soul shards, essence and arcane charges. Filled orbs take the bar colour (resource, class or custom colour) with a soft shine, empty orbs show the background colour, and a partly filled soul shard (destruction) shows as a dimmer orb. Orb Size and Orb Spacing can be set; the orbs are centred on the bar and follow its orientation. With Orbs only the orbs are drawn - no bar background, border or shadow behind them. Runes and Stagger stay bars. Cooldown Manager > Class Resource Bar > Secondary Class Resource Bar.

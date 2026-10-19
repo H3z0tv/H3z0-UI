@@ -88,7 +88,7 @@ local function BuildCharacterPaneTab(tabContent)
     if char.inspectEnabled == nil then char.inspectEnabled = true end
 
     local inspectEnabled = GUI:CreateFormCheckbox(tabContent, "Enable Inspect Overlays", "inspectEnabled", char, function()
-        print("|cFF56D1FFH3z0 UI:|r Inspect overlay change requires /reload to take effect.")
+        if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Inspect overlays switched " .. (char.inspectEnabled and "on." or "off.")) end
     end)
     inspectEnabled:SetPoint("TOPLEFT", PADDING, y)
     inspectEnabled:SetPoint("RIGHT", tabContent, "RIGHT", -PADDING, 0)

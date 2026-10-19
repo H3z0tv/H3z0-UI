@@ -695,6 +695,50 @@ end
 ---------------------------------------------------------------------------
 -- Update a single slot overlay
 ---------------------------------------------------------------------------
+-- durability bar (player only), used by the classic and the v2 look
+local function UpdateDurabilityBar(overlay, unit, settings, slotId)
+    if settings.showDurability and unit == "player" then
+        local _, _, pct = GetSlotDurability(slotId)
+        if pct then
+            overlay.durabilityBar:SetValue(pct)
+            if pct > 50 then
+                overlay.durabilityBar:SetStatusBarColor(0.2, 0.8, 0.2, 1)
+            elseif pct > 25 then
+                overlay.durabilityBar:SetStatusBarColor(0.8, 0.8, 0.2, 1)
+            else
+                overlay.durabilityBar:SetStatusBarColor(0.8, 0.2, 0.2, 1)
+            end
+            overlay.durabilityBar:Show()
+            return
+        end
+    end
+    overlay.durabilityBar:Hide()
+end
+
+local function EnchantColors(unit, settings)
+    local isT = unit == "target"
+    local useClass = isT and settings.inspectEnchantClassColor or settings.enchantClassColor
+    local custom = isT and settings.inspectEnchantTextColor or settings.enchantTextColor
+    local noEnch = (isT and settings.inspectNoEnchantTextColor or settings.noEnchantTextColor) or { 0.5, 0.5, 0.5 }
+    local col
+    if useClass then
+        local _, class = UnitClass(unit)
+        local cc = class and RAID_CLASS_COLORS[class]
+        col = cc and { cc.r, cc.g, cc.b } or custom or C.enchanted
+    else
+        col = custom or C.enchanted
+    end
+    return col, noEnch
+end
+
+local function TrackText(unit, settings, slotId)
+    local track, current, max = GetUpgradeTrack(unit, slotId)
+    if not (track and current and max) then return nil end
+    local tc = (unit == "target" and settings.inspectUpgradeTrackColor or settings.upgradeTrackColor) or { 0.98, 0.60, 0.35, 1 }
+    return string.format("|cff%02x%02x%02x%s %s/%s|r", math.floor(tc[1] * 255), math.floor(tc[2] * 255), math.floor(tc[3] * 255),
+        track, current, max)
+end
+
 local function UpdateSlotOverlay(overlay, unit)
     if not overlay or not overlay.slotInfo then return end
 
@@ -735,29 +779,46 @@ local function UpdateSlotOverlay(overlay, unit)
     local quality = GetSlotItemQuality(unit, slotId)
     local r, g, b = GetItemQualityColorRGB(quality)
 
-    -- ===== v2: item level in quality colour beside the icon, a line under it, and a hint
-    -- ("Add enchant" / "Add socket") only when something is missing =====
+    -- ===== v2: item level (+ upgrade track) in quality colour beside the icon, a line under
+    -- it, the item name under the line, and above it the enchant (or what is missing).
+    -- 0.24.9: every Slot Overlays option works here too (before, the v2 look ignored the
+    -- equipment name, upgrade track, enchant names and colours, and durability) =====
     if IsV2() then
         local side = overlay.slotInfo.side
         local onLeft = (side == "right") or (slotId == INVSLOT_MAINHAND)   -- text goes to the icon's left
         local size = (unit == "target" and settings.inspectSlotTextSize or settings.slotTextSize) or 12
         local font = GetGlobalFont()
-        overlay.itemName:Hide()
         overlay.enchant:Hide()
         local ilvl = showItemLevel and GetSlotItemLevel(unit, slotId)
         overlay.itemLevel:ClearAllPoints()
         overlay.itemLevel:SetFont(font, size + 2, "OUTLINE")
         if ilvl then
-            overlay.itemLevel:SetText(tostring(ilvl))
+            local track = TrackText(unit, settings, slotId)
+            if track then
+                overlay.itemLevel:SetText(onLeft and (track .. "  " .. ilvl) or (ilvl .. "  " .. track))
+            else
+                overlay.itemLevel:SetText(tostring(ilvl))
+            end
             overlay.itemLevel:SetTextColor(r, g, b, 1)
             overlay.itemLevel:Show()
         else
             overlay.itemLevel:Hide()
         end
+
+        -- line above the item level: missing enchant > missing gems > the enchant's name
         local hint, hr, hg, hb
+        local enchCol, noEnchCol = EnchantColors(unit, settings)
+        local enchantText, isEnchantable
         if showEnchants then
-            local enchantText, isEnchantable = GetEnchantText(unit, slotId)
-            if isEnchantable and not enchantText then hint, hr, hg, hb = "Add enchant", 1, 0.32, 0.32 end
+            enchantText, isEnchantable = GetEnchantText(unit, slotId)
+            if isEnchantable and not enchantText then
+                local c = noEnchCol
+                -- the old grey default reads badly on the art: v2 shows it in red
+                if math.abs((c[1] or 0) - 0.5) < 0.01 and math.abs((c[2] or 0) - 0.5) < 0.01 and math.abs((c[3] or 0) - 0.5) < 0.01 then
+                    c = { 1, 0.32, 0.32 }
+                end
+                hint, hr, hg, hb = "Add enchant", c[1], c[2], c[3]
+            end
         end
         if not hint and showGems then
             local gems = GetGemInfo(unit, slotId)
@@ -765,8 +826,17 @@ local function UpdateSlotOverlay(overlay, unit)
             for _, gm in ipairs(gems or {}) do if not gm.filled then empty = empty + 1 end end
             if empty > 0 then hint, hr, hg, hb = (empty == 1 and "Add 1 gem" or ("Add " .. empty .. " gems")), 0.55, 0.9, 0.45 end
         end
+        if not hint and showEnchants and enchantText then
+            hint, hr, hg, hb = enchantText, enchCol[1], enchCol[2], enchCol[3]
+        end
+
         overlay.v2Hint:ClearAllPoints()
         overlay.v2Line:ClearAllPoints()
+        overlay.itemName:ClearAllPoints()
+        overlay.v2Hint:SetFont(font, math.max(8, size - 1), "OUTLINE")
+        overlay.v2Hint:SetWidth(120)
+        overlay.itemName:SetFont(font, math.max(8, size - 1), "OUTLINE")
+        overlay.itemName:SetWidth(120)
         if onLeft then
             overlay.itemLevel:SetPoint("BOTTOMRIGHT", overlay, "LEFT", -6, -2)
             overlay.itemLevel:SetJustifyH("RIGHT")
@@ -775,6 +845,8 @@ local function UpdateSlotOverlay(overlay, unit)
             overlay.v2Line:SetPoint("TOPRIGHT", overlay, "LEFT", -2, -3)
             overlay.v2Line:SetWidth(64)
             overlay.v2Line:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0), CreateColor(r, g, b, 0.9))
+            overlay.itemName:SetPoint("TOPRIGHT", overlay, "LEFT", -6, -6)
+            overlay.itemName:SetJustifyH("RIGHT")
         else
             overlay.itemLevel:SetPoint("BOTTOMLEFT", overlay, "RIGHT", 6, -2)
             overlay.itemLevel:SetJustifyH("LEFT")
@@ -783,6 +855,8 @@ local function UpdateSlotOverlay(overlay, unit)
             overlay.v2Line:SetPoint("TOPLEFT", overlay, "RIGHT", 2, -3)
             overlay.v2Line:SetWidth(64)
             overlay.v2Line:SetGradient("HORIZONTAL", CreateColor(r, g, b, 0.9), CreateColor(r, g, b, 0))
+            overlay.itemName:SetPoint("TOPLEFT", overlay, "RIGHT", 6, -6)
+            overlay.itemName:SetJustifyH("LEFT")
         end
         overlay.v2Line:SetShown(ilvl ~= nil and ilvl ~= false)
         if hint then
@@ -791,6 +865,13 @@ local function UpdateSlotOverlay(overlay, unit)
             overlay.v2Hint:Show()
         else
             overlay.v2Hint:Hide()
+        end
+        if showItemName and itemName then
+            overlay.itemName:SetText(itemName)
+            overlay.itemName:SetTextColor(r, g, b, 1)
+            overlay.itemName:Show()
+        else
+            overlay.itemName:Hide()
         end
         -- gems stay as small icons on the outer side
         if showGems then
@@ -809,7 +890,7 @@ local function UpdateSlotOverlay(overlay, unit)
         else
             for _, gemTex in ipairs(overlay.gems) do gemTex:Hide() end
         end
-        overlay.durabilityBar:Hide()
+        UpdateDurabilityBar(overlay, unit, settings, slotId)
         return
     end
     if overlay.v2Line then overlay.v2Line:Hide() end
@@ -957,26 +1038,7 @@ local function UpdateSlotOverlay(overlay, unit)
         end
     end
 
-    -- Update durability bar
-    if settings.showDurability and unit == "player" then
-        local current, max, pct = GetSlotDurability(slotId)
-        if pct then
-            overlay.durabilityBar:SetValue(pct)
-            -- Color: green > yellow > red based on durability
-            if pct > 50 then
-                overlay.durabilityBar:SetStatusBarColor(0.2, 0.8, 0.2, 1)
-            elseif pct > 25 then
-                overlay.durabilityBar:SetStatusBarColor(0.8, 0.8, 0.2, 1)
-            else
-                overlay.durabilityBar:SetStatusBarColor(0.8, 0.2, 0.2, 1)
-            end
-            overlay.durabilityBar:Show()
-        else
-            overlay.durabilityBar:Hide()
-        end
-    else
-        overlay.durabilityBar:Hide()
-    end
+    UpdateDurabilityBar(overlay, unit, settings, slotId)
 end
 
 ---------------------------------------------------------------------------
@@ -1793,16 +1855,11 @@ local function CreateStatRow(parent, yOffset)
     row:SetSize(parent:GetWidth() - 10, rowHeight)
     row:SetPoint("TOPLEFT", 5, yOffset)
 
-    -- Enable mouse for tooltips (only if setting is enabled)
-    if settings.showTooltips then
-        row:EnableMouse(true)
-        row:SetScript("OnEnter", ShowStatTooltip)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    else
-        row:EnableMouse(false)
-        row:SetScript("OnEnter", nil)
-        row:SetScript("OnLeave", nil)
-    end
+    -- Tooltips: always hooked, Show Stat Tooltips is checked when hovering, so switching
+    -- it works right away (before, only rows built after the change followed it)
+    row:EnableMouse(true)
+    row:SetScript("OnEnter", ShowStatTooltip)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     row.label = row:CreateFontString(nil, "OVERLAY")
     row.label:SetFont(font, fontSize, "")
@@ -1856,7 +1913,13 @@ local function CreateSectionHeader(parent, text, yOffset)
     end
 
     if IsV2() then
-        local r, g, b = UnitClassRGB(parent.h3zUnit or "player")
+        -- 0.24.9: Header Class Color / Header Color work in v2 too
+        local r, g, b
+        if settings.headerClassColor ~= false then
+            r, g, b = UnitClassRGB(parent.h3zUnit or "player")
+        else
+            r, g, b = headerColor[1], headerColor[2], headerColor[3]
+        end
         local h = parent:CreateFontString(nil, "OVERLAY")
         h:SetFont(font, fontSize + 3, "OUTLINE")
         h:SetPoint("TOP", parent, "TOP", 0, yOffset - 2)
@@ -1921,16 +1984,11 @@ local function CreateStatBar(parent, yOffset, color)
     row:SetSize(parent:GetWidth() - 10, rowHeight)
     row:SetPoint("TOPLEFT", 5, yOffset)
 
-    -- Enable mouse for tooltips (only if setting is enabled)
-    if settings.showTooltips then
-        row:EnableMouse(true)
-        row:SetScript("OnEnter", ShowStatTooltip)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    else
-        row:EnableMouse(false)
-        row:SetScript("OnEnter", nil)
-        row:SetScript("OnLeave", nil)
-    end
+    -- Tooltips: always hooked, Show Stat Tooltips is checked when hovering, so switching
+    -- it works right away (before, only rows built after the change followed it)
+    row:EnableMouse(true)
+    row:SetScript("OnEnter", ShowStatTooltip)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     row.label = row:CreateFontString(nil, "OVERLAY")
     row.label:SetFont(font, barTextSize, "")
@@ -2256,7 +2314,7 @@ local function UpdateStatsPanel(panel, unit)
     }
 
     local statFormat = settings.secondaryStatFormat or "percent"
-    if IsV2() then statFormat = "percent" end   -- v2: short values so they never run into the names
+    local v2Stats = IsV2()   -- 0.24.9: v2 follows Display Format too, in a short form that fits
 
     for _, stat in ipairs(secondaryStats) do
         local percentValue = SafeGetStat(stat.statKey .. "_PCT", stat.percentFunc)
@@ -2269,6 +2327,8 @@ local function UpdateStatsPanel(panel, unit)
             row.value:SetText(FormatPercent(percentValue))
         elseif statFormat == "rating" then
             row.value:SetText(FormatNumber(ratingValue))
+        elseif v2Stats then -- "both", short: 1.2K 19.5%
+            row.value:SetText(string.format("%s %s", FormatNumber(ratingValue), FormatPercent(percentValue, 1)))
         else -- "both"
             row.value:SetText(string.format("%s (%s)", FormatNumber(ratingValue), FormatPercent(percentValue, 1)))
         end
@@ -3250,6 +3310,10 @@ local function HookCharacterFrame()
                 -- Also refresh skinning module if it's active
                 if _G.H3z0UI_RefreshCharacterFrameColors then
                     _G.H3z0UI_RefreshCharacterFrameColors()
+                end
+                -- v2 look: its own fill and shading take the colour too
+                if ns.CharacterV2 and ns.CharacterV2.Update and CharacterFrame:IsShown() then
+                    pcall(ns.CharacterV2.Update, CharacterFrame, "player")
                 end
             end)
             bgColorPicker:SetPoint("TOPLEFT", PAD, y)

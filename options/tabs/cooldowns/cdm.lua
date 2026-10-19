@@ -1522,7 +1522,10 @@ local function CreateCDMSetupPage(parent)
         header:SetPoint("TOPLEFT", PAD, y)
         y = y - 24
 
-        local enableCb = GUI:CreateFormCheckbox(tabContent, "Enable Buff Icon Styling", "enabled", buffData, RefreshBuff)
+        local enableCb = GUI:CreateFormCheckbox(tabContent, "Enable Buff Icon Styling", "enabled", buffData, function()
+            RefreshBuff()
+            if not buffData.enabled then if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Buff icon styling switched off (Blizzard's look comes back after a reload).") end end
+        end)
         enableCb:SetPoint("TOPLEFT", PAD, y)
         enableCb:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
@@ -1676,7 +1679,10 @@ local function CreateCDMSetupPage(parent)
         y = y - 40
 
         -- Enable toggle
-        local trackedEnable = GUI:CreateFormCheckbox(tabContent, "Enable Tracked Bar Styling", "enabled", trackedData, RefreshBuff)
+        local trackedEnable = GUI:CreateFormCheckbox(tabContent, "Enable Tracked Bar Styling", "enabled", trackedData, function()
+            RefreshBuff()
+            if not trackedData.enabled then if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Tracked bar styling switched off (Blizzard's look comes back after a reload).") end end
+        end)
         trackedEnable:SetPoint("TOPLEFT", PAD, y)
         trackedEnable:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW

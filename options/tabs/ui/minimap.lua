@@ -282,7 +282,10 @@ local function BuildMinimapTab(tabContent)
         generalHeader:SetPoint("TOPLEFT", PAD, y)
         y = y - generalHeader.gap
 
-        local enableCheck = GUI:CreateFormCheckbox(tabContent, "Enable H3z0 UI Minimap", "enabled", mm, RefreshMinimap)
+        local enableCheck = GUI:CreateFormCheckbox(tabContent, "Enable H3z0 UI Minimap", "enabled", mm, function()
+            RefreshMinimap()
+            if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Minimap module switched " .. (mm.enabled and "on." or "off.")) end
+        end)
         enableCheck:SetPoint("TOPLEFT", PAD, y)
         enableCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
@@ -580,10 +583,7 @@ BuildDatatextTab = function(tabContent)
         enableCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
 
-        local forceSingleLine = GUI:CreateFormCheckbox(tabContent, "Force Single Line", "forceSingleLine", dt, RefreshMinimap)
-        forceSingleLine:SetPoint("TOPLEFT", PAD, y)
-        forceSingleLine:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-        y = y - FORM_ROW
+        -- 0.24.9: "Force Single Line" removed - the panel is always one row of three slots
 
         local heightSlider = GUI:CreateFormSlider(tabContent, "Panel Height (Per Row)", 18, 50, 1, "height", dt, RefreshMinimap)
         heightSlider:SetPoint("TOPLEFT", PAD, y)

@@ -1,0 +1,2735 @@
+local ADDON_NAME, ns = ...
+local H3z0UICore = ns.Addon
+
+local AceSerializer = LibStub("AceSerializer-3.0", true)
+local LibDeflate    = LibStub("LibDeflate", true)
+local SettingsPins = ns.Settings and ns.Settings.Pins
+local ProfileFeatureCategories = SettingsPins and SettingsPins.ProfileFeatureCategories or {}
+
+local MAX_IMPORT_DEPTH = 20
+local MAX_IMPORT_NODES = 50000
+local MAX_SCHEMA_ERRORS = 8
+local MAX_DISPLAY_SCHEMA_ERRORS = 3
+local MAX_DETAIL_TYPE_MISMATCHES = 64
+local MAX_SANITIZE_STEPS = 128
+
+local CloneValue = ns.Helpers.DeepCopy
+
+local function GetDisplayPath(path, rootLabel)
+    if type(path) ~= "string" or path == "" then
+        return "root"
+    end
+    local prefix = (rootLabel or "profile") .. "."
+    if path:sub(1, #prefix) == prefix then
+        path = path:sub(#prefix + 1)
+    elseif path == (rootLabel or "profile") then
+        return "root"
+    end
+    return path ~= "" and path or "root"
+end
+
+local function FormatTreeValidationError(issue, rootLabel)
+    if type(issue) ~= "table" then
+        return "Import failed validation. The string appears to be malformed."
+    end
+
+    if issue.kind == "unsupported_value_type" then
+        local where = GetDisplayPath(issue.path, rootLabel)
+        return ("Import rejected: unsupported value type '%s' at '%s'."):format(tostring(issue.valueType), where)
+    end
+    if issue.kind == "unsupported_key_type" then
+        local where = GetDisplayPath(issue.path, rootLabel)
+        return ("Import rejected: unsupported key type '%s' at '%s'."):format(tostring(issue.keyType), where)
+    end
+    if issue.kind == "depth_limit" then
+        local where = GetDisplayPath(issue.path, rootLabel)
+        return ("Import rejected: data is nested too deeply at '%s' (limit: %d)."):format(where, issue.limit or MAX_IMPORT_DEPTH)
+    end
+    if issue.kind == "node_limit" then
+        return ("Import rejected: data payload is too large (limit: %d nodes)."):format(issue.limit or MAX_IMPORT_NODES)
+    end
+
+    return "Import failed validation. The string appears to be malformed."
+end
+
+local function FormatTypeMismatchErrors(errors, rootLabel)
+    if type(errors) ~= "table" or #errors == 0 then
+        return nil
+    end
+
+    local samples = {}
+    local shown = math.min(#errors, MAX_DISPLAY_SCHEMA_ERRORS)
+    for i = 1, shown do
+        local err = errors[i]
+        local where = GetDisplayPath(err.path, rootLabel)
+        samples[#samples + 1] = ("%s (expected %s, got %s)"):format(where, err.expected, err.actual)
+    end
+
+    local summary = table.concat(samples, "; ")
+    local remaining = #errors - shown
+    if remaining > 0 then
+        summary = summary .. ("; and %d more"):format(remaining)
+    end
+
+    return "Import rejected: incompatible setting types - " .. summary .. "."
+end
+
+local function ValidateImportTree(value, label, state, depth)
+    state = state or { visited = {}, nodes = 0 }
+    depth = depth or 0
+
+    local valueType = type(value)
+    if valueType ~= "table" then
+        if valueType == "function" or valueType == "thread" or valueType == "userdata" then
+            return false, { kind = "unsupported_value_type", valueType = valueType, path = label or "root" }
+        end
+        return true
+    end
+
+    if state.visited[value] then
+        return true
+    end
+    state.visited[value] = true
+
+    if depth >= MAX_IMPORT_DEPTH then
+        return false, { kind = "depth_limit", limit = MAX_IMPORT_DEPTH, path = label or "root" }
+    end
+
+    state.nodes = state.nodes + 1
+    if state.nodes > MAX_IMPORT_NODES then
+        return false, { kind = "node_limit", limit = MAX_IMPORT_NODES }
+    end
+
+    for k, v in pairs(value) do
+        local keyType = type(k)
+        if keyType ~= "string" and keyType ~= "number" and keyType ~= "boolean" then
+            return false, {
+                kind = "unsupported_key_type",
+                keyType = keyType,
+                path = label or "root",
+                badKey = k,
+            }
+        end
+        local childLabel = ("%s.%s"):format(label or "root", tostring(k))
+        local ok, issue = ValidateImportTree(v, childLabel, state, depth + 1)
+        if not ok then
+            return false, issue
+        end
+    end
+
+    return true
+end
+
+local DUAL_TYPE_PATHS = {}
+for _, containerKey in ipairs({ "party", "raid", "pinned1", "pinned2" }) do
+    DUAL_TYPE_PATHS[("profile.dandersFrames.%s.absolutePoint"):format(containerKey)] = {
+        boolean = true, string = true,
+    }
+end
+
+local function ValidateTableTypeShapeDetailed(candidate, schema, path, errors, depth)
+    if #errors >= MAX_DETAIL_TYPE_MISMATCHES then return end
+    depth = depth or 0
+    if depth > MAX_IMPORT_DEPTH then return end
+    if type(candidate) ~= "table" or type(schema) ~= "table" then return end
+
+    for key, schemaValue in pairs(schema) do
+        if #errors >= MAX_DETAIL_TYPE_MISMATCHES then break end
+
+        local candidateValue = candidate[key]
+        if candidateValue ~= nil then
+            local schemaType = type(schemaValue)
+            local candidateType = type(candidateValue)
+            local keyPath = ("%s.%s"):format(path or "profile", tostring(key))
+
+            if schemaType ~= candidateType then
+                local allowedTypes = DUAL_TYPE_PATHS[keyPath]
+                if not (allowedTypes and allowedTypes[candidateType]) then
+                    table.insert(errors, {
+                        kind = "type_mismatch",
+                        path = keyPath,
+                        expected = schemaType,
+                        actual = candidateType,
+                    })
+                end
+            elseif schemaType == "table" then
+                ValidateTableTypeShapeDetailed(candidateValue, schemaValue, keyPath, errors, depth + 1)
+            end
+        end
+    end
+end
+
+local function NormalizeTreeIssue(issue)
+    if type(issue) ~= "table" then
+        return { kind = "unknown", path = "profile", detail = "invalid issue" }
+    end
+    local normalized = {
+        kind = issue.kind or "unknown",
+        path = issue.path,
+        limit = issue.limit,
+        expected = issue.expected,
+        actual = issue.actual,
+        valueType = issue.valueType,
+        keyType = issue.keyType,
+        badKey = issue.badKey,
+    }
+    return normalized
+end
+
+local function FormatDetailedLine(err)
+    if type(err) ~= "table" then
+        return tostring(err)
+    end
+    if err.kind == "type_mismatch" and err.path then
+        local where = GetDisplayPath(err.path, "profile")
+        return ("%s — expected %s, got %s"):format(where, tostring(err.expected), tostring(err.actual))
+    end
+    if err.kind == "unsupported_value_type" then
+        local where = GetDisplayPath(err.path or "profile", "profile")
+        return ("%s — unsupported value type %s"):format(where, tostring(err.valueType))
+    end
+    if err.kind == "unsupported_key_type" then
+        local where = GetDisplayPath(err.path or "profile", "profile")
+        return ("%s — table has invalid key type %s"):format(where, tostring(err.keyType))
+    end
+    if err.kind == "depth_limit" then
+        local where = GetDisplayPath(err.path or "profile", "profile")
+        return ("%s — nesting deeper than %s levels"):format(where, tostring(err.limit or MAX_IMPORT_DEPTH))
+    end
+    if err.kind == "node_limit" then
+        return ("Table too large (over %s nodes)"):format(tostring(err.limit or MAX_IMPORT_NODES))
+    end
+    return tostring(err.kind or "validation issue")
+end
+
+local function ValidateProfilePayloadDetailed(core, profileData)
+    local ok, issue = ValidateImportTree(profileData, "profile")
+    if not ok then
+        local n = NormalizeTreeIssue(issue)
+        return false, {
+            summary = FormatTreeValidationError(issue, "profile"),
+            errors = { n },
+        }
+    end
+
+    local sourceClient = type(profileData) == "table" and profileData._h3z0uiClient
+    if ns.Client and sourceClient ~= nil and sourceClient ~= ns.Client.flavor then
+        return false, {
+            summary = "This profile was exported for a different WoW client. Import a profile from the same client.",
+            errors = { { kind = "client_mismatch" } },
+        }
+    end
+
+    local defaults = core and core.db and core.db.defaults and core.db.defaults.profile
+    if type(defaults) ~= "table" then
+        return true, nil
+    end
+
+    local typeErrors = {}
+    ValidateTableTypeShapeDetailed(profileData, defaults, "profile", typeErrors, 0)
+    if #typeErrors > 0 then
+        local legacyErrors = {}
+        for _, e in ipairs(typeErrors) do
+            legacyErrors[#legacyErrors + 1] = { path = e.path, expected = e.expected, actual = e.actual }
+        end
+        return false, {
+            summary = FormatTypeMismatchErrors(legacyErrors, "profile"),
+            errors = typeErrors,
+        }
+    end
+
+    return true, nil
+end
+
+local function ValidateProfilePayload(core, profileData)
+    local ok, detail = ValidateProfilePayloadDetailed(core, profileData)
+    if not ok then
+        return false, detail and detail.summary or "Import failed profile validation."
+    end
+    return true
+end
+
+local function DeleteKeyByDottedPath(root, fullPath)
+    if type(root) ~= "table" or type(fullPath) ~= "string" or fullPath == "" then
+        return false
+    end
+    local segments = {}
+    for segment in fullPath:gmatch("[^.]+") do
+        segments[#segments + 1] = segment
+    end
+    if #segments == 0 then
+        return false
+    end
+    if segments[1] == "profile" then
+        table.remove(segments, 1)
+    end
+    if #segments == 0 then
+        return false
+    end
+    local parent = root
+    for i = 1, #segments - 1 do
+        local seg = segments[i]
+        if type(parent[seg]) ~= "table" then
+            return false
+        end
+        parent = parent[seg]
+    end
+    local lastKey = segments[#segments]
+    parent[lastKey] = nil
+    return true
+end
+
+local function RemoveRawKeyAtPath(root, parentPath, badKey)
+    if type(root) ~= "table" or badKey == nil then
+        return false
+    end
+    local parent = root
+    if type(parentPath) == "string" and parentPath ~= "" and parentPath ~= "root" then
+        local segments = {}
+        for segment in parentPath:gmatch("[^.]+") do
+            segments[#segments + 1] = segment
+        end
+        if segments[1] == "profile" then
+            table.remove(segments, 1)
+        end
+        for i = 1, #segments do
+            local seg = segments[i]
+            if type(parent[seg]) ~= "table" then
+                return false
+            end
+            parent = parent[seg]
+        end
+    end
+    parent[badKey] = nil
+    return true
+end
+
+local function SanitizeProfilePayloadStep(core, working, stripped)
+    local ok, detail = ValidateProfilePayloadDetailed(core, working)
+    if ok then
+        return true, true
+    end
+    if type(detail) ~= "table" or type(detail.errors) ~= "table" or #detail.errors == 0 then
+        return false, false, detail and detail.summary or "Validation failed."
+    end
+
+    local err = detail.errors[1]
+    local removed = false
+
+    if err.kind == "type_mismatch" and err.path then
+        if DeleteKeyByDottedPath(working, err.path) then
+            removed = true
+            stripped[#stripped + 1] = FormatDetailedLine(err) .. " (removed)"
+        end
+    elseif err.kind == "unsupported_value_type" and err.path then
+        if DeleteKeyByDottedPath(working, err.path) then
+            removed = true
+            stripped[#stripped + 1] = FormatDetailedLine(err) .. " (removed)"
+        end
+    elseif err.kind == "unsupported_key_type" then
+        if RemoveRawKeyAtPath(working, err.path or "profile", err.badKey) then
+            removed = true
+            stripped[#stripped + 1] = FormatDetailedLine(err) .. " (removed)"
+        end
+    elseif err.kind == "depth_limit" and err.path then
+        if DeleteKeyByDottedPath(working, err.path) then
+            removed = true
+            stripped[#stripped + 1] = FormatDetailedLine(err) .. " (removed; subtree too deep)"
+        end
+    elseif err.kind == "node_limit" then
+        return false, false, detail.summary or "This profile is too large to import."
+    else
+        return false, false, detail.summary or "Could not automatically remove incompatible settings."
+    end
+
+    if not removed then
+        return false, false, detail.summary or "Could not remove incompatible settings."
+    end
+    return true, false
+end
+
+local function SanitizeProfilePayload(core, profileData)
+    if type(profileData) ~= "table" then
+        return false, nil, {}, "Invalid profile data."
+    end
+    local working = CloneValue(profileData)
+    local stripped = {}
+
+    for _ = 1, MAX_SANITIZE_STEPS do
+        local proceed, done, errMsg = SanitizeProfilePayloadStep(core, working, stripped)
+        if not proceed then
+            return false, working, stripped, errMsg
+        end
+        if done then
+            return true, working, stripped, nil
+        end
+    end
+
+    return false, working, stripped, "Too many incompatible settings; try a fresh export from H3z0UI."
+end
+
+local SUPPORTED_PROFILE_IMPORT_PREFIXES = {
+    H3z0UI1 = true,
+    CDM1 = true,
+}
+
+-- H3z0UI1/CDM1 decode fine here too: the payload-type check below turns a pasted
+-- full-profile string into a pointed error instead of a generic prefix error.
+local NAMEPLATE_PROFILE_PREFIXES = { NP1 = true, H3z0UI1 = true, CDM1 = true }
+local NAMEPLATE_PROFILE_PAYLOAD_TYPE = "nameplateProfile"
+local NAMEPLATE_SETTINGS_EXCLUDED_KEYS = {
+    enabled = true,
+    specPresets = true,
+    specAutoSwitch = true,
+}
+
+local PROFILE_THEME_GENERAL_KEYS = {
+    "font",
+    "fontOutline",
+    "texture",
+    "visualStyle",
+    "darkMode",
+    "darkModeHealthColor",
+    "darkModeBgColor",
+    "darkModeOpacity",
+    "darkModeHealthOpacity",
+    "darkModeBgOpacity",
+    "masterColorNameText",
+    "masterColorToTText",
+    "masterColorPowerText",
+    "masterColorHealthText",
+    "masterColorCastbarText",
+    "defaultUseClassColor",
+    "defaultHealthColor",
+    "hostilityColorHostile",
+    "hostilityColorNeutral",
+    "hostilityColorFriendly",
+    "defaultBgColor",
+    "defaultOpacity",
+    "defaultHealthOpacity",
+    "defaultBgOpacity",
+    "applyGlobalFontToBlizzard",
+    "overrideSCTFont",
+}
+
+local PROFILE_QOL_GENERAL_KEYS = {
+    "uiScale",
+    "allowReloadInCombat",
+    "disableScrollingCombatText",
+    "showOptionTooltips",
+    "optionsMotion",
+    "optionsNavigationDocked",
+    "autoInsertKey",
+    "closeBagsOnKeystoneInsert",
+    "keystoneRerollReminder",
+    "keystoneRerollReminderDuration",
+    "consumableMacros",
+    "consumablePersistent",
+    "craftingOrderExpansionFilter",
+    "sellJunk",
+    "autoRepair",
+    "autoRoleAccept",
+    "autoAcceptInvites",
+    "autoAcceptSummons",
+    "autoAcceptResurrection",
+    "autoRemoveAppearanceChanges",
+    "autoAcceptQuest",
+    "autoTurnInQuest",
+    "questHoldShift",
+    "fastAutoLoot",
+    "autoSelectGossip",
+    "autoCombatLog",
+    "autoCombatLogRaid",
+    "autoDeleteConfirm",
+    "auctionHouseExpansionFilter",
+    "autoDeclineDuel",
+    "autoDeclinePetBattle",
+    "autoRelease",
+    "blockReleaseInRaid",
+    "audioOutputDevice",
+    "autoUnwrapCollections",
+    "autoConfirmSocketReplace",
+    "autoConfirmTokenPurchase",
+    "autoConfirmHighCost",
+    "merchantKnownPetMark",
+    "lootToastFilter",
+    "bonusRoll",
+    "cursorTrail",
+    "ejLootSpecIcons",
+    "communitiesPrivacy",
+    "gemSocketPicker",
+    "mailContactsPanel",
+    "mailRememberRecipient",
+    "vendorRules",
+    "tradeMailLog",
+    "worldMapTeleports",
+    "focusMarker",
+    "healerMana",
+    "deathAlert",
+    "popupBlocker",
+    "petCombatWarning",
+    "petWarningOffsetX",
+    "petWarningOffsetY",
+    "noTargetWarning",
+    "friendsClassColor",
+    "extendedIgnore",
+    "eventSounds",
+    "soundMute",
+    "focusCastAlert",
+    "consumableCheckEnabled",
+    "consumableOnReadyCheck",
+    "consumableOnDungeon",
+    "consumableOnRaid",
+    "consumableOnResurrect",
+    "consumableFood",
+    "consumableFlask",
+    "consumableOilMH",
+    "consumableOilOH",
+    "consumableRune",
+    "consumableHealthstone",
+    "consumablePreferredFood",
+    "consumablePreferredFlask",
+    "consumablePreferredRune",
+    "consumablePreferredOilMH",
+    "consumablePreferredOilOH",
+    "consumableExpirationWarning",
+    "consumableExpirationThreshold",
+    "consumableAnchorMode",
+    "consumableIconOffset",
+    "consumableIconSize",
+    "consumableScale",
+    "quickSalvage",
+    "mplusTeleportEnabled",
+    "keyTrackerEnabled",
+    "keyTrackerFontSize",
+    "keyTrackerFont",
+    "keyTrackerTextColor",
+    "keyTrackerPoint",
+    "keyTrackerRelPoint",
+    "keyTrackerOffsetX",
+    "keyTrackerOffsetY",
+    "keyTrackerWidth",
+    "actionTracker",
+}
+
+local PROFILE_SKINNING_GENERAL_KEYS = {
+    "skinKeystoneFrame",
+    "skinGameMenu",
+    "skinContextMenus",
+    "skinReadyCheck",
+    "skinStaticPopups",
+    "addH3z0UIButton",
+    "addEditModeButton",
+    "objectiveTrackerClickThrough",
+    "gameMenuFontSize",
+    "gameMenuDim",
+    "skinPowerBarAlt",
+    "skinStatusTrackingBars",
+    "skinDamageMeter",
+    "statusTrackingBarsBarColorMode",
+    "statusTrackingBarsBarColor",
+    "statusTrackingBarsBarHeight",
+    "statusTrackingBarsBarWidthPercent",
+    "statusTrackingBarsShowBorder",
+    "statusTrackingBarsBorderThickness",
+    "statusTrackingBarsShowBarText",
+    "statusTrackingBarsBarTextAlways",
+    "statusTrackingBarsBarTextAnchor",
+    "statusTrackingBarsBarTextColor",
+    "statusTrackingBarsBarTextFont",
+    "statusTrackingBarsBarTextFontSize",
+    "statusTrackingBarsBarTextOutline",
+    "statusTrackingBarsBarTextOffsetX",
+    "statusTrackingBarsBarTextOffsetY",
+    "skinOverrideActionBar",
+    "skinObjectiveTracker",
+    "objectiveTrackerHeight",
+    "objectiveTrackerModuleFontSize",
+    "objectiveTrackerTitleFontSize",
+    "objectiveTrackerTextFontSize",
+    "hideObjectiveTrackerBorder",
+    "objectiveTrackerBorderColorSource",
+    "objectiveTrackerBorderColor",
+    "objectiveTrackerBackgroundStyle",
+    "objectiveTrackerBackgroundOpacity",
+    "objectiveTrackerBackgroundColor",
+    "objectiveTrackerModuleColor",
+    "objectiveTrackerTitleColor",
+    "objectiveTrackerTextColor",
+    "objectiveTrackerCustomBars",
+    "objectiveTrackerBarColor",
+    "objectiveTrackerCustomIcons",
+    "objectiveTrackerBulletColor",
+    "objectiveTrackerCheckColor",
+    "skinInstanceFrames",
+    "skinAuctionHouse",
+    "showAuctionHouseGold",
+    "skinCraftingOrders",
+    "skinProfessions",
+    "skinLegacySystem",
+    "skinStable",
+    "skinPVPMatch",
+    "skinQuest",
+    "skinBank",
+    "skinMerchant",
+    "skinMail",
+    "skinGuildBank",
+    "skinFriends",
+    "skinFlightMap",
+    "skinMacro",
+    "skinMirrorTimers",
+    "skinGossip",
+    "skinCommunities",
+    "skinDelves",
+    "skinDressUp",
+    "skinItemUpgrade",
+    "skinSocket",
+    "skinTrade",
+    "skinTabard",
+    "skinGuildRegistrar",
+    "skinSpellBook",
+    "skinEncounterJournal",
+    "skinCollections",
+    "skinAchievement",
+    "skinWorldMap",
+    "skinWeeklyRewards",
+    "skinTrainer",
+    "skinBgColor",
+    "skinAlerts",
+    "controlAlertAnchors",
+    "skinCharacterFrame",
+    "skinInspectFrame",
+    "skinUseClassColor",
+    "skinBorderColorSource",
+    "skinBorderColor",
+    "hideSkinBorders",
+    "alertsBorderColorSource",
+    "alertsBorderColor",
+    "readyCheckBorderColorSource",
+    "readyCheckBorderColor",
+}
+
+local PROFILE_LAYOUT_PATHS = {
+    "alerts.alertPosition",
+    "alerts.toastPosition",
+    "alerts.bnetToastPosition",
+    "raidBuffs.position",
+    "mplusTimer.position",
+    "loot.position",
+    "lootRoll.position",
+    "ncdm.essential.pos",
+    "ncdm.utility.pos",
+    "ncdm.buff.pos",
+    "powerBar.offsetX",
+    "powerBar.offsetY",
+    "castBar.offsetX",
+    "castBar.offsetY",
+    "targetCastBar.offsetX",
+    "targetCastBar.offsetY",
+    "focusCastBar.offsetX",
+    "focusCastBar.offsetY",
+    "secondaryPowerBar.offsetX",
+    "secondaryPowerBar.offsetY",
+    "reticle.offsetX",
+    "reticle.offsetY",
+    "crosshair.offsetX",
+    "crosshair.offsetY",
+    "rangeCheck.offsetX",
+    "rangeCheck.offsetY",
+    "skyriding.offsetX",
+    "skyriding.offsetY",
+    "actionBars.bars.extraActionButton.position",
+    "actionBars.bars.extraActionButton.offsetX",
+    "actionBars.bars.extraActionButton.offsetY",
+    "actionBars.bars.zoneAbility.position",
+    "actionBars.bars.zoneAbility.offsetX",
+    "actionBars.bars.zoneAbility.offsetY",
+    "h3z0uiUnitFrames.player.offsetX",
+    "h3z0uiUnitFrames.player.offsetY",
+    "h3z0uiUnitFrames.target.offsetX",
+    "h3z0uiUnitFrames.target.offsetY",
+    "h3z0uiUnitFrames.targettarget.offsetX",
+    "h3z0uiUnitFrames.targettarget.offsetY",
+    "h3z0uiUnitFrames.pet.offsetX",
+    "h3z0uiUnitFrames.pet.offsetY",
+    "h3z0uiUnitFrames.focus.offsetX",
+    "h3z0uiUnitFrames.focus.offsetY",
+    "h3z0uiUnitFrames.boss.offsetX",
+    "h3z0uiUnitFrames.boss.offsetY",
+    "h3z0uiUnitFrames.player.castbar.offsetX",
+    "h3z0uiUnitFrames.player.castbar.offsetY",
+    "h3z0uiUnitFrames.target.castbar.offsetX",
+    "h3z0uiUnitFrames.target.castbar.offsetY",
+    "h3z0uiUnitFrames.focus.castbar.offsetX",
+    "h3z0uiUnitFrames.focus.castbar.offsetY",
+    "h3z0uiGroupFrames.position",
+    "h3z0uiGroupFrames.raidPosition",
+    "h3z0uiGroupFrames.raid.spotlight.position",
+    "combatText.xOffset",
+    "combatText.yOffset",
+    "brzCounter.xOffset",
+    "brzCounter.yOffset",
+    "combatTimer.xOffset",
+    "combatTimer.yOffset",
+    "lustTimer.xOffset",
+    "lustTimer.yOffset",
+    "xpTracker.offsetX",
+    "xpTracker.offsetY",
+    "xpTracker.locked",
+    "minimap.lock",
+    "minimap.position",
+    "totemBar.offsetX",
+    "totemBar.offsetY",
+    "totemBar.locked",
+    "raidMarkersBar.offsetX",
+    "raidMarkersBar.offsetY",
+    "raidMarkersBar.locked",
+}
+
+local PROFILE_THEME_PRESERVE_PATHS = {
+    "addonAccentColor",
+    "powerColors",
+}
+
+for _, key in ipairs(PROFILE_THEME_GENERAL_KEYS) do
+    PROFILE_THEME_PRESERVE_PATHS[#PROFILE_THEME_PRESERVE_PATHS + 1] = "general." .. key
+end
+
+local CUSTOM_TRACKER_BAR_ID_PREFIX = "customTrackerBar:"
+local GenerateUniqueTrackerID
+
+local function SyncCustomTrackerBarsToCDM(core, profile)
+    local migrations = ns.Migrations
+    if not migrations or type(migrations.SyncCustomTrackerBarsToCDM) ~= "function" then
+        return false
+    end
+    local globalDB = core and core.db and core.db.global
+    return migrations.SyncCustomTrackerBarsToCDM(profile, globalDB)
+end
+
+local function StampSourceSpecOnImportedSpecBars(targetProfile, importedProfile)
+    if type(targetProfile) ~= "table" or type(importedProfile) ~= "table" then return end
+    local bars = targetProfile.customTrackers and targetProfile.customTrackers.bars
+    if type(bars) ~= "table" then return end
+    local sourceSpecID = importedProfile.ncdm and importedProfile.ncdm._lastSpecID
+    if type(sourceSpecID) ~= "number" or sourceSpecID <= 0 then return end
+    for _, bar in ipairs(bars) do
+        if type(bar) == "table"
+           and bar.specSpecificSpells == true
+           and bar._sourceSpecID == nil
+        then
+            bar._sourceSpecID = sourceSpecID
+        end
+    end
+end
+
+local function IsCustomBarContainer(container)
+    return type(container) == "table" and container.containerType == "customBar"
+end
+
+local function GetCustomBarLegacyID(containerKey, container)
+    if type(container) ~= "table" then return nil end
+    if container._legacyId ~= nil then return tostring(container._legacyId) end
+    if container.id ~= nil then return tostring(container.id) end
+    if type(containerKey) == "string" then
+        return containerKey:match("^customBar_(.+)$")
+    end
+    return nil
+end
+
+local function BuildLegacyCustomTrackerBarFromContainer(containerKey, container)
+    if not IsCustomBarContainer(container) then return nil end
+
+    local legacyID = GetCustomBarLegacyID(containerKey, container)
+    if not legacyID or legacyID == "" then return nil end
+
+    local row = type(container.row1) == "table" and container.row1 or {}
+    return {
+        id = legacyID,
+        name = container.name or "Custom Bar",
+        enabled = container.enabled ~= false,
+        locked = container.locked == true,
+        offsetX = (type(container.pos) == "table" and container.pos.ox) or container.offsetX or 0,
+        offsetY = (type(container.pos) == "table" and container.pos.oy) or container.offsetY or 0,
+        growDirection = container.growDirection or "RIGHT",
+        maxIcons = row.iconCount or container.maxIcons or 8,
+        iconSize = row.iconSize or container.iconSize or 28,
+        spacing = row.padding or container.spacing or 4,
+        borderSize = row.borderSize or container.borderSize or 2,
+        borderColor = CloneValue(row.borderColorTable or container.borderColor or container.borderColorTable or {0, 0, 0, 1}),
+        aspectRatioCrop = row.aspectRatioCrop or container.aspectRatioCrop or 1.0,
+        zoom = row.zoom or container.zoom or 0,
+        durationFont = row.durationFont or container.durationFont,
+        durationSize = row.durationSize or container.durationSize or 13,
+        durationColor = CloneValue(row.durationTextColor or container.durationColor or container.durationTextColor or {1, 1, 1, 1}),
+        durationAnchor = row.durationAnchor or container.durationAnchor or "CENTER",
+        durationOffsetX = row.durationOffsetX or container.durationOffsetX or 0,
+        durationOffsetY = row.durationOffsetY or container.durationOffsetY or 0,
+        hideDurationText = row.hideDurationText == true or container.hideDurationText == true,
+        stackFont = row.stackFont or container.stackFont,
+        stackSize = row.stackSize or container.stackSize or 9,
+        stackColor = CloneValue(row.stackTextColor or container.stackColor or container.stackTextColor or {1, 1, 1, 1}),
+        stackAnchor = row.stackAnchor or container.stackAnchor or "BOTTOMRIGHT",
+        stackOffsetX = row.stackOffsetX or container.stackOffsetX or 3,
+        stackOffsetY = row.stackOffsetY or container.stackOffsetY or -1,
+        hideStackText = row.hideStackText == true or container.hideStackText == true,
+        showItemCharges = container.showItemCharges ~= false,
+        showProfessionQuality = container.showProfessionQuality ~= false,
+        showRechargeSwipe = container.showRechargeSwipe == true,
+        noDesaturateWithCharges = container.noDesaturateWithCharges == true,
+        bgOpacity = container.bgOpacity or 0,
+        bgColor = CloneValue(container.bgColor or {0, 0, 0, 1}),
+        hideGCD = container.hideGCD ~= false,
+        hideNonUsable = container.hideNonUsable == true,
+        showOnlyOnCooldown = container.showOnlyOnCooldown == true,
+        showOnlyWhenActive = container.showOnlyWhenActive == true,
+        showOnlyWhenOffCooldown = container.showOnlyWhenOffCooldown == true,
+        showOnlyInCombat = container.showOnlyInCombat == true,
+        dynamicLayout = container.dynamicLayout == true,
+        clickableIcons = container.clickableIcons == true,
+        showActiveState = container.showActiveState ~= false,
+        activeGlowEnabled = container.activeGlowEnabled ~= false,
+        activeGlowType = container.activeGlowType or "Pixel Glow",
+        activeGlowColor = CloneValue(container.activeGlowColor or {1, 0.85, 0.3, 1}),
+        activeGlowLines = container.activeGlowLines or 8,
+        activeGlowFrequency = container.activeGlowFrequency or 0.25,
+        activeGlowThickness = container.activeGlowThickness or 2,
+        activeGlowScale = container.activeGlowScale or 1.0,
+        specSpecificSpells = container.specSpecificSpells == true or container.specSpecific == true,
+        entries = CloneValue(container.entries or {}),
+    }
+end
+
+local function CollectCustomTrackerExportRecords(profile)
+    if type(profile) ~= "table" then return {} end
+
+    local containers = profile.ncdm and profile.ncdm.containers
+    local byLegacyID = {}
+    local customKeys = {}
+    if type(containers) == "table" then
+        for key, container in pairs(containers) do
+            if IsCustomBarContainer(container) then
+                local legacyID = GetCustomBarLegacyID(key, container)
+                if legacyID then
+                    byLegacyID[legacyID] = { key = key, container = container, legacyID = legacyID }
+                    customKeys[#customKeys + 1] = key
+                end
+            end
+        end
+    end
+    table.sort(customKeys)
+
+    local records = {}
+    local seen = {}
+    local bars = profile.customTrackers and profile.customTrackers.bars
+    if type(bars) == "table" then
+        for _, bar in ipairs(bars) do
+            if type(bar) == "table" then
+                local legacyID = bar.id ~= nil and tostring(bar.id) or nil
+                local mapped = legacyID and byLegacyID[legacyID] or nil
+                if mapped then
+                    local exportedBar = BuildLegacyCustomTrackerBarFromContainer(mapped.key, mapped.container)
+                    if exportedBar then
+                        records[#records + 1] = {
+                            bar = exportedBar,
+                            legacyID = mapped.legacyID,
+                            containerKey = mapped.key,
+                        }
+                    end
+                    seen[legacyID] = true
+                else
+                    records[#records + 1] = {
+                        bar = CloneValue(bar),
+                        legacyID = legacyID,
+                        containerKey = legacyID and ("customBar_" .. legacyID) or nil,
+                    }
+                    if legacyID then seen[legacyID] = true end
+                end
+            end
+        end
+    end
+
+    for _, key in ipairs(customKeys) do
+        local mapped = byLegacyID[GetCustomBarLegacyID(key, containers[key])]
+        if mapped and not seen[mapped.legacyID] then
+            local exportedBar = BuildLegacyCustomTrackerBarFromContainer(mapped.key, mapped.container)
+            if exportedBar then
+                records[#records + 1] = {
+                    bar = exportedBar,
+                    legacyID = mapped.legacyID,
+                    containerKey = mapped.key,
+                }
+                seen[mapped.legacyID] = true
+            end
+        end
+    end
+
+    return records
+end
+
+local function ExtractBarsFromExportRecords(records)
+    local bars = {}
+    for _, record in ipairs(records or {}) do
+        if type(record) == "table" and type(record.bar) == "table" then
+            bars[#bars + 1] = CloneValue(record.bar)
+        end
+    end
+    return bars
+end
+
+local function CollectSpecEntriesForExportRecord(record, globals)
+    if type(record) ~= "table" or type(globals) ~= "table" then return nil end
+    if not (record.bar and record.bar.specSpecificSpells) then return nil end
+
+    local legacyID = record.legacyID or (record.bar and record.bar.id)
+    if legacyID ~= nil and type(globals.specTrackerSpells) == "table" then
+        local legacyEntries = globals.specTrackerSpells[legacyID]
+        if type(legacyEntries) == "table" then
+            return CloneValue(legacyEntries)
+        end
+    end
+
+    local containerKey = record.containerKey
+    if (not containerKey or containerKey == "") and legacyID ~= nil then
+        containerKey = "customBar_" .. tostring(legacyID)
+    end
+    local ncdmEntries = globals.ncdm
+        and globals.ncdm.specTrackerSpells
+        and globals.ncdm.specTrackerSpells[containerKey]
+    if type(ncdmEntries) == "table" then
+        return CloneValue(ncdmEntries)
+    end
+
+    return nil
+end
+
+local function CollectLegacySpecEntriesForExportRecords(records, globals)
+    if type(records) ~= "table" or type(globals) ~= "table" then return nil end
+    local result = nil
+    for _, record in ipairs(records) do
+        local entries = CollectSpecEntriesForExportRecord(record, globals)
+        local legacyID = record.legacyID or (record.bar and record.bar.id)
+        if entries and legacyID ~= nil then
+            result = result or {}
+            result[legacyID] = entries
+        end
+    end
+    return result
+end
+
+local function StampCustomTrackerBarsForExport(targetProfile, sourceProfile)
+    local records = CollectCustomTrackerExportRecords(sourceProfile)
+    if #records == 0 then return records end
+
+    if type(targetProfile.customTrackers) == "table" then
+        targetProfile.customTrackers = CloneValue(targetProfile.customTrackers)
+    else
+        targetProfile.customTrackers = {}
+    end
+    targetProfile.customTrackers.bars = ExtractBarsFromExportRecords(records)
+
+    return records
+end
+
+local function GetTrackerEntryResolvedName(entry)
+    if type(entry) ~= "table" then
+        return nil
+    end
+
+    if type(entry.name) == "string" and entry.name ~= "" then
+        return entry.name
+    end
+
+    local entryID = entry.id or entry.itemID or entry.spellID
+    if not entryID then
+        return nil
+    end
+
+    if entry.type == "item" then
+        if C_Item and C_Item.GetItemNameByID then
+            local ok, itemName = ns.SafeCall("chain-next", C_Item.GetItemNameByID, entryID)
+            if ok and type(itemName) == "string" and itemName ~= "" then
+                return itemName
+            end
+        end
+
+        if GetItemInfo then
+            local ok, itemName = ns.SafeCall("chain-next", GetItemInfo, entryID)
+            if ok and type(itemName) == "string" and itemName ~= "" then
+                return itemName
+            end
+        end
+
+        return ("Item %s"):format(tostring(entryID))
+    end
+
+    if entry.type == "spell" then
+        if C_Spell and C_Spell.GetSpellName then
+            local ok, spellName = ns.SafeCall("chain-next", C_Spell.GetSpellName, entryID)
+            if ok and type(spellName) == "string" and spellName ~= "" then
+                return spellName
+            end
+        end
+
+        if GetSpellInfo then
+            local ok, spellName = ns.SafeCall("chain-next", GetSpellInfo, entryID)
+            if ok and type(spellName) == "string" and spellName ~= "" then
+                return spellName
+            end
+        end
+
+        return ("Spell %s"):format(tostring(entryID))
+    end
+
+    return ("%s %s"):format(tostring(entry.type or "Entry"), tostring(entryID))
+end
+
+local function BuildCustomTrackerBarDescription(bar)
+    if type(bar) ~= "table" then
+        return "Import this custom tracker bar only."
+    end
+
+    local entries = type(bar.entries) == "table" and bar.entries or {}
+    local entryCount = 0
+    local sampleNames = {}
+
+    for _, entry in ipairs(entries) do
+        entryCount = entryCount + 1
+        if #sampleNames < 3 then
+            sampleNames[#sampleNames + 1] = GetTrackerEntryResolvedName(entry) or "Unknown entry"
+        end
+    end
+
+    local parts = {}
+    parts[#parts + 1] = ("%d entr%s"):format(entryCount, entryCount == 1 and "y" or "ies")
+
+    if bar.specSpecificSpells then
+        parts[#parts + 1] = "spec-specific"
+    end
+    if bar.showOnlyOnCooldown then
+        parts[#parts + 1] = "cooldown-only"
+    end
+    if bar.showOnlyWhenActive then
+        parts[#parts + 1] = "active-only"
+    end
+    if bar.enabled == false then
+        parts[#parts + 1] = "disabled"
+    end
+    if type(bar.growDirection) == "string" and bar.growDirection ~= "" then
+        parts[#parts + 1] = "grows " .. bar.growDirection
+    end
+
+    local summary = table.concat(parts, "; ")
+    if #sampleNames > 0 then
+        summary = summary .. ". " .. table.concat(sampleNames, ", ")
+        if entryCount > #sampleNames then
+            summary = summary .. ", ..."
+        end
+    end
+
+    return summary
+end
+
+local function BuildCustomTrackerBarPreviewChildren(profileData)
+    local records = CollectCustomTrackerExportRecords(profileData)
+    if #records == 0 then
+        return nil
+    end
+
+    local children = {}
+    for index, record in ipairs(records) do
+        local bar = record.bar
+        local barName = type(bar) == "table" and bar.name or nil
+        children[#children + 1] = {
+            id = CUSTOM_TRACKER_BAR_ID_PREFIX .. index,
+            label = barName and tostring(barName) or ("Bar " .. index),
+            description = BuildCustomTrackerBarDescription(bar),
+            available = type(bar) == "table",
+            dynamic = true,
+        }
+    end
+
+    return #children > 0 and children or nil
+end
+
+local PROFILE_IMPORT_CATEGORIES = {
+    {
+        id = "theme",
+        label = "Theme / Fonts / Colors",
+        description = "Shared fonts, textures, dark mode, and addon-wide color settings.",
+        recommended = false,
+        topLevelKeys = { "addonAccentColor", "powerColors", "themePreset" },
+        generalKeys = PROFILE_THEME_GENERAL_KEYS,
+    },
+    {
+        id = "layout",
+        label = "Layout / Positions",
+                description = "Mover positions, frame placement, and tracked element offsets.",
+        recommended = false,
+        topLevelKeys = { "frameAnchoring", "bigWigs", "dandersFrames", "abilityTimeline", "blizzardMover", "layoutMode" },
+        paths = PROFILE_LAYOUT_PATHS,
+    },
+    {
+        id = "unitFrames",
+        label = "Unit Frames",
+        description = "Player, target, focus, pet, and boss frame settings.",
+        recommended = true,
+        topLevelKeys = { "h3z0uiUnitFrames", "unitframesVisibility", "unitFrames" },
+        children = {
+            {
+                id = "unitFramesGeneral",
+                label = "General",
+                description = "Master unit frame settings, shared visibility rules, and legacy unit frame compatibility.",
+                paths = { "h3z0uiUnitFrames.enabled", "h3z0uiUnitFrames.general" },
+                topLevelKeys = { "unitframesVisibility", "unitFrames" },
+            },
+            { id = "unitFramePlayer", label = "Player", description = "Player frame settings.", paths = { "h3z0uiUnitFrames.player" } },
+            { id = "unitFrameTarget", label = "Target", description = "Target frame settings.", paths = { "h3z0uiUnitFrames.target" } },
+            { id = "unitFrameToT", label = "ToT", description = "Target-of-target frame settings.", paths = { "h3z0uiUnitFrames.targettarget" } },
+            { id = "unitFramePet", label = "Pet", description = "Pet frame settings.", paths = { "h3z0uiUnitFrames.pet" } },
+            { id = "unitFrameFocus", label = "Focus", description = "Focus frame settings.", paths = { "h3z0uiUnitFrames.focus" } },
+            { id = "unitFrameBoss", label = "Boss", description = "Boss frame settings.", paths = { "h3z0uiUnitFrames.boss" } },
+        },
+    },
+    {
+        id = "nameplates",
+        label = "Nameplates",
+        description = "Custom enemy and friendly nameplate settings.",
+        recommended = true,
+        topLevelKeys = { "nameplates" },
+    },
+    {
+        id = "groupFrames",
+        profileFeaturePinID = "groupFrames",
+        label = "Group / Raid Frames",
+        description = "Party, raid, click-cast, and raid buff settings.",
+        recommended = true,
+        topLevelKeys = ProfileFeatureCategories.groupFrames.topLevelKeys,
+        frameAnchorKeys = ProfileFeatureCategories.groupFrames.frameAnchorKeys,
+        children = {
+            {
+                id = "groupFramesGeneral",
+                profileFeaturePinID = "groupFrames",
+                label = "General",
+                description = "Shared group frame options and global toggles.",
+                topLevelKeys = { "raidBuffs" },
+                paths = {
+                    "h3z0uiGroupFrames.enabled",
+                    "h3z0uiGroupFrames.unifiedPosition",
+                    "h3z0uiGroupFrames.partySelfFirst",
+                    "h3z0uiGroupFrames.raidSelfFirst",
+                },
+            },
+            {
+                id = "groupFramesParty",
+                profileFeaturePinID = "groupFrames",
+                label = "Party",
+                description = "Party frame designer settings.",
+                paths = { "h3z0uiGroupFrames.party" },
+                frameAnchorKeys = { "partyFrames" },
+            },
+            {
+                id = "groupFramesRaid",
+                profileFeaturePinID = "groupFrames",
+                label = "Raid",
+                description = "Raid frame designer settings.",
+                paths = { "h3z0uiGroupFrames.raid" },
+                frameAnchorKeys = { "raidFrames", "spotlightFrames" },
+            },
+        },
+    },
+    {
+        id = "castBars",
+        label = "Cast Bars / Power HUD",
+        description = "Cast bars, power bars, crosshair, reticle, and HUD layering.",
+        recommended = true,
+        topLevelKeys = {
+            "castBar",
+            "targetCastBar",
+            "focusCastBar",
+            "reticle",
+            "crosshair",
+            "rangeCheck",
+            "skyriding",
+            "hudLayering",
+            "powerBar",
+            "secondaryPowerBar",
+            "powerColors",
+        },
+    },
+    {
+        id = "cdm",
+        label = "CDM / Cooldowns",
+        description = "Cooldown viewers, glows, swipe behavior, and rotation-assist settings.",
+        recommended = true,
+        topLevelKeys = {
+            "ncdm",
+            "cdmVisibility",
+            "viewers",
+            "rotationAssistIcon",
+            "cooldownSwipe",
+            "cooldownEffects",
+            "cooldownManager",
+            "customGlow",
+            "buffBorders",
+            "keybindOverridesEnabledCDM",
+            "powerBar",
+            "secondaryPowerBar",
+            "powerColors",
+            "cooldownHighlighter",
+        },
+        children = {
+            { id = "cdmEssential", label = "Essential", description = "Essential cooldown rows and essential viewer settings.", paths = { "ncdm.essential" } },
+            { id = "cdmUtility", label = "Utility", description = "Utility cooldown rows and utility viewer settings.", paths = { "ncdm.utility" } },
+            { id = "cdmBuff", label = "Buff", description = "Buff icon styling and tracked buff bar settings.", paths = { "ncdm.buff" } },
+            {
+                id = "cdmClassResourceBar",
+                label = "Class Resource Bar",
+                description = "Primary and secondary class resource bars, including their colors.",
+                topLevelKeys = { "powerBar", "secondaryPowerBar", "powerColors" },
+            },
+            {
+                id = "cdmEffectsSubtab",
+                label = "Effects",
+                description = "Swipes, glow effects, and buff border visuals.",
+                topLevelKeys = { "cooldownSwipe", "cooldownEffects", "cooldownManager", "customGlow", "buffBorders" },
+            },
+            {
+                id = "cdmRotationAssist",
+                label = "Rotation Assist",
+                description = "Rotation assist icon settings.",
+                topLevelKeys = { "rotationAssistIcon" },
+            },
+            {
+                id = "cdmKeybinds",
+                label = "Keybinds",
+                description = "CDM keybind display toggles stored in the profile.",
+                topLevelKeys = { "keybindOverridesEnabledCDM" },
+            },
+        },
+    },
+    {
+        id = "actionBars",
+        label = "Action Bars",
+        description = "Action bar styling, fade rules, and per-bar behavior.",
+        recommended = true,
+        topLevelKeys = { "actionBars", "actionBarsVisibility" },
+        children = {
+            {
+                id = "actionBarsMaster",
+                label = "Master Settings",
+                description = "Global action bar settings shared across bars.",
+                paths = { "actionBars.enabled", "actionBars.global" },
+            },
+            {
+                id = "actionBarsMouseover",
+                label = "Mouseover Hide",
+                description = "Mouseover fade and visibility rules.",
+                paths = { "actionBars.fade" },
+            },
+            {
+                id = "actionBarsPerBar",
+                label = "Per-Bar Overrides",
+                description = "Per-bar overrides for action bars 1-8 and Blizzard support bars.",
+                paths = {
+                    "actionBars.bars.bar1",
+                    "actionBars.bars.bar2",
+                    "actionBars.bars.bar3",
+                    "actionBars.bars.bar4",
+                    "actionBars.bars.bar5",
+                    "actionBars.bars.bar6",
+                    "actionBars.bars.bar7",
+                    "actionBars.bars.bar8",
+                    "actionBars.bars.pet",
+                    "actionBars.bars.stance",
+                    "actionBars.bars.microbar",
+                    "actionBars.bars.bags",
+                },
+            },
+            {
+                id = "actionBarsExtraButtons",
+                label = "Extra Buttons",
+                description = "Extra Action Button and Zone Ability Button settings.",
+                paths = {
+                    "actionBars.bars.extraActionButton",
+                    "actionBars.bars.zoneAbility",
+                },
+            },
+            {
+                id = "actionBarsTotemBar",
+                label = "Totem Bar",
+                description = "Blizzard TotemFrame bar settings (totems, guardians, etc., per class).",
+                topLevelKeys = { "totemBar" },
+            },
+            {
+                id = "actionBarsRaidMarkersBar",
+                label = "Raid Markers Bar",
+                description = "Secure bar of buttons that place raid target markers on the target.",
+                topLevelKeys = { "raidMarkersBar" },
+            },
+        },
+    },
+    {
+        id = "minimapDatatexts",
+        label = "Minimap / Datatexts",
+        description = "Minimap, datatext panel, and extra datatext settings.",
+        recommended = true,
+        topLevelKeys = { "minimap", "minimapButton", "datatext", "h3z0uiDatatexts" },
+        children = {
+            {
+                id = "minimapSubtab",
+                label = "Minimap",
+                description = "Minimap frame and minimap utility settings.",
+                topLevelKeys = { "minimap", "minimapButton" },
+            },
+            {
+                id = "datatextSubtab",
+                label = "Datatext",
+                description = "Minimap datatexts and custom movable datatext panels.",
+                topLevelKeys = { "datatext", "h3z0uiDatatexts" },
+            },
+        },
+    },
+    {
+        id = "infobar",
+        label = "Info Bar",
+        description = "Full-width info bar layout, widgets, and appearance.",
+        recommended = true,
+        topLevelKeys = { "infobar" },
+    },
+    {
+        id = "customTrackers",
+        label = "Custom CDM Bars",
+        description = "Custom CDM bar settings and individual imported bars.",
+        recommended = true,
+        topLevelKeys = { "customTrackers", "customTrackersVisibility", "keybindOverridesEnabledTrackers" },
+        children = {
+            {
+                id = "customTrackersShared",
+                label = "Shared Settings",
+                description = "CDM bar keybind display and shared visibility settings.",
+                topLevelKeys = { "customTrackersVisibility", "keybindOverridesEnabledTrackers" },
+                paths = {
+                    "customTrackers.keybinds",
+                },
+            },
+        },
+    },
+    {
+        id = "auraDisplays",
+        profileFeaturePinID = "auraDisplays",
+        label = "Aura Displays",
+        description = "Your custom on-screen aura frames and their filters.",
+        recommended = true,
+        topLevelKeys = ProfileFeatureCategories.auraDisplays.topLevelKeys,
+        frameAnchorPrefixes = ProfileFeatureCategories.auraDisplays.frameAnchorPrefixes,
+    },
+    {
+        id = "trackersTimers",
+        label = "Timers / Widgets",
+        description = "M+ timer, combat timers, XP tracker, and other utility widgets.",
+        recommended = true,
+        frameAnchorPrefixes = { "spellReminder:" },
+        topLevelKeys = {
+            "spellReminders",
+            "mplusTimer",
+            "mplusProgress",
+            "combatText",
+            "brzCounter",
+            "atonementCounter",
+            "combatTimer",
+            "lustTimer",
+            "xpTracker",
+            "totemBar",
+            "preyTracker",
+            "incomingCasts",
+            "swingTimers",
+        },
+    },
+    {
+        id = "damageMeter",
+        label = "Damage Meter",
+        description = "Native damage meter windows, appearance, and behavior settings.",
+        recommended = true,
+        topLevelKeys = { "damageMeter" },
+    },
+    {
+        id = "reminders",
+        label = "Reminders",
+        description = "Defensive callouts: boss ability picks, priority lists, and callout display.",
+        recommended = true,
+        topLevelKeys = { "reminders" },
+    },
+    {
+        id = "chat",
+        label = "Chat",
+        description = "Chat frame skinning, formatting, and utility options.",
+        recommended = true,
+        topLevelKeys = { "chat", "chatVisibility" },
+    },
+    {
+        id = "qol",
+        label = "QoL / Automation",
+        description = "Automation helpers, popup blocker, consumables, and utility toggles.",
+        recommended = true,
+        topLevelKeys = { "qol", "uiHider", "configPanelWidth", "configPanelHeight", "configPanelAlpha", "configPanelScale", "optionsPanelCollapsibleStates", "merchantGrid" },
+        generalKeys = PROFILE_QOL_GENERAL_KEYS,
+    },
+    {
+        id = "skinning",
+        label = "Skinning / Blizzard UI",
+        description = "Tooltip, alerts, character pane, and Blizzard skinning options.",
+        recommended = true,
+        topLevelKeys = { "skinning", "alerts", "tooltip", "character", "loot", "lootRoll", "lootResults" },
+        generalKeys = PROFILE_SKINNING_GENERAL_KEYS,
+    },
+    {
+        id = "bags",
+        label = "Bags",
+        description = "Bag, bank, and storage module settings.",
+        recommended = true,
+        topLevelKeys = { "bags" },
+    },
+    {
+        id = "alts",
+        label = "Alts",
+        description = "Alt roster window settings.",
+        recommended = true,
+        topLevelKeys = { "alts" },
+    },
+}
+
+local PROFILE_IMPORT_CATEGORY_BY_ID = {}
+local PROFILE_IMPORT_CHILDREN_BY_PARENT = {}
+
+local function RegisterImportCategory(category, parentID)
+    PROFILE_IMPORT_CATEGORY_BY_ID[category.id] = category
+    if parentID then
+        PROFILE_IMPORT_CHILDREN_BY_PARENT[parentID] = PROFILE_IMPORT_CHILDREN_BY_PARENT[parentID] or {}
+        PROFILE_IMPORT_CHILDREN_BY_PARENT[parentID][#PROFILE_IMPORT_CHILDREN_BY_PARENT[parentID] + 1] = category
+    end
+
+    if type(category.children) == "table" then
+        for _, child in ipairs(category.children) do
+            RegisterImportCategory(child, category.id)
+        end
+    end
+end
+
+for _, category in ipairs(PROFILE_IMPORT_CATEGORIES) do
+    RegisterImportCategory(category)
+end
+
+local function ParseCustomTrackerBarSelectionID(categoryID)
+    if type(categoryID) ~= "string" then
+        return nil
+    end
+
+    local indexText = categoryID:match("^" .. CUSTOM_TRACKER_BAR_ID_PREFIX:gsub("%-", "%%-") .. "(%d+)$")
+    local index = indexText and tonumber(indexText)
+    if index and index > 0 then
+        return index
+    end
+    return nil
+end
+
+local function GetValueAtPath(root, path)
+    if type(root) ~= "table" or type(path) ~= "string" or path == "" then
+        return nil, false
+    end
+
+    local node = root
+    for segment in path:gmatch("[^.]+") do
+        if type(node) ~= "table" then
+            return nil, false
+        end
+        node = node[segment]
+        if node == nil then
+            return nil, false
+        end
+    end
+
+    return node, true
+end
+
+local function SetValueAtPath(root, path, value)
+    if type(root) ~= "table" or type(path) ~= "string" or path == "" then
+        return
+    end
+
+    local parent = root
+    local segments = {}
+    for segment in path:gmatch("[^.]+") do
+        segments[#segments + 1] = segment
+    end
+
+    if #segments == 0 then
+        return
+    end
+
+    for i = 1, #segments - 1 do
+        local segment = segments[i]
+        local nextNode = parent[segment]
+        if type(nextNode) ~= "table" then
+            if value == nil then
+                return
+            end
+            nextNode = {}
+            parent[segment] = nextNode
+        end
+        parent = nextNode
+    end
+
+    parent[segments[#segments]] = CloneValue(value)
+end
+
+local function CopyTopLevelKeys(targetProfile, importedProfile, keys)
+    if type(targetProfile) ~= "table" or type(importedProfile) ~= "table" or type(keys) ~= "table" then
+        return
+    end
+
+    for _, key in ipairs(keys) do
+        if importedProfile[key] ~= nil then
+            targetProfile[key] = CloneValue(importedProfile[key])
+        end
+    end
+end
+
+local function CopyGeneralKeys(targetProfile, importedProfile, keys)
+    if type(targetProfile) ~= "table" or type(importedProfile) ~= "table" or type(keys) ~= "table" then
+        return
+    end
+
+    local importedGeneral = importedProfile.general
+    if type(importedGeneral) ~= "table" then
+        return
+    end
+
+    if type(targetProfile.general) ~= "table" then
+        targetProfile.general = {}
+    end
+
+    for _, key in ipairs(keys) do
+        if importedGeneral[key] ~= nil then
+            targetProfile.general[key] = CloneValue(importedGeneral[key])
+        end
+    end
+end
+
+local function CopyPathList(targetProfile, importedProfile, paths)
+    if type(targetProfile) ~= "table" or type(importedProfile) ~= "table" or type(paths) ~= "table" then
+        return
+    end
+
+    for _, path in ipairs(paths) do
+        local value, exists = GetValueAtPath(importedProfile, path)
+        if exists then
+            SetValueAtPath(targetProfile, path, value)
+        end
+    end
+end
+
+local function RestorePathList(targetProfile, previousProfile, paths)
+    if type(targetProfile) ~= "table" or type(previousProfile) ~= "table" or type(paths) ~= "table" then
+        return
+    end
+
+    for _, path in ipairs(paths) do
+        local value, exists = GetValueAtPath(previousProfile, path)
+        if exists then
+            SetValueAtPath(targetProfile, path, value)
+        else
+            SetValueAtPath(targetProfile, path, nil)
+        end
+    end
+end
+
+local function RestoreCustomTrackerLayout(targetProfile, previousProfile)
+    local targetBars = targetProfile
+        and targetProfile.customTrackers
+        and targetProfile.customTrackers.bars
+    local previousBars = previousProfile
+        and previousProfile.customTrackers
+        and previousProfile.customTrackers.bars
+
+    if type(targetBars) ~= "table" or type(previousBars) ~= "table" then
+        return
+    end
+
+    for index, previousBar in ipairs(previousBars) do
+        local targetBar = targetBars[index]
+        if type(previousBar) == "table" and type(targetBar) == "table" then
+            if previousBar.offsetX ~= nil then targetBar.offsetX = CloneValue(previousBar.offsetX) end
+            if previousBar.offsetY ~= nil then targetBar.offsetY = CloneValue(previousBar.offsetY) end
+            if previousBar.locked ~= nil then targetBar.locked = CloneValue(previousBar.locked) end
+        end
+    end
+end
+
+local function RestoreDatatextPanelLayout(targetProfile, previousProfile)
+    local targetPanels = targetProfile
+        and targetProfile.h3z0uiDatatexts
+        and targetProfile.h3z0uiDatatexts.panels
+    local previousPanels = previousProfile
+        and previousProfile.h3z0uiDatatexts
+        and previousProfile.h3z0uiDatatexts.panels
+
+    if type(targetPanels) ~= "table" or type(previousPanels) ~= "table" then
+        return
+    end
+
+    for index, previousPanel in ipairs(previousPanels) do
+        local targetPanel = targetPanels[index]
+        if type(previousPanel) == "table" and type(targetPanel) == "table" then
+            if previousPanel.position ~= nil then
+                targetPanel.position = CloneValue(previousPanel.position)
+            else
+                targetPanel.position = nil
+            end
+        end
+    end
+end
+
+local function ImportSelectedCustomTrackerBars(core, targetProfile, importedProfile, barIndexes)
+    if type(targetProfile) ~= "table" or type(importedProfile) ~= "table" or type(barIndexes) ~= "table" then
+        return false, nil
+    end
+
+    local importedBars = importedProfile.customTrackers and importedProfile.customTrackers.bars
+    if type(importedBars) ~= "table" then
+        return false, nil
+    end
+
+    if type(targetProfile.customTrackers) ~= "table" then
+        targetProfile.customTrackers = {}
+    end
+    if type(targetProfile.customTrackers.bars) ~= "table" then
+        targetProfile.customTrackers.bars = {}
+    end
+
+    local importedAny = false
+    local mappings = {}
+    for _, barIndex in ipairs(barIndexes) do
+        local sourceBar = importedBars[barIndex]
+        if type(sourceBar) == "table" then
+            local clonedBar = CloneValue(sourceBar)
+            local sourceID = clonedBar.id
+            clonedBar.id = GenerateUniqueTrackerID()
+            clonedBar._importedLegacyId = sourceID
+            table.insert(targetProfile.customTrackers.bars, clonedBar)
+            mappings[#mappings + 1] = {
+                sourceID = sourceID,
+                targetID = clonedBar.id,
+            }
+            importedAny = true
+        end
+    end
+
+    return importedAny, mappings
+end
+
+local function DetectProfileImportPrefix(str)
+    if type(str) ~= "string" then
+        return nil
+    end
+    return str:match("^([A-Za-z][A-Za-z0-9]*%d):")
+end
+
+local function DeserializeProfileImportPayload(str, allowedPrefixes, defaultPrefix)
+    if not AceSerializer or not LibDeflate then
+        return false, nil, nil, "Import requires AceSerializer-3.0 and LibDeflate."
+    end
+    if not str or str == "" then
+        return false, nil, nil, "No data provided."
+    end
+
+    str = str:gsub("%s+", "")
+    if str == "" then
+        return false, nil, nil, "No data provided."
+    end
+
+    local prefix = DetectProfileImportPrefix(str)
+    if prefix then
+        local allowed = allowedPrefixes or SUPPORTED_PROFILE_IMPORT_PREFIXES
+        if not allowed[prefix] then
+            if not allowedPrefixes and NAMEPLATE_PROFILE_PREFIXES[prefix] then
+                return false, nil, prefix, "This is a nameplate profile string. Import it under Nameplates in the options panel."
+            end
+            return false, nil, nil, ("This doesn't appear to be a H3z0UI profile string (%s)."):format(prefix)
+        end
+        str = str:sub(#prefix + 2)
+    else
+        prefix = defaultPrefix or "H3z0UI1"
+    end
+
+    local compressed = LibDeflate:DecodeForPrint(str)
+    if not compressed then
+        return false, nil, prefix, "Could not decode string (maybe corrupted)."
+    end
+
+    local serialized = LibDeflate:DecompressDeflate(compressed)
+    if not serialized then
+        return false, nil, prefix, "Could not decompress data."
+    end
+
+    local ok, payload = AceSerializer:Deserialize(serialized)
+    if not ok or type(payload) ~= "table" then
+        return false, nil, prefix, "Could not deserialize profile."
+    end
+
+    return true, payload, prefix, nil
+end
+
+local function SchemaFloorError(payload)
+    local floor = ns.Migrations and ns.Migrations.MIN_SUPPORTED_SCHEMA
+    local importedSchema = tonumber(type(payload) == "table" and payload._schemaVersion)
+    if floor and importedSchema and importedSchema > 0 and importedSchema < floor then
+        return ("This profile is too old to import. Minimum supported version is %d; this profile is %d.")
+            :format(floor, importedSchema)
+    end
+    return nil
+end
+
+local function ParseProfileImportString(core, str)
+    if not core or not core.db or not core.db.profile then
+        return false, "No profile loaded."
+    end
+
+    local ok, payload, prefix, decodeErr = DeserializeProfileImportPayload(str)
+    if not ok then
+        return false, decodeErr or "Could not read import string."
+    end
+
+    local payloadValid, payloadErr = ValidateProfilePayload(core, payload)
+    if not payloadValid then
+        return false, payloadErr or "Import failed profile validation."
+    end
+
+    local floorErr = SchemaFloorError(payload)
+    if floorErr then
+        return false, floorErr
+    end
+
+    return true, payload, prefix
+end
+
+local function CategoryHasData(category, profileData)
+    if type(category) ~= "table" or type(profileData) ~= "table" then
+        return false
+    end
+
+    if type(category.topLevelKeys) == "table" then
+        for _, key in ipairs(category.topLevelKeys) do
+            if profileData[key] ~= nil then
+                return true
+            end
+        end
+    end
+
+    if type(category.generalKeys) == "table" and type(profileData.general) == "table" then
+        for _, key in ipairs(category.generalKeys) do
+            if profileData.general[key] ~= nil then
+                return true
+            end
+        end
+    end
+
+    if type(category.paths) == "table" then
+        for _, path in ipairs(category.paths) do
+            local _, exists = GetValueAtPath(profileData, path)
+            if exists then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+local function BuildProfileImportPreview(profileData, prefix, importType)
+    local function BuildCategoryPreview(category)
+        local children = nil
+        local hasAvailableChild = false
+
+        if type(category.children) == "table" then
+            children = {}
+            for _, child in ipairs(category.children) do
+                local childPreview = BuildCategoryPreview(child)
+                children[#children + 1] = childPreview
+                if childPreview.available then
+                    hasAvailableChild = true
+                end
+            end
+        end
+
+        if category.id == "customTrackers" then
+            local dynamicChildren = BuildCustomTrackerBarPreviewChildren(profileData)
+            if dynamicChildren then
+                children = children or {}
+                for _, childPreview in ipairs(dynamicChildren) do
+                    children[#children + 1] = childPreview
+                    if childPreview.available then
+                        hasAvailableChild = true
+                    end
+                end
+            end
+        end
+
+        local available = CategoryHasData(category, profileData)
+        if hasAvailableChild then
+            available = true
+        end
+
+        return {
+            id = category.id,
+            label = category.label,
+            description = category.description,
+            recommended = category.recommended and true or false,
+            available = available,
+            children = children,
+        }
+    end
+
+    local categories = {}
+    for _, category in ipairs(PROFILE_IMPORT_CATEGORIES) do
+        categories[#categories + 1] = BuildCategoryPreview(category)
+    end
+
+    return {
+        importType = importType or "H3z0UI Profile",
+        prefix = prefix or "H3z0UI1",
+        categories = categories,
+    }
+end
+
+local function BuildSelectedCategoryLabel(category)
+    if not category then
+        return nil
+    end
+
+    for parentID, children in pairs(PROFILE_IMPORT_CHILDREN_BY_PARENT) do
+        for _, child in ipairs(children) do
+            if child == category then
+                local parent = PROFILE_IMPORT_CATEGORY_BY_ID[parentID]
+                if parent then
+                    return ("%s > %s"):format(parent.label, category.label)
+                end
+            end
+        end
+    end
+
+    return category.label
+end
+
+local function CollectSelectedProfileCategories(selectedCategoryIDs, profileData)
+    if type(selectedCategoryIDs) ~= "table" then
+        return false, "Select at least one category."
+    end
+
+    local selectedLookup = {}
+    local selectedLabels = {}
+    local selectedSpecs = {}
+    local selectedCustomTrackerBarIndexes = {}
+
+    for _, categoryID in ipairs(selectedCategoryIDs) do
+        local category = PROFILE_IMPORT_CATEGORY_BY_ID[categoryID]
+        if category and not selectedLookup[categoryID] then
+            selectedLookup[categoryID] = true
+            selectedLabels[#selectedLabels + 1] = BuildSelectedCategoryLabel(category)
+            selectedSpecs[#selectedSpecs + 1] = category
+        else
+            local barIndex = ParseCustomTrackerBarSelectionID(categoryID)
+            if barIndex and not selectedLookup[categoryID] then
+                selectedLookup[categoryID] = true
+                selectedCustomTrackerBarIndexes[#selectedCustomTrackerBarIndexes + 1] = barIndex
+
+                local trackerRecords = CollectCustomTrackerExportRecords(profileData)
+                local selectedBar = trackerRecords[barIndex] and trackerRecords[barIndex].bar or nil
+                local barName = type(selectedBar) == "table" and selectedBar.name or ("Bar " .. barIndex)
+                selectedLabels[#selectedLabels + 1] = ("Custom CDM Bars > %s"):format(tostring(barName))
+            end
+        end
+    end
+
+    if #selectedLabels == 0 then
+        return false, "Select at least one category."
+    end
+
+    return true, {
+        lookup = selectedLookup,
+        labels = selectedLabels,
+        specs = selectedSpecs,
+        customTrackerBarIndexes = selectedCustomTrackerBarIndexes,
+    }
+end
+
+local function ApplyProfileImportCategory(targetProfile, importedProfile, category)
+    if type(targetProfile) ~= "table" or type(importedProfile) ~= "table" or type(category) ~= "table" then
+        return
+    end
+
+    CopyTopLevelKeys(targetProfile, importedProfile, category.topLevelKeys)
+    CopyGeneralKeys(targetProfile, importedProfile, category.generalKeys)
+    CopyPathList(targetProfile, importedProfile, category.paths)
+
+    if category.id == "layout" and type(importedProfile.bigWigs) == "table" then
+        if type(targetProfile.bigWigs) ~= "table" then
+            targetProfile.bigWigs = {}
+        end
+        if importedProfile.bigWigs.normal ~= nil then
+            targetProfile.bigWigs.normal = CloneValue(importedProfile.bigWigs.normal)
+        end
+        if importedProfile.bigWigs.emphasized ~= nil then
+            targetProfile.bigWigs.emphasized = CloneValue(importedProfile.bigWigs.emphasized)
+        end
+    end
+end
+
+local function ExportSelectedCustomTrackerBars(targetProfile, sourceProfile, barIndexes)
+    if type(targetProfile) ~= "table" or type(sourceProfile) ~= "table" or type(barIndexes) ~= "table" then
+        return false
+    end
+
+    local sourceRecords = CollectCustomTrackerExportRecords(sourceProfile)
+    if #sourceRecords == 0 then
+        return false
+    end
+
+    if type(targetProfile.customTrackers) ~= "table" then
+        targetProfile.customTrackers = {}
+    end
+    if type(targetProfile.customTrackers.bars) ~= "table" then
+        targetProfile.customTrackers.bars = {}
+    end
+
+    local exportedAny = false
+    for _, barIndex in ipairs(barIndexes) do
+        local record = sourceRecords[barIndex]
+        local sourceBar = record and record.bar
+        if type(sourceBar) == "table" then
+            table.insert(targetProfile.customTrackers.bars, CloneValue(sourceBar))
+            exportedAny = true
+        end
+    end
+
+    return exportedAny
+end
+
+local PROFILE_EXPORT_GLOBALS_KEY = "_h3z0uiBundledGlobals"
+
+local function CollectExportGlobals(globals, profile)
+    if type(globals) ~= "table" then return nil end
+    local bundle = nil
+    if type(globals.specTrackerSpells) == "table" and next(globals.specTrackerSpells) then
+        bundle = bundle or {}
+        bundle.specTrackerSpells = globals.specTrackerSpells
+    end
+    if type(globals.ncdm) == "table"
+       and type(globals.ncdm.specTrackerSpells) == "table"
+       and next(globals.ncdm.specTrackerSpells)
+    then
+        bundle = bundle or {}
+        bundle.ncdm_specTrackerSpells = globals.ncdm.specTrackerSpells
+    end
+    local records = CollectCustomTrackerExportRecords(profile)
+    local legacySpecEntries = CollectLegacySpecEntriesForExportRecords(records, globals)
+    if legacySpecEntries then
+        bundle = bundle or {}
+        local merged = CloneValue(bundle.specTrackerSpells or {})
+        for key, value in pairs(legacySpecEntries) do
+            merged[key] = value
+        end
+        bundle.specTrackerSpells = merged
+    end
+    return bundle
+end
+
+local function ApplyImportedGlobals(core, bundle)
+    if type(bundle) ~= "table" then return end
+    local globals = core and core.db and core.db.global
+    if type(globals) ~= "table" then return end
+
+    if type(bundle.specTrackerSpells) == "table" then
+        globals.specTrackerSpells = CloneValue(bundle.specTrackerSpells)
+    end
+    if type(bundle.ncdm_specTrackerSpells) == "table" then
+        if type(globals.ncdm) ~= "table" then globals.ncdm = {} end
+        globals.ncdm.specTrackerSpells = CloneValue(bundle.ncdm_specTrackerSpells)
+    end
+end
+
+local function EnsureGlobalSpecTrackerRoots(core)
+    local globals = core and core.db and core.db.global
+    if type(globals) ~= "table" then return nil end
+    if type(globals.specTrackerSpells) ~= "table" then
+        globals.specTrackerSpells = {}
+    end
+    if type(globals.ncdm) ~= "table" then
+        globals.ncdm = {}
+    end
+    if type(globals.ncdm.specTrackerSpells) ~= "table" then
+        globals.ncdm.specTrackerSpells = {}
+    end
+    return globals
+end
+
+local function MergeImportedCustomTrackerGlobals(core, bundle, mappings)
+    if type(bundle) ~= "table" then return end
+    local globals = EnsureGlobalSpecTrackerRoots(core)
+    if not globals then return end
+
+    if type(mappings) == "table" and #mappings > 0 then
+        for _, mapping in ipairs(mappings) do
+            local sourceID = mapping.sourceID
+            local targetID = mapping.targetID
+            if sourceID ~= nil then
+                local sourceLegacy = type(bundle.specTrackerSpells) == "table"
+                    and bundle.specTrackerSpells[sourceID]
+                if type(sourceLegacy) == "table" then
+                    globals.specTrackerSpells[sourceID] = CloneValue(sourceLegacy)
+                end
+
+                local sourceContainerKey = "customBar_" .. tostring(sourceID)
+                local targetContainerKey = "customBar_" .. tostring(targetID)
+                local sourceNCDM = type(bundle.ncdm_specTrackerSpells) == "table"
+                    and bundle.ncdm_specTrackerSpells[sourceContainerKey]
+                if type(sourceNCDM) == "table" then
+                    globals.ncdm.specTrackerSpells[targetContainerKey] = CloneValue(sourceNCDM)
+                end
+            end
+        end
+        return
+    end
+
+    if type(bundle.specTrackerSpells) == "table" then
+        for key, value in pairs(bundle.specTrackerSpells) do
+            globals.specTrackerSpells[key] = CloneValue(value)
+        end
+    end
+    if type(bundle.ncdm_specTrackerSpells) == "table" then
+        for key, value in pairs(bundle.ncdm_specTrackerSpells) do
+            globals.ncdm.specTrackerSpells[key] = CloneValue(value)
+        end
+    end
+end
+
+local function ApplyFullProfilePayload(core, importedProfile)
+    local profile = core and core.db and core.db.profile
+    if type(profile) ~= "table" or type(importedProfile) ~= "table" then
+        return false, "No profile loaded."
+    end
+
+    local bundledGlobals = importedProfile[PROFILE_EXPORT_GLOBALS_KEY]
+
+    SettingsPins:SyncProfileFeatureSources(core.db)
+    for key in pairs(profile) do
+        profile[key] = nil
+    end
+    for key, value in pairs(importedProfile) do
+        if key ~= "_migrationBackup" and key ~= "_needsStarterReseed"
+            and key ~= "_h3z0uiClient" and key ~= PROFILE_EXPORT_GLOBALS_KEY then
+            profile[key] = CloneValue(value)
+        end
+    end
+
+    ApplyImportedGlobals(core, bundledGlobals)
+
+    StampSourceSpecOnImportedSpecBars(profile, importedProfile)
+
+    local pins = ns.Settings and ns.Settings.Pins
+    if pins and type(pins.HandleFullImportSnapshot) == "function" then
+        local migratedImport = CloneValue(importedProfile)
+        if ns.Migrations and type(ns.Migrations.RunOnProfile) == "function" then
+            ns.Migrations.RunOnProfile(migratedImport)
+        end
+        pins:HandleFullImportSnapshot(core.db, migratedImport)
+    end
+
+    local addon = _G.H3z0UI
+    if addon and addon.BackwardsCompat then
+        addon:BackwardsCompat()
+    end
+
+    SyncCustomTrackerBarsToCDM(core, profile)
+
+    if ns.Registry then
+        ns.Registry:RefreshAll()
+    elseif core.RefreshAll then
+        core:RefreshAll()
+    end
+
+    if ns.CDMContainers and ns.CDMContainers.ResnapshotForCurrentSpec then
+        ns.CDMContainers.ResnapshotForCurrentSpec()
+    end
+
+    return true, "Profile imported successfully."
+end
+
+local function NormalizeOptionalProfileName(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    name = name:gsub("^%s+", ""):gsub("%s+$", "")
+    if name == "" then
+        return nil
+    end
+    return name
+end
+
+local function ValidateProfileCopyCategories(categoryIDs)
+    if type(categoryIDs) ~= "table" or #categoryIDs == 0 then
+        return false, "Select at least one category to copy."
+    end
+
+    for _, categoryID in ipairs(categoryIDs) do
+        if type(categoryID) ~= "string" or not PROFILE_IMPORT_CATEGORY_BY_ID[categoryID] then
+            return false, ("Unknown profile settings category '%s'."):format(tostring(categoryID))
+        end
+    end
+
+    return true
+end
+
+local function PrepareImportTargetProfile(core, requestedProfileName)
+    local db = core and core.db
+    if not db or not db.profile then
+        return false, "No profile loaded."
+    end
+
+    local explicitName = NormalizeOptionalProfileName(requestedProfileName)
+    local currentName = db.GetCurrentProfile and db:GetCurrentProfile() or "Default"
+    if not explicitName then
+        return true, currentName, false
+    end
+
+    if explicitName ~= currentName then
+        local ok, err = pcall(db.SetProfile, db, explicitName)
+        if not ok then
+            return false, ("Could not switch to profile '%s': %s"):format(explicitName, tostring(err))
+        end
+    end
+
+    return true, (db.GetCurrentProfile and db:GetCurrentProfile()) or explicitName, true
+end
+
+local function RunImportFullProfile(core, importedProfile, targetProfileName)
+    local targetOK, activeProfileName, usingExplicitTarget = PrepareImportTargetProfile(core, targetProfileName)
+    if not targetOK then
+        return false, activeProfileName
+    end
+
+    local importOK, message = ApplyFullProfilePayload(core, importedProfile)
+    if importOK and usingExplicitTarget then
+        return true, ("Profile imported successfully into profile '%s'."):format(activeProfileName)
+    end
+    return importOK, message
+end
+
+local function RunImportProfileSelection(core, payloadOrErr, selectedCategoryIDs, targetProfileName, copyFeatureAnchors, skipPinnedSync)
+    local selectionOK, selectionData = CollectSelectedProfileCategories(selectedCategoryIDs, payloadOrErr)
+    if not selectionOK then
+        return false, "Select at least one category to import."
+    end
+
+    local selectedLookup = selectionData.lookup
+    local selectedLabels = selectionData.labels
+    local selectedSpecs = selectionData.specs
+    local selectedCustomTrackerBarIndexes = selectionData.customTrackerBarIndexes
+
+    local targetOK, activeProfileName, usingExplicitTarget = PrepareImportTargetProfile(core, targetProfileName)
+    if not targetOK then
+        return false, activeProfileName
+    end
+
+    local profile = core.db and core.db.profile
+    if type(profile) ~= "table" then
+        return false, "No profile loaded."
+    end
+
+    if not skipPinnedSync then
+        SettingsPins:SyncProfileFeatureSources(core.db)
+    end
+    local previousProfile = CloneValue(profile)
+
+    for _, category in ipairs(selectedSpecs) do
+        ApplyProfileImportCategory(profile, payloadOrErr, category)
+    end
+
+    local importedCustomTrackerMappings
+    if not selectedLookup.customTrackers and #selectedCustomTrackerBarIndexes > 0 then
+        local importedBars
+        importedBars, importedCustomTrackerMappings = ImportSelectedCustomTrackerBars(core, profile, payloadOrErr, selectedCustomTrackerBarIndexes)
+        if not importedBars then
+            importedCustomTrackerMappings = nil
+        end
+    end
+
+    if selectedLookup.customTrackers or #selectedCustomTrackerBarIndexes > 0 then
+        MergeImportedCustomTrackerGlobals(
+            core,
+            payloadOrErr[PROFILE_EXPORT_GLOBALS_KEY],
+            selectedLookup.customTrackers and nil or importedCustomTrackerMappings
+        )
+        StampSourceSpecOnImportedSpecBars(profile, payloadOrErr)
+        SyncCustomTrackerBarsToCDM(core, profile)
+        if type(profile.customTrackers) == "table" and type(profile.customTrackers.bars) == "table" then
+            for _, bar in ipairs(profile.customTrackers.bars) do
+                if type(bar) == "table" then
+                    bar._importedLegacyId = nil
+                end
+            end
+        end
+    end
+
+    local function CategoryCanImportThemePath(category, path)
+        if type(category) ~= "table" or type(path) ~= "string" or path == "" then
+            return false
+        end
+
+        if type(category.paths) == "table" then
+            for _, itemPath in ipairs(category.paths) do
+                if itemPath == path then
+                    return true
+                end
+            end
+        end
+
+        local generalKey = path:match("^general%.(.+)$")
+        if generalKey and type(category.generalKeys) == "table" then
+            for _, key in ipairs(category.generalKeys) do
+                if key == generalKey then
+                    return true
+                end
+            end
+        end
+
+        if type(category.topLevelKeys) == "table" then
+            for _, key in ipairs(category.topLevelKeys) do
+                if key == path then
+                    return true
+                end
+            end
+        end
+
+        return false
+    end
+
+    local function SelectedSpecsCoverThemePath(path)
+        for _, category in ipairs(selectedSpecs) do
+            if CategoryCanImportThemePath(category, path) then
+                return true
+            end
+        end
+        return false
+    end
+
+    if not selectedLookup.theme then
+        for _, path in ipairs(PROFILE_THEME_PRESERVE_PATHS) do
+            if not SelectedSpecsCoverThemePath(path) then
+                RestorePathList(profile, previousProfile, { path })
+            end
+        end
+    end
+
+    if not selectedLookup.layout then
+        RestorePathList(profile, previousProfile, PROFILE_LAYOUT_PATHS)
+        RestoreCustomTrackerLayout(profile, previousProfile)
+        RestoreDatatextPanelLayout(profile, previousProfile)
+    end
+
+    if copyFeatureAnchors then
+        for _, category in ipairs(selectedSpecs) do
+            SettingsPins:CopyProfileFeatureAnchors(profile, payloadOrErr, category)
+        end
+    end
+
+    local pins = ns.Settings and ns.Settings.Pins
+    if pins and type(pins.HandleSelectiveImport) == "function" then
+        pins:HandleSelectiveImport(core.db, selectedSpecs)
+    end
+
+    if ns.Registry then
+        ns.Registry:RefreshByCategories(selectedCategoryIDs)
+    elseif core.RefreshAll then
+        core:RefreshAll()
+    end
+
+    if ns.CDMContainers and ns.CDMContainers.ResnapshotForCurrentSpec then
+        ns.CDMContainers.ResnapshotForCurrentSpec()
+    end
+
+    if usingExplicitTarget then
+        return true, ("Imported %s into profile '%s'."):format(table.concat(selectedLabels, ", "), activeProfileName)
+    end
+    return true, ("Imported %s."):format(table.concat(selectedLabels, ", "))
+end
+
+local function SerializeProfileExportPayload(payload, prefix)
+    if type(payload) ~= "table" then
+        return nil, "Failed to serialize profile."
+    end
+    if ns.Client then
+        payload._h3z0uiClient = ns.Client.flavor
+    end
+    if not AceSerializer or not LibDeflate then
+        return nil, "Export requires AceSerializer-3.0 and LibDeflate."
+    end
+
+    local serialized = AceSerializer:Serialize(payload)
+    if not serialized or type(serialized) ~= "string" then
+        return nil, "Failed to serialize profile."
+    end
+
+    local compressed = LibDeflate:CompressDeflate(serialized)
+    if not compressed then
+        return nil, "Failed to compress profile."
+    end
+
+    local encoded = LibDeflate:EncodeForPrint(compressed)
+    if not encoded then
+        return nil, "Failed to encode profile."
+    end
+
+    return (prefix or "H3z0UI1") .. ":" .. encoded
+end
+
+local function RunExportProfileSelection(core, selectedCategoryIDs)
+    local profile = core and core.db and core.db.profile
+    if type(profile) ~= "table" then
+        return nil, "No profile loaded."
+    end
+
+    local selectionOK, selectionData = CollectSelectedProfileCategories(selectedCategoryIDs, profile)
+    if not selectionOK then
+        return nil, "Select at least one category to export."
+    end
+
+    local exportPayload = {}
+    for _, category in ipairs(selectionData.specs) do
+        ApplyProfileImportCategory(exportPayload, profile, category)
+    end
+    if selectionData.lookup.customTrackers then
+        StampCustomTrackerBarsForExport(exportPayload, profile)
+    end
+
+    if not selectionData.lookup.customTrackers and #selectionData.customTrackerBarIndexes > 0 then
+        ExportSelectedCustomTrackerBars(exportPayload, profile, selectionData.customTrackerBarIndexes)
+    end
+
+    if selectionData.lookup.customTrackers or #selectionData.customTrackerBarIndexes > 0 then
+        local bundle = CollectExportGlobals(core and core.db and core.db.global, profile)
+        if bundle then
+            exportPayload[PROFILE_EXPORT_GLOBALS_KEY] = bundle
+        end
+    end
+
+    return SerializeProfileExportPayload(exportPayload)
+end
+
+function H3z0UICore:ExportProfileToString()
+    if not self.db or not self.db.profile then
+        return "No profile loaded."
+    end
+
+    local payload = {}
+    for k, v in pairs(self.db.profile) do
+        if k ~= "_migrationBackup" and k ~= "_needsStarterReseed" then
+            payload[k] = v
+        end
+    end
+    StampCustomTrackerBarsForExport(payload, self.db.profile)
+
+    local bundle = CollectExportGlobals(self.db.global, self.db.profile)
+    if bundle then
+        payload[PROFILE_EXPORT_GLOBALS_KEY] = bundle
+    end
+
+    local exportString, exportErr = SerializeProfileExportPayload(payload)
+    return exportString or exportErr or "Failed to export profile."
+end
+
+function H3z0UICore:GetProfileExportCategories()
+    local profile = self and self.db and self.db.profile
+    return BuildProfileImportPreview(profile or {}, "H3z0UI1", "Current Profile").categories or {}
+end
+
+function H3z0UICore:BuildProfileImportPreviewFromPayload(payload, prefix)
+    if type(payload) ~= "table" then
+        return nil
+    end
+    return BuildProfileImportPreview(payload, prefix or "H3z0UI1")
+end
+
+function H3z0UICore:BuildProfileExportPreview()
+    local profile = self and self.db and self.db.profile
+    if type(profile) ~= "table" then
+        return nil
+    end
+    return BuildProfileImportPreview(profile, "H3z0UI1", "Current Profile")
+end
+
+function H3z0UICore:DescribeProfileImportValidationErrors(detail)
+    if type(detail) ~= "table" then
+        return tostring(detail or "Unknown error")
+    end
+    local lines = { detail.summary or "Validation failed.", "" }
+    for _, err in ipairs(detail.errors or {}) do
+        lines[#lines + 1] = "• " .. FormatDetailedLine(err)
+    end
+    return table.concat(lines, "\n")
+end
+
+function H3z0UICore:AnalyzeProfileImportString(str)
+    if not self.db or not self.db.profile then
+        return false, "No profile loaded."
+    end
+
+    local ok, payload, prefix, decodeErr = DeserializeProfileImportPayload(str)
+    if not ok then
+        return false, decodeErr or "Could not read import string."
+    end
+
+    local vok, detail = ValidateProfilePayloadDetailed(self, payload)
+    if not vok then
+        return false, detail
+    end
+
+    return true, BuildProfileImportPreview(payload, prefix)
+end
+
+function H3z0UICore:SanitizeProfileImportString(str)
+    if not self.db or not self.db.profile then
+        return false, nil, nil, nil, "No profile loaded."
+    end
+
+    local ok, payload, prefix, decodeErr = DeserializeProfileImportPayload(str)
+    if not ok then
+        return false, nil, nil, nil, decodeErr or "Could not read import string."
+    end
+
+    local floorErr = SchemaFloorError(payload)
+    if floorErr then
+        return false, nil, prefix, nil, floorErr
+    end
+
+    local sok, sanitized, stripped, serr = SanitizeProfilePayload(self, payload)
+    stripped = stripped or {}
+    if not sok then
+        return false, nil, prefix, stripped, serr or "Could not remove incompatible settings."
+    end
+
+    return true, sanitized, prefix, stripped, nil
+end
+
+function H3z0UICore:ImportProfileFromString(str, targetProfileName)
+    local ok, payloadOrErr = ParseProfileImportString(self, str)
+    if not ok then
+        local sok, sanitized, prefix, stripped, serr = self:SanitizeProfileImportString(str)
+        if not sok then
+            return false, payloadOrErr
+        end
+        if stripped and #stripped > 0 then
+            local count = #stripped
+            print(ns.L["|cff60A5FAH3z0UI:|r Auto-fixed %d incompatible settings during import."]:format(count))
+        end
+        payloadOrErr = sanitized
+    end
+
+    return RunImportFullProfile(self, payloadOrErr, targetProfileName)
+end
+
+function H3z0UICore:ImportProfileFromValidatedPayload(payload, targetProfileName)
+    if type(payload) ~= "table" then
+        return false, "Invalid import data."
+    end
+
+    local payloadValid, payloadErr = ValidateProfilePayload(self, payload)
+    if not payloadValid then
+        return false, payloadErr
+    end
+
+    return RunImportFullProfile(self, payload, targetProfileName)
+end
+
+function H3z0UICore:ImportProfileSelectionFromString(str, selectedCategoryIDs, targetProfileName)
+    local ok, payloadOrErr = ParseProfileImportString(self, str)
+    if not ok then
+        return false, payloadOrErr
+    end
+
+    return RunImportProfileSelection(self, payloadOrErr, selectedCategoryIDs, targetProfileName)
+end
+
+function H3z0UICore:ImportProfileSelectionFromValidatedPayload(payload, selectedCategoryIDs, targetProfileName)
+    if type(payload) ~= "table" then
+        return false, "Invalid import data."
+    end
+
+    local payloadValid, payloadErr = ValidateProfilePayload(self, payload)
+    if not payloadValid then
+        return false, payloadErr
+    end
+
+    return RunImportProfileSelection(self, payload, selectedCategoryIDs, targetProfileName)
+end
+
+function H3z0UICore:CopyProfileSelection(sourceProfileName, categoryIDs, skipPinnedSync)
+    local db = self.db
+    if not db or type(db.profile) ~= "table" then
+        return false, "No profile loaded."
+    end
+
+    local sourceName = NormalizeOptionalProfileName(sourceProfileName)
+    if not sourceName then
+        return false, "Choose a source profile."
+    end
+
+    local currentName = db.GetCurrentProfile and db:GetCurrentProfile() or "Default"
+    if sourceName == currentName then
+        return false, "Choose a profile other than the current profile."
+    end
+
+    local categoriesOK, categoryError = ValidateProfileCopyCategories(categoryIDs)
+    if not categoriesOK then
+        return false, categoryError
+    end
+
+    if not skipPinnedSync then
+        for _, categoryID in ipairs(categoryIDs) do
+            local category = PROFILE_IMPORT_CATEGORY_BY_ID[categoryID]
+            local pinCategoryID = category and category.profileFeaturePinID
+            if pinCategoryID and SettingsPins:GetEffectiveProfileFeatureSource(pinCategoryID, db) then
+                return false, "Unpin this feature before copying its settings."
+            end
+        end
+    end
+
+    local sourceProfile = SettingsPins:BuildInactiveProfileSnapshot(db, sourceName)
+    if not sourceProfile then
+        return false, ("No profile named '%s'."):format(sourceName)
+    end
+
+    for _, categoryID in ipairs(categoryIDs) do
+        if categoryID == "groupFrames" and type(sourceProfile.h3z0uiGroupFrames) == "table" then
+            local targetGroupFrames = db.profile.h3z0uiGroupFrames
+            local targetClickCast = type(targetGroupFrames) == "table" and rawget(targetGroupFrames, "clickCast") or nil
+            sourceProfile.h3z0uiGroupFrames.clickCast = CloneValue(targetClickCast)
+            break
+        end
+    end
+
+    local copied, copyError = RunImportProfileSelection(self, sourceProfile, categoryIDs, nil, true, skipPinnedSync)
+    if not copied then
+        return false, copyError
+    end
+
+    return true, ("Copied selected settings from profile '%s'."):format(sourceName)
+end
+
+function H3z0UICore:GetProfileFeatureSource(categoryID)
+    return SettingsPins:GetProfileFeatureSource(categoryID, self.db)
+end
+
+function H3z0UICore:GetGlobalProfileFeatureSource(categoryID)
+    return SettingsPins:GetGlobalProfileFeatureSource(categoryID, self.db)
+end
+
+function H3z0UICore:IsProfileFeaturePinOptedOut(categoryID)
+    return SettingsPins:IsProfileFeaturePinOptedOut(categoryID, self.db)
+end
+
+function H3z0UICore:SetProfileFeaturePinOptOut(categoryID, optedOut)
+    local changed, changeError = SettingsPins:SetProfileFeaturePinOptOut(categoryID, optedOut, self.db)
+    if not changed then
+        return false, changeError
+    end
+    if optedOut then
+        return true, "The current profile now uses its own settings."
+    end
+
+    if not SettingsPins:ApplyProfileFeaturePins(self.db, { categoryID }) then
+        SettingsPins:SetProfileFeaturePinOptOut(categoryID, true, self.db)
+        return false, "Could not apply the pinned settings."
+    end
+    SettingsPins:ApplyAllForDB(self.db)
+    return true, "The current profile now uses the pinned settings."
+end
+
+function H3z0UICore:SyncProfileFeatureSources(categoryID)
+    return SettingsPins:SyncProfileFeatureSources(self.db, categoryID)
+end
+
+function H3z0UICore:PinProfileSelection(sourceProfileName, categoryID)
+    if not SettingsPins:IsProfileFeatureSupported(categoryID) then
+        return false, "Only Aura Displays and Group / Raid Frames can use profile pins."
+    end
+
+    local sourceName = NormalizeOptionalProfileName(sourceProfileName)
+    if not sourceName then
+        return false, "Choose a source profile."
+    end
+
+    SettingsPins:SyncProfileFeatureSources(self.db, categoryID)
+    local previousSource = SettingsPins:GetProfileFeatureSource(categoryID, self.db)
+    local pinned, pinError = SettingsPins:SetProfileFeatureSource(sourceName, categoryID, self.db)
+    if not pinned then
+        return false, pinError
+    end
+
+    local copied, copyError = self:CopyProfileSelection(sourceName, { categoryID }, true)
+    if not copied then
+        if previousSource then
+            SettingsPins:SetProfileFeatureSource(previousSource, categoryID, self.db)
+        else
+            SettingsPins:ClearProfileFeatureSource(categoryID, self.db)
+        end
+        return false, copyError
+    end
+
+    return true, ("Pinned selected settings to profile '%s'."):format(sourceName)
+end
+
+function H3z0UICore:PinCurrentProfileSelection(categoryID)
+    if not SettingsPins:IsProfileFeatureSupported(categoryID) then
+        return false, "Only Aura Displays and Group / Raid Frames can use profile pins."
+    end
+
+    local db = self.db
+    local currentName = db and db.GetCurrentProfile and db:GetCurrentProfile() or nil
+    if type(currentName) ~= "string" or currentName == "" then
+        return false, "No profile loaded."
+    end
+
+    SettingsPins:SyncProfileFeatureSources(db, categoryID)
+    local specID = ns.Helpers and ns.Helpers.GetCurrentSpecID and ns.Helpers.GetCurrentSpecID() or nil
+    local pinned, pinError = SettingsPins:SetGlobalProfileFeatureSource(currentName, categoryID, db, specID)
+    if not pinned then
+        return false, pinError
+    end
+    return true, ("Pinned selected settings from profile '%s' across all profiles."):format(currentName)
+end
+
+function H3z0UICore:UnpinProfileSelection(categoryID)
+    SettingsPins:SyncProfileFeatureSources(self.db, categoryID)
+    if SettingsPins:GetGlobalProfileFeatureSource(categoryID, self.db) then
+        return SettingsPins:ClearGlobalProfileFeatureSource(categoryID, self.db)
+    end
+    return SettingsPins:ClearProfileFeatureSource(categoryID, self.db)
+end
+
+function H3z0UICore:ExportProfileSelectionToString(selectedCategoryIDs)
+    return RunExportProfileSelection(self, selectedCategoryIDs)
+end
+
+local function StripExcludedNameplateKeys(settings)
+    for key in pairs(NAMEPLATE_SETTINGS_EXCLUDED_KEYS) do
+        settings[key] = nil
+    end
+    return settings
+end
+
+function H3z0UICore:ExportNameplateProfileToString(name)
+    local store = self.db and self.db.global and self.db.global.nameplateProfiles
+    local snap = type(store) == "table" and type(name) == "string" and store[name] or nil
+    if type(snap) ~= "table" then
+        return nil, "No nameplate profile with that name."
+    end
+
+    local payload = {
+        _type = NAMEPLATE_PROFILE_PAYLOAD_TYPE,
+        _schemaVersion = tonumber(self.db.profile and self.db.profile._schemaVersion),
+        name = name,
+        settings = StripExcludedNameplateKeys(CloneValue(snap)),
+    }
+    return SerializeProfileExportPayload(payload, "NP1")
+end
+
+function H3z0UICore:AnalyzeNameplateProfileImportString(str)
+    if not self.db or not self.db.global then
+        return false, "No database loaded."
+    end
+
+    local ok, payload, _, decodeErr = DeserializeProfileImportPayload(str, NAMEPLATE_PROFILE_PREFIXES, "NP1")
+    if not ok then
+        return false, decodeErr or "Could not read import string."
+    end
+
+    if type(payload) ~= "table" or payload._type ~= NAMEPLATE_PROFILE_PAYLOAD_TYPE or type(payload.settings) ~= "table" then
+        if type(payload) == "table" and type(payload.nameplates) == "table" then
+            return false, "This is a full H3z0UI profile string. Import it from the profile Import/Export page."
+        end
+        return false, "This doesn't appear to be a nameplate profile string."
+    end
+
+    local floorErr = SchemaFloorError(payload)
+    if floorErr then
+        return false, floorErr
+    end
+
+    local wrapped = { nameplates = CloneValue(payload.settings), _h3z0uiClient = payload._h3z0uiClient }
+    local sok, sanitized, stripped, serr = SanitizeProfilePayload(self, wrapped)
+    if not sok or type(sanitized) ~= "table" or type(sanitized.nameplates) ~= "table" then
+        return false, serr or "Import failed nameplate validation."
+    end
+
+    return true, {
+        name = type(payload.name) == "string" and payload.name or nil,
+        settings = StripExcludedNameplateKeys(sanitized.nameplates),
+        stripped = stripped or {},
+    }
+end
+
+function H3z0UICore:ImportNameplateProfileFromString(str, targetName)
+    local ok, result = self:AnalyzeNameplateProfileImportString(str)
+    if not ok then
+        return false, result
+    end
+
+    local name = type(targetName) == "string" and targetName or result.name or ""
+    name = name:gsub("^%s+", ""):gsub("%s+$", "")
+    -- "__none" is the options UI's no-profile dropdown sentinel — a profile
+    -- with that literal name would be unselectable, so fall back.
+    if name == "" or name == "__none" then
+        name = "Imported nameplate profile"
+    end
+
+    local g = self.db.global
+    if type(g.nameplateProfiles) ~= "table" then
+        g.nameplateProfiles = {}
+    end
+    g.nameplateProfiles[name] = result.settings
+    return true, name, result.stripped
+end
+
+function H3z0UICore:GenerateUniqueTrackerID()
+    local db = self and self.db or H3z0UICore.db
+    local used = {}
+    local bars = db and db.profile and db.profile.customTrackers and db.profile.customTrackers.bars or {}
+    for _, b in ipairs(bars) do
+        if b.id then used[b.id] = true end
+    end
+    if db and db.global and db.global.specTrackerSpells then
+        for id in pairs(db.global.specTrackerSpells) do
+            used[id] = true
+        end
+    end
+    local containers = db and db.profile and db.profile.ncdm and db.profile.ncdm.containers
+    if type(containers) == "table" then
+        for key, container in pairs(containers) do
+            if type(container) == "table" then
+                if container._legacyId then used[container._legacyId] = true end
+                local suffix = type(key) == "string" and key:match("^customBar_(.+)$")
+                if suffix then used[suffix] = true end
+            end
+        end
+    end
+    local id
+    repeat
+        id = "tracker" .. time() .. math.random(1000, 9999)
+    until not used[id]
+    return id
+end
+
+GenerateUniqueTrackerID = function()
+    return H3z0UICore:GenerateUniqueTrackerID()
+end

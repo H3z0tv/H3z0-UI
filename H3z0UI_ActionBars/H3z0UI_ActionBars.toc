@@ -1,0 +1,38 @@
+## Interface: 120105, 120100, 120001, 120000, 16001
+## Title: |cFF30D1FFH3z0 UI|r Action Bars
+## Notes: H3z0 UI module. Requires the H3z0 UI core addon.
+## Author: H3z0
+## Version: 0.25.0
+## Category: User Interface
+## Group: H3z0UI
+## Dependencies: H3z0UI
+## IconTexture: Interface\AddOns\H3z0UI\assets\icon
+
+bootstrap.lua
+# == action bars (H3z0 UI's own bar frames) ==
+actionbars\actionbars_env.lua
+actionbars\actionbars.lua
+actionbars\actionbars_helpers.lua
+actionbars\actionbars_layout.lua
+actionbars\actionbars_editmode.lua
+actionbars\actionbars_builder.lua
+actionbars\actionbars_petstance.lua
+actionbars\actionbars_cooldowns.lua
+actionbars\actionbars_glow.lua
+actionbars\actionbars_events.lua
+actionbars\actionbars_extra_buttons.lua
+actionbars\actionbars_skinning.lua
+actionbars\actionbars_usability.lua
+actionbars\actionbars_mouseover.lua
+actionbars\actionbars_flyout.lua
+actionbars\actionbars_native.lua
+actionbars\actionbars_public.lua
+actionbars\actionbars_per_bar_builders.lua
+actionbars\gse_compat.lua
+actionbars\forever_art.lua
+actionbars\h3z_look.lua
+actionbars\h3z_import.lua
+# == buff / debuff borders, totem bar, raid markers ==
+actionbars\buffborders.lua
+actionbars\totems.lua
+actionbars\raidmarkers.lua

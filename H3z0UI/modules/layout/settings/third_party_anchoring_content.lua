@@ -1,0 +1,332 @@
+local _, ns = ...
+local H3z0UI = H3z0UI
+local GUI = H3z0UI.GUI
+local C = GUI.Colors
+local Shared = ns.H3z0UI_Options
+local Settings = ns.Settings
+local Registry = Settings and Settings.Registry
+local Schema = Settings and Settings.Schema
+local RenderAdapters = Settings and Settings.RenderAdapters
+
+local PADDING = Shared.PADDING
+local GetCore = ns.Helpers.GetCore
+local SECTION_GAP = 14
+
+local ANCHOR_POINTS = ns.H3z0UI_ModulesSettingsLayout.NINE_POINT_OPTIONS
+
+local THIRD_PARTY_LAYOUT_KEYS = {
+    dandersParty = { containerKey = "party" },
+    dandersRaid = { containerKey = "raid" },
+    dandersPinned1 = { containerKey = "pinned1" },
+    dandersPinned2 = { containerKey = "pinned2" },
+}
+
+local function BuildAnchorBlock(tabContent, label, cfg, y, onChange, excludeSelf)
+    if not cfg then return y end
+
+    Shared.CreateAccentDotLabel(tabContent, label, y); y = y - 22
+
+    local card = Shared.CreateSettingsCardGroup(tabContent, y)
+
+    local xW, yW
+
+    local function OnAnchorTargetChange()
+        cfg.offsetX = 0
+        cfg.offsetY = 0
+        if xW and xW.SetValue then xW:SetValue(0, true) end
+        if yW and yW.SetValue then yW:SetValue(0, true) end
+        if onChange then onChange() end
+    end
+
+    local enableW = GUI:CreateFormCheckbox(card.frame, nil, "enabled", cfg, onChange,
+        { description = ns.L["Let H3z0UI drive the position of "] .. label .. ns.L[". Turn off to leave the addon's own anchor behavior intact."] })
+    card.AddRow(Shared.BuildSettingRow(card.frame, ns.L["Enable Anchoring"], enableW))
+
+    local AnchorOpts = ns.H3z0UI_Anchoring_Options
+    local anchorW
+    if AnchorOpts and AnchorOpts.CreateAnchorDropdown then
+        anchorW = AnchorOpts:CreateAnchorDropdown(
+            card.frame, nil, cfg, "anchorTo",
+            nil, nil, nil, OnAnchorTargetChange,
+            nil, nil, excludeSelf
+        )
+    else
+        anchorW = GUI:CreateFormDropdown(card.frame, nil, {}, "anchorTo", cfg, OnAnchorTargetChange)
+    end
+    card.AddRow(Shared.BuildSettingRow(card.frame, ns.L["Anchor To"], anchorW))
+
+    local srcW = GUI:CreateFormDropdown(card.frame, nil, ANCHOR_POINTS, "sourcePoint", cfg, onChange,
+        { description = ns.L["Which corner or edge of "] .. label .. ns.L[" is used as its anchor point."] })
+    local dstW = GUI:CreateFormDropdown(card.frame, nil, ANCHOR_POINTS, "targetPoint", cfg, onChange,
+        { description = ns.L["Which corner or edge of the target H3z0UI element the container point attaches to."] })
+    card.AddRow(
+        Shared.BuildSettingRow(card.frame, ns.L["Container Point"], srcW),
+        Shared.BuildSettingRow(card.frame, ns.L["Target Point"], dstW)
+    )
+
+    xW = GUI:CreateFormSlider(card.frame, nil, -400, 400, 1, "offsetX", cfg, onChange, nil,
+        { description = ns.L["Horizontal pixel offset from the target anchor point."] })
+    yW = GUI:CreateFormSlider(card.frame, nil, -400, 400, 1, "offsetY", cfg, onChange, nil,
+        { description = ns.L["Vertical pixel offset from the target anchor point."] })
+    card.AddRow(
+        Shared.BuildSettingRow(card.frame, ns.L["X Offset"], xW),
+        Shared.BuildSettingRow(card.frame, ns.L["Y Offset"], yW)
+    )
+
+    card.Finalize()
+    return y - card.frame:GetHeight() - SECTION_GAP
+end
+
+local function BuildThirdPartyContainerLayoutSettings(host, lookupKey)
+    local entry = type(lookupKey) == "string" and THIRD_PARTY_LAYOUT_KEYS[lookupKey] or nil
+    local U = ns.H3z0UI_LayoutMode_Utils
+    local DF = ns.H3z0UI_DandersFrames
+    if not entry or not host or not U or not DF or not DF.IsAvailable or not DF:IsAvailable() then
+        return 80
+    end
+
+    local core = GetCore()
+    local profile = core and core.db and core.db.profile
+    local db = profile and profile.dandersFrames
+    local cfg = db and db[entry.containerKey]
+    if not cfg or not GUI then
+        return 80
+    end
+
+    local PAD = PADDING
+    local HEADER_GAP = 26
+
+    local function Refresh()
+        DF:ApplyPosition(entry.containerKey)
+        if _G.H3z0UI_LayoutModeSyncHandle then
+            _G.H3z0UI_LayoutModeSyncHandle(lookupKey)
+        end
+    end
+
+    local y = -10
+    local sections = {}
+
+    Shared.CreateAccentDotLabel(host, ns.L["Position"], y); y = y - HEADER_GAP
+    local card = Shared.CreateSettingsCardGroup(host, y)
+    card.frame:ClearAllPoints()
+    card.frame:SetPoint("TOPLEFT", host, "TOPLEFT", PAD, y)
+    card.frame:SetPoint("TOPRIGHT", host, "TOPRIGHT", -PAD, y)
+
+    local xW, yW
+
+    local function OnAnchorTargetChange()
+        cfg.offsetX = 0
+        cfg.offsetY = 0
+        if xW and xW.SetValue then xW:SetValue(0, true) end
+        if yW and yW.SetValue then yW:SetValue(0, true) end
+        Refresh()
+    end
+
+    local enableW = GUI:CreateFormCheckbox(card.frame, nil, "enabled", cfg, Refresh,
+        { description = ns.L["Enable H3z0UI-managed anchoring for this container. While off, the container keeps its existing position."] })
+    card.AddRow(Shared.BuildSettingRow(card.frame, ns.L["Enable"], enableW))
+
+    local AnchorOpts = ns.H3z0UI_Anchoring_Options
+    local anchorW
+    if AnchorOpts and AnchorOpts.CreateAnchorDropdown then
+        anchorW = AnchorOpts:CreateAnchorDropdown(
+            card.frame, nil, cfg, "anchorTo",
+            nil, nil, nil, OnAnchorTargetChange
+        )
+    else
+        anchorW = GUI:CreateFormDropdown(card.frame, nil, {}, "anchorTo", cfg, OnAnchorTargetChange)
+    end
+    card.AddRow(Shared.BuildSettingRow(card.frame, ns.L["Anchor To"], anchorW))
+
+    local srcW = GUI:CreateFormDropdown(card.frame, nil, ANCHOR_POINTS, "sourcePoint", cfg, Refresh,
+        { description = ns.L["Which point on this container is used as the attach point."] })
+    local dstW = GUI:CreateFormDropdown(card.frame, nil, ANCHOR_POINTS, "targetPoint", cfg, Refresh,
+        { description = ns.L["Which point on the target frame this container attaches to."] })
+    card.AddRow(
+        Shared.BuildSettingRow(card.frame, ns.L["Container Point"], srcW),
+        Shared.BuildSettingRow(card.frame, ns.L["Target Point"], dstW)
+    )
+
+    xW = GUI:CreateFormSlider(card.frame, nil, -400, 400, 1, "offsetX", cfg, Refresh,
+        { description = ns.L["Horizontal pixel offset between container point and target point."] })
+    yW = GUI:CreateFormSlider(card.frame, nil, -400, 400, 1, "offsetY", cfg, Refresh,
+        { description = ns.L["Vertical pixel offset between container point and target point."] })
+    card.AddRow(
+        Shared.BuildSettingRow(card.frame, ns.L["X Offset"], xW),
+        Shared.BuildSettingRow(card.frame, ns.L["Y Offset"], yW)
+    )
+
+    card.Finalize()
+    y = y - card.frame:GetHeight() - SECTION_GAP
+
+    local function relayoutSections()
+        local cy = y
+        for _, s in ipairs(sections) do
+            s:ClearAllPoints()
+            s:SetPoint("TOPLEFT", host, "TOPLEFT", PAD, cy)
+            s:SetPoint("RIGHT", host, "RIGHT", -PAD, 0)
+            cy = cy - s:GetHeight() - 4
+        end
+        host:SetHeight(math.abs(cy) + 16)
+    end
+
+    U.BuildOpenFullSettingsLink(host, lookupKey, sections, relayoutSections)
+    relayoutSections()
+    return host:GetHeight()
+end
+
+local function BuildIntegrationSection(tabContent, y, opts)
+    local PAD = PADDING
+
+    Shared.CreateAccentDotLabel(tabContent, opts.name, y); y = y - 22
+
+    if not opts.isAvailable() then
+        local info = GUI:CreateLabel(tabContent, opts.unavailableMessage, 11, C.textMuted)
+        info:SetPoint("TOPLEFT", tabContent, "TOPLEFT", PAD, y)
+        info:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        info:SetJustifyH("LEFT")
+        return y - 26
+    end
+
+    local core = GetCore()
+    local db = core and core.db and core.db.profile and core.db.profile[opts.dbKey]
+    if not db then
+        local errorLabel = GUI:CreateLabel(tabContent, opts.name .. ns.L[" anchor database not loaded. Please reload UI."], 12, {1, 0.3, 0.3, 1})
+        errorLabel:SetPoint("TOPLEFT", PAD, y)
+        return y - 24
+    end
+
+    if opts.description then
+        local desc = GUI:CreateLabel(tabContent, opts.description, 11, C.textMuted)
+        desc:SetPoint("TOPLEFT", tabContent, "TOPLEFT", PAD, y)
+        desc:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        desc:SetJustifyH("LEFT")
+        desc:SetWordWrap(true)
+        y = y - 32
+    end
+
+    for _, entry in ipairs(opts.keys) do
+        local cfg = db[entry.key]
+        y = BuildAnchorBlock(
+            tabContent,
+            opts.name .. " \226\128\148 " .. entry.label,
+            cfg, y,
+            function() opts.applyPosition(entry.key) end,
+            entry.excludeSelf
+        )
+    end
+
+    return y
+end
+
+local function BuildThirdPartyTab(tabContent)
+    GUI:SetSearchContext({tabIndex = 3, tabName = "Frame Positioning", subTabIndex = 7, subTabName = "3rd Party Addons"})
+
+    local y = -10
+    local PAD = PADDING
+
+    local intro = GUI:CreateLabel(tabContent,
+        ns.L["Configure H3z0UI-driven anchoring integrations for supported external addons."],
+        11, C.textMuted)
+    intro:SetPoint("TOPLEFT", tabContent, "TOPLEFT", PAD, y)
+    intro:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+    intro:SetJustifyH("LEFT")
+    intro:SetWordWrap(true)
+    y = y - 30
+
+    y = BuildIntegrationSection(tabContent, y, {
+        name    = "BigWigs",
+        dbKey   = "bigWigs",
+        keys    = {
+            {key = "normal",     label = ns.L["Normal Bars"]},
+            {key = "emphasized", label = ns.L["Emphasized Bars"]},
+        },
+        isAvailable        = function() return ns.H3z0UI_BigWigs and ns.H3z0UI_BigWigs:IsAvailable() end,
+        unavailableMessage = ns.L["BigWigs not detected. Install and enable BigWigs to use these anchors."],
+        description        = ns.L["Anchor BigWigs bar groups to H3z0UI elements. This writes to BigWigs Bars custom anchor points."],
+        applyPosition      = function(k) ns.H3z0UI_BigWigs:ApplyPosition(k) end,
+    })
+
+    y = BuildIntegrationSection(tabContent, y, {
+        name    = "DandersFrames",
+        dbKey   = "dandersFrames",
+        keys    = {
+            {key = "party",   label = ns.L["Party Frames"]},
+            {key = "raid",    label = ns.L["Raid Frames"]},
+            {key = "pinned1", label = ns.L["Pinned Set 1"]},
+            {key = "pinned2", label = ns.L["Pinned Set 2"]},
+        },
+        isAvailable        = function() return ns.H3z0UI_DandersFrames and ns.H3z0UI_DandersFrames:IsAvailable() end,
+        unavailableMessage = ns.L["DandersFrames not detected. Install and enable DandersFrames to use these anchors."],
+        description        = ns.L["Anchor DandersFrames containers to H3z0UI elements. When enabled, H3z0UI controls placement; move them with H3z0UI Layout Mode rather than DandersFrames' own unlock."],
+        applyPosition      = function(k) ns.H3z0UI_DandersFrames:ApplyPosition(k) end,
+    })
+
+    y = BuildIntegrationSection(tabContent, y, {
+        name    = "AbilityTimeline",
+        dbKey   = "abilityTimeline",
+        keys    = {
+            {key = "timeline", label = ns.L["Timeline Frame"], excludeSelf = "abilityTimelineTimeline"},
+            {key = "bigIcon",  label = ns.L["Big Icon Frame"], excludeSelf = "abilityTimelineBigIcon"},
+        },
+        isAvailable        = function() return ns.H3z0UI_AbilityTimeline and ns.H3z0UI_AbilityTimeline:IsAvailable() end,
+        unavailableMessage = ns.L["AbilityTimeline not detected. Install and enable AbilityTimeline to use these anchors."],
+        description        = ns.L["Anchor AbilityTimeline frames to H3z0UI elements. This controls the timeline and big icon frame positions."],
+        applyPosition      = function(k) ns.H3z0UI_AbilityTimeline:ApplyPosition(k) end,
+    })
+
+    tabContent:SetHeight(math.abs(y) + 30)
+end
+
+ns.H3z0UI_ThirdPartyAnchoringOptions = {
+    BuildThirdPartyTab = BuildThirdPartyTab,
+    BuildLayoutContainerSettings = BuildThirdPartyContainerLayoutSettings,
+}
+
+if Registry and Schema and RenderAdapters
+    and type(Registry.RegisterFeature) == "function"
+    and type(Schema.Feature) == "function"
+    and type(Schema.Section) == "function" then
+    Registry:RegisterFeature(Schema.Feature({
+        id = "thirdPartyAnchoring",
+        moverKey = "thirdPartyAnchoring",
+        lookupKeys = { "dandersParty", "dandersRaid", "dandersPinned1", "dandersPinned2" },
+        category = "global",
+        nav = { tileId = "global", subPageIndex = 5 },
+        sections = {
+            Schema.Section({
+                id = "settings",
+                kind = "page",
+                minHeight = 80,
+                build = BuildThirdPartyTab,
+            }),
+        },
+        render = {
+            layout = function(host, options)
+                return BuildThirdPartyContainerLayoutSettings(
+                    host,
+                    options and options.providerKey or "thirdPartyAnchoring"
+                )
+            end,
+        },
+        getAnchorStatus = function(key)
+            local entry = THIRD_PARTY_LAYOUT_KEYS[key]
+            if not entry then return nil end
+            local core = GetCore()
+            local cfg = core and core.db and core.db.profile
+                and core.db.profile.dandersFrames
+                and core.db.profile.dandersFrames[entry.containerKey]
+            if type(cfg) ~= "table" then
+                return { enabled = false }
+            end
+            local hasAnchor = cfg.enabled
+                and type(cfg.anchorTo) == "string"
+                and cfg.anchorTo ~= ""
+                and cfg.anchorTo ~= "disabled"
+            return {
+                enabled = hasAnchor,
+                parent = hasAnchor and cfg.anchorTo or nil,
+            }
+        end,
+    }))
+end

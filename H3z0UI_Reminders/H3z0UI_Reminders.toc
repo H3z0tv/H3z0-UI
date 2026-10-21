@@ -1,0 +1,28 @@
+## Interface: 120105, 120100, 120001, 120000, 16001
+## Title: |cFF30D1FFH3z0 UI|r Reminders
+## Notes: H3z0 UI module. Requires the H3z0 UI core addon.
+## Author: H3z0
+## Version: 0.25.0
+## Category: User Interface
+## Group: H3z0UI
+## Dependencies: H3z0UI
+## OptionalDeps: BigWigs, DBM-Core
+## IconTexture: Interface\AddOns\H3z0UI\assets\icon
+## LoadOnDemand: 1
+
+bootstrap.lua
+reminders\bossmods.lua
+reminders\journal.lua
+reminders\defensive_spell_classes.lua
+reminders\defensives.lua
+reminders\callout.lua
+reminders\engine.lua
+
+spell_reminders\model.lua
+spell_reminders\catalog.lua
+spell_reminders\group_frames.lua
+spell_reminders\presentation.lua
+spell_reminders\sounds.lua
+spell_reminders\runtime.lua
+spell_reminders\tracking.lua
+spell_reminders\init.lua

@@ -1,0 +1,56 @@
+local ADDON_NAME, ns = ...
+
+local V2 = {}
+ns.H3z0UI_QoLTile = V2
+
+local SEARCH_TAB_INDEX = 17
+local SEARCH_TAB_NAME = ns.L["Quality of Life"]
+
+local function SubPage(id, name, featureId, subTabIndex, subTabName)
+    local routes = { { tabIndex = SEARCH_TAB_INDEX, subTabIndex = subTabIndex } }
+    if subTabIndex == 1 then
+        routes[#routes + 1] = { tabIndex = SEARCH_TAB_INDEX, subTabIndex = 0 }
+    end
+
+    return {
+        id = id,
+        name = name,
+        featureId = featureId,
+        navRoutes = routes,
+        searchContext = {
+            tabIndex = SEARCH_TAB_INDEX,
+            tabName = SEARCH_TAB_NAME,
+            subTabIndex = subTabIndex,
+            subTabName = subTabName,
+        },
+    }
+end
+
+function V2.Register(frame)
+    local Opts = ns.H3z0UI_Options
+    if not Opts or type(Opts.RegisterFeatureTile) ~= "function" then
+        return
+    end
+
+    Opts.RegisterFeatureTile(frame, {
+        id = "qol",
+        icon = "Q",
+        name = ns.L["Quality of Life"],
+        subPages = {
+            SubPage("fpsPreset",        ns.L["FPS Preset"],  "fpsPreset",        1,  ns.L["FPS Preset"]),
+            SubPage("combatText",       ns.L["Combat Text"], "combatText",       2,  ns.L["Combat Text"]),
+            SubPage("automation",       ns.L["Automation"],  "automation",       3,  ns.L["Automation"]),
+            SubPage("popupBlocker",     ns.L["Popups"],      "popupBlocker",     4,  ns.L["Popups"]),
+            SubPage("quickSalvage",     ns.L["Salvage"],     "quickSalvage",     5,  ns.L["Salvage"]),
+            SubPage("consumables",      ns.L["Consumables"], "consumableMacros", 6,  ns.L["Consumables"]),
+            SubPage("targetDistance",   ns.L["Distance"],    "targetDistance",   7,  ns.L["Distance"]),
+            SubPage("merchantGrid",     ns.L["Merchant"],    "merchantGrid",     10, ns.L["Merchant"]),
+            SubPage("friendsList",      ns.L["Friends"],     "friendsList",      11, ns.L["Friends"]),
+            SubPage("extendedIgnore",   ns.L["Ignore"],      "extendedIgnore",   12, ns.L["Ignore"]),
+            SubPage("eventSounds",      ns.L["Sounds"],      "eventSounds",      13, ns.L["Sounds"]),
+            SubPage("soundMute",        ns.L["Sound Mute"],  "soundMute",        14, ns.L["Sound Mute"]),
+            SubPage("notifications",    ns.L["Notifications"], "notifications",  15, ns.L["Notifications"]),
+            SubPage("bonusRoll",        ns.L["Bonus Roll"],  "bonusRollFrame",    16, ns.L["Bonus Roll"]),
+        },
+    })
+end

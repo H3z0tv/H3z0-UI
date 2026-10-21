@@ -1,0 +1,11 @@
+<Bindings>
+  <Binding name="H3z0UI_TOGGLE_OPTIONS" header="H3z0UI" category="ADDONS">
+    if H3z0UI then
+      local main = H3z0UI.GUI and H3z0UI.GUI.MainFrame
+      if main and main:IsShown() then main:Hide() else H3z0UI:OpenOptions() end
+    end
+  </Binding>
+  <Binding name="H3z0UI_TOGGLE_LAYOUT" category="ADDONS">
+    if H3z0UI_ToggleLayoutMode then H3z0UI_ToggleLayoutMode() end
+  </Binding>
+</Bindings>

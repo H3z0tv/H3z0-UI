@@ -1,0 +1,770 @@
+local ADDON_NAME, ns = ...
+
+local SettingsBuilders = {}
+ns.SettingsBuilders = SettingsBuilders
+
+local surfaceSeq = 0
+local providerSurfaces = {}
+local pendingProviderRefresh = {}
+local providerRevisions = {}
+
+local function BumpProviderRevision(providerKey)
+    providerRevisions[providerKey] = (providerRevisions[providerKey] or 0) + 1
+end
+
+function SettingsBuilders.SurfaceNeedsRebuildOnShow(parent, providerKey)
+    if not parent then return true end
+    local built = parent._h3z0uiBuiltProviderRevision
+    if built == nil then return true end
+    return built ~= (providerRevisions[providerKey] or 0)
+end
+
+local function GetGUI()
+    return _G.H3z0UI and _G.H3z0UI.GUI
+end
+
+local function NextSurfaceId(prefix)
+    surfaceSeq = surfaceSeq + 1
+    return string.format("%s:%d", prefix or "provider", surfaceSeq)
+end
+
+local function ShowProviderUnavailable(parent, message)
+    if not parent then return 80 end
+
+    local GUI = GetGUI()
+    local label
+    if GUI and GUI.CreateLabel then
+        label = GUI:CreateLabel(parent, message or ns.L["Settings are still initializing."], 11, GUI.Colors and GUI.Colors.textMuted)
+    else
+        label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label:SetText(message or ns.L["Settings are still initializing."])
+        label:SetTextColor(1, 1, 1, 0.65)
+    end
+
+    label:SetPoint("TOPLEFT", 0, -8)
+    label:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+    if label.SetJustifyH then
+        label:SetJustifyH("LEFT")
+    end
+    if parent.SetHeight then
+        parent:SetHeight(80)
+    end
+    return 80
+end
+
+local function GetProvider(providerKey)
+    local Settings = ns.Settings
+    local providers = Settings and (Settings.Providers or Settings.ProviderRegistry)
+    if not providers or type(providers.Get) ~= "function" then
+        return nil
+    end
+    return providers:Get(providerKey)
+end
+
+local function IsSurfaceVisible(frame)
+    if not frame or type(frame.IsVisible) ~= "function" then
+        return false
+    end
+
+    local okVisible, isVisible = pcall(frame.IsVisible, frame)
+    if not okVisible or not isVisible then
+        return false
+    end
+
+    local GUI = GetGUI()
+    local mainFrame = GUI and GUI.MainFrame
+    if mainFrame and mainFrame ~= frame and type(mainFrame.IsVisible) == "function" then
+        local okMainVisible, mainVisible = pcall(mainFrame.IsVisible, mainFrame)
+        if not okMainVisible or not mainVisible then
+            return false
+        end
+    end
+
+    return true
+end
+
+local function ClearHost(parent)
+    if not parent then return end
+
+    local GUI = GetGUI()
+    if GUI and type(GUI.TeardownFrameTree) == "function" then
+        GUI:TeardownFrameTree(parent)
+        if parent.SetHeight then
+            parent:SetHeight(1)
+        end
+        return
+    elseif GUI and GUI.CleanupWidgetTree then
+        GUI:CleanupWidgetTree(parent)
+    end
+
+    for _, child in ipairs({parent:GetChildren()}) do
+        child:Hide()
+        child:SetParent(nil)
+    end
+
+    for _, region in ipairs({parent:GetRegions()}) do
+        if region.Hide then
+            region:Hide()
+        end
+    end
+
+    if parent.SetHeight then
+        parent:SetHeight(1)
+    end
+end
+
+function SettingsBuilders.RegisterProviderSurface(providerKey, surfaceId, refreshFn, isVisibleFn)
+    if not providerKey or not surfaceId or type(refreshFn) ~= "function" then return end
+    providerSurfaces[surfaceId] = {
+        providerKey = providerKey,
+        refreshFn = refreshFn,
+        isVisibleFn = isVisibleFn,
+    }
+end
+
+function SettingsBuilders.UnregisterProviderSurface(surfaceId)
+    if not surfaceId then return end
+    providerSurfaces[surfaceId] = nil
+end
+
+local function FlushProviderRefresh(providerKey)
+    local pending = pendingProviderRefresh[providerKey]
+    pendingProviderRefresh[providerKey] = nil
+    if not pending then return end
+
+    for surfaceId, surface in pairs(providerSurfaces) do
+        if surface.providerKey == providerKey and (pending.structural or not pending.skipSurfaceIds[surfaceId]) then
+            local isVisible = true
+            if surface.isVisibleFn then
+                local okVisible, visible = pcall(surface.isVisibleFn)
+                isVisible = okVisible and visible ~= false
+            end
+            if isVisible then
+                pcall(surface.refreshFn, {
+                    providerKey = providerKey,
+                    structural = pending.structural == true,
+                })
+            end
+        end
+    end
+end
+
+function SettingsBuilders.NotifyProviderChanged(providerKey, opts)
+    if not providerKey then return end
+    opts = opts or {}
+
+    BumpProviderRevision(providerKey)
+
+    local pending = pendingProviderRefresh[providerKey]
+    if not pending then
+        pending = {
+            structural = false,
+            skipSurfaceIds = {},
+        }
+        pendingProviderRefresh[providerKey] = pending
+        C_Timer.After(0.05, function()
+            FlushProviderRefresh(providerKey)
+        end)
+    end
+
+    if opts.structural then
+        pending.structural = true
+    end
+    if opts.sourceSurfaceId then
+        pending.skipSurfaceIds[opts.sourceSurfaceId] = true
+    end
+end
+
+local function ErrorHandler(err)
+    local message = tostring(err)
+    if type(_G.debugstack) == "function" then
+        message = message .. "\n" .. _G.debugstack(2, 20, 20)
+    end
+    return message
+end
+
+local function WithSuppressedPosition(includePosition, fn)
+    local U = ns.H3z0UI_LayoutMode_Utils
+    local original = U and U.BuildPositionCollapsible
+
+    if U and includePosition == false then
+        ---@type fun(...)
+        U.BuildPositionCollapsible = function() end
+    end
+
+    local ok, result = xpcall(fn, ErrorHandler)
+
+    if U and original then
+        U.BuildPositionCollapsible = original
+    end
+
+    if not ok then
+        geterrorhandler()(result)
+        return nil
+    end
+
+    return result
+end
+
+local function WithOnlyPosition(fn)
+    local U = ns.H3z0UI_LayoutMode_Utils
+    if not U or not U.CreateCollapsible or not U.BuildPositionCollapsible then
+        local ok, result = xpcall(fn, ErrorHandler)
+        if not ok then
+            geterrorhandler()(result)
+            return nil
+        end
+        return result
+    end
+
+    local originalCreate = U.CreateCollapsible
+    local originalBuildPosition = U.BuildPositionCollapsible
+    local insidePosition = false
+
+    U.CreateCollapsible = function(...)
+        if insidePosition then
+            return originalCreate(...)
+        end
+        return nil
+    end
+
+    U.BuildPositionCollapsible = function(...)
+        local prev = insidePosition
+        insidePosition = true
+        ---@diagnostic disable-next-line: redundant-parameter
+        local ok, err = xpcall(originalBuildPosition, ErrorHandler, ...)
+        insidePosition = prev
+        if not ok then geterrorhandler()(err) end
+    end
+
+    local ok, result = xpcall(fn, ErrorHandler)
+
+    U.CreateCollapsible = originalCreate
+    U.BuildPositionCollapsible = originalBuildPosition
+
+    if not ok then
+        geterrorhandler()(result)
+        return nil
+    end
+
+    return result
+end
+
+local CARD_ROW_HEIGHT = 32
+local dualColumnSequence = 0
+
+local function GetInitialLayoutY(item, body)
+    if not item or type(item.GetNumPoints) ~= "function" or type(item.GetPoint) ~= "function" then
+        return nil
+    end
+
+    local bestY, bestRank
+    local numPoints = item:GetNumPoints() or 0
+    for pointIndex = 1, numPoints do
+        local point, relativeTo, _, _, y = item:GetPoint(pointIndex)
+        if type(y) == "number" then
+            local rank = 1
+            if point == "TOPLEFT" or point == "TOP" or point == "TOPRIGHT" then
+                rank = 3
+            elseif point == "LEFT" or point == "CENTER" or point == "RIGHT" then
+                rank = 2
+            end
+
+            if relativeTo == body then
+                rank = rank + 3
+            end
+
+            if not bestY or rank > bestRank then
+                bestY = y
+                bestRank = rank
+            end
+        end
+    end
+
+    return bestY
+end
+
+local function GetDualColumnRowHeight(widget)
+    if not widget then return CARD_ROW_HEIGHT end
+    local customHeight = widget._h3z0uiDualColumnRowHeight
+    if type(customHeight) == "number" and customHeight > 0 then
+        return customHeight
+    end
+
+    local widgetHeight = widget.GetHeight and widget:GetHeight() or nil
+    if type(widgetHeight) == "number" and widgetHeight > 0 then
+        return math.max(CARD_ROW_HEIGHT, math.ceil(widgetHeight))
+    end
+
+    return CARD_ROW_HEIGHT
+end
+
+local function ApplyDualColumnLayout(section)
+    if not section or not section._body then return end
+    local body = section._body
+    if section._h3z0uiSkipDualColumnLayout or body._h3z0uiSkipDualColumnLayout then return end
+    body._dualRowFrames = body._dualRowFrames or {}
+
+    local layoutItems = {}
+    local itemOrder = {}
+    local function AddLayoutItem(item, isTextRegion)
+        if not item then return end
+        if item.IsShown and not item:IsShown() then return end
+
+        table.insert(layoutItems, item)
+        itemOrder[item] = #layoutItems
+        if item._h3z0uiDualColumnOriginalY == nil then
+            item._h3z0uiDualColumnOriginalY = GetInitialLayoutY(item, body)
+        end
+        if not item._h3z0uiDualColumnSequence then
+            dualColumnSequence = dualColumnSequence + 1
+            item._h3z0uiDualColumnSequence = dualColumnSequence
+        end
+
+        if isTextRegion then
+            item._h3z0uiDualColumnFullWidth = true
+
+            local textHeight = nil
+            if item.GetStringHeight then
+                textHeight = item:GetStringHeight()
+            elseif item.GetHeight then
+                textHeight = item:GetHeight()
+            end
+            item._h3z0uiDualColumnRowHeight = math.max(18, math.ceil((textHeight or 14) + 6))
+        end
+    end
+
+    for _, child in ipairs({ body:GetChildren() }) do
+        if not child._h3z0uiDualRowFrame then
+            AddLayoutItem(child, false)
+        end
+    end
+
+    local regionCount = body.GetNumRegions and body:GetNumRegions() or 0
+    for i = 1, regionCount do
+        local region = select(i, body:GetRegions())
+        local objectType = region and region.GetObjectType and region:GetObjectType() or nil
+        if objectType == "FontString" then
+            AddLayoutItem(region, true)
+        end
+    end
+
+    if #layoutItems == 0 then return end
+
+    for _, item in ipairs(layoutItems) do
+        if item._h3z0uiCardGroup then return end
+    end
+    for _, item in ipairs(layoutItems) do
+        if item._h3z0uiLayoutFormSlider then
+            item:_h3z0uiLayoutFormSlider(math.max(1, body:GetWidth() / 2 - 24))
+        end
+    end
+
+    table.sort(layoutItems, function(a, b)
+        local ay = a._h3z0uiDualColumnOriginalY
+        local by = b._h3z0uiDualColumnOriginalY
+        local aNum = type(ay) == "number"
+        local bNum = type(by) == "number"
+        if aNum ~= bNum then
+            return aNum
+        end
+        if aNum and ay ~= by then
+            return ay > by
+        end
+
+        local as = a._h3z0uiDualColumnSequence or 0
+        local bs = b._h3z0uiDualColumnSequence or 0
+        if as == bs then
+            return (itemOrder[a] or 0) < (itemOrder[b] or 0)
+        end
+        return as < bs
+    end)
+
+    for _, rf in ipairs(body._dualRowFrames) do
+        rf:Hide()
+        rf._divider:Hide()
+        if rf._thirdDivider then rf._thirdDivider:Hide() end
+        rf._bg:Hide()
+    end
+
+    local function AcquireRowFrame(idx)
+        local rf = body._dualRowFrames[idx]
+        if not rf then
+            rf = CreateFrame("Frame", nil, body)
+            rf._h3z0uiDualRowFrame = true
+            rf._bg = rf:CreateTexture(nil, "BACKGROUND")
+            rf._bg:SetAllPoints(rf)
+            rf._bg:Hide()
+            rf._divider = rf:CreateTexture(nil, "ARTWORK")
+            rf._divider:SetWidth(1)
+            rf._divider:SetColorTexture(1, 1, 1, 0.05)
+            rf._divider:Hide()
+            body._dualRowFrames[idx] = rf
+        end
+        return rf
+    end
+
+    local ly = -4
+    local rowIdx = 0
+    local lastColumns = 2
+    local i = 1
+    while i <= #layoutItems do
+        local left = layoutItems[i]
+        if left._h3z0uiDualColumnFullWidth then
+            rowIdx = rowIdx + 1
+            local rf = AcquireRowFrame(rowIdx)
+            local rowHeight = GetDualColumnRowHeight(left)
+            rf:ClearAllPoints()
+            rf:SetPoint("TOPLEFT", body, "TOPLEFT", -2, ly)
+            rf:SetPoint("TOPRIGHT", body, "TOPRIGHT", 2, ly)
+            rf:SetHeight(rowHeight)
+            rf:Show()
+            rf._bg:Hide()
+            rf._divider:Hide()
+
+            left:ClearAllPoints()
+            left:SetPoint("LEFT", rf, "LEFT", 12, 0)
+            left:SetPoint("RIGHT", rf, "RIGHT", -12, 0)
+
+            ly = ly - rowHeight
+            i = i + 1
+        else
+            local right = layoutItems[i + 1]
+            if right and right._h3z0uiDualColumnFullWidth then
+                right = nil
+            end
+
+            rowIdx = rowIdx + 1
+            local rf = AcquireRowFrame(rowIdx)
+            local rowHeight = math.max(GetDualColumnRowHeight(left), right and GetDualColumnRowHeight(right) or CARD_ROW_HEIGHT)
+            rf:ClearAllPoints()
+            rf:SetPoint("TOPLEFT", body, "TOPLEFT", -2, ly)
+            rf:SetPoint("TOPRIGHT", body, "TOPRIGHT", 2, ly)
+            rf:SetHeight(rowHeight)
+            rf:Show()
+
+            if (rowIdx % 2) == 0 then
+                rf._bg:SetColorTexture(1, 1, 1, 0.02)
+                rf._bg:Show()
+            end
+
+            left:ClearAllPoints()
+            left:SetPoint("LEFT", rf, "LEFT", 12, 0)
+            local third = layoutItems[i + 2]
+            local width = body.GetWidth and body:GetWidth() or 0
+            local function IsCompact(item)
+                return item and not item._h3z0uiDualColumnFullWidth and item.label
+                    and item.track and item.track.GetWidth and item.track:GetWidth() <= 32
+                    and not item.slider
+                    and ns.H3z0UI_SettingsLayoutShared.FitsThreeColumns(item.label, item.track, width)
+            end
+            if IsCompact(left) and IsCompact(right) and IsCompact(third) then
+                local cellWidth = (width + 4) / 3
+                rowHeight = math.max(rowHeight, GetDualColumnRowHeight(third))
+                rf:SetHeight(rowHeight)
+                if not rf._thirdDivider then
+                    rf._thirdDivider = rf:CreateTexture(nil, "ARTWORK")
+                    rf._thirdDivider:SetWidth(1)
+                    rf._thirdDivider:SetColorTexture(1, 1, 1, 0.05)
+                end
+                for column, item in ipairs({left, right, third}) do
+                    item:ClearAllPoints()
+                    item:SetPoint("LEFT", rf, "LEFT", (column - 1) * cellWidth + 12, 0)
+                    item:SetPoint("RIGHT", rf, "LEFT", column * cellWidth - 12, 0)
+                end
+                for index, divider in ipairs({rf._divider, rf._thirdDivider}) do
+                    divider:ClearAllPoints()
+                    divider:SetPoint("TOPLEFT", rf, "TOPLEFT", index * cellWidth, -6)
+                    divider:SetPoint("BOTTOMLEFT", rf, "BOTTOMLEFT", index * cellWidth, 6)
+                    divider:Show()
+                end
+                lastColumns = 3
+                i = i + 3
+            elseif right then
+                left:SetPoint("RIGHT", rf, "CENTER", -12, 0)
+                right:ClearAllPoints()
+                right:SetPoint("LEFT", rf, "CENTER", 12, 0)
+                right:SetPoint("RIGHT", rf, "RIGHT", -12, 0)
+                rf._divider:ClearAllPoints()
+                rf._divider:SetPoint("TOP", rf, "TOP", 0, -6)
+                rf._divider:SetPoint("BOTTOM", rf, "BOTTOM", 0, 6)
+                rf._divider:Show()
+                lastColumns = 2
+                i = i + 2
+            else
+                local third = lastColumns == 3 and IsCompact(left)
+                if third then
+                    left:SetPoint("RIGHT", rf, "LEFT", (width + 4) / 3 - 12, 0)
+                else
+                    left:SetPoint("RIGHT", rf, "CENTER", -12, 0)
+                end
+                rf._divider:ClearAllPoints()
+                rf._divider:SetPoint("TOPLEFT", rf, "TOPLEFT", third and (width + 4) / 3 or width / 2, -6)
+                rf._divider:SetPoint("BOTTOMLEFT", rf, "BOTTOMLEFT", third and (width + 4) / 3 or width / 2, 6)
+                rf._divider:Show()
+                i = i + 1
+            end
+
+            ly = ly - rowHeight
+        end
+    end
+
+    local contentHeight = math.abs(ly) + 4
+
+    section._contentHeight = 0
+    body._contentHeight = contentHeight
+    if section.SetExpanded then
+        section:SetExpanded(true)
+    elseif section.RefreshContentHeight then
+        section:RefreshContentHeight()
+    end
+end
+
+local function ApplyDualColumnLayoutWhenReady(section)
+    if not section then return end
+
+    ApplyDualColumnLayout(section)
+    local body = section._body
+    if body and body.HookScript and not body._h3z0uiColumnResizeHook then
+        body._h3z0uiColumnResizeHook = true
+        body._h3z0uiColumnLayoutWidth = body:GetWidth()
+        body:HookScript("OnSizeChanged", function(_, width)
+            if width == body._h3z0uiColumnLayoutWidth then return end
+            body._h3z0uiColumnLayoutWidth = width
+            C_Timer.After(0, function()
+                if body:GetParent() and (not body.IsVisible or body:IsVisible()) then
+                    ApplyDualColumnLayout(section)
+                end
+            end)
+        end)
+    end
+
+    C_Timer.After(0, function()
+        if not section or not section._body or not section.GetParent then return end
+        if not section:GetParent() then return end
+        if section.IsShown and not section:IsShown() then return end
+        ApplyDualColumnLayout(section)
+    end)
+end
+
+local function RenderWithTileChrome(fn)
+    local U = ns.H3z0UI_LayoutMode_Utils
+    if not U or not U.CreateCollapsible then
+        local ok, result = xpcall(fn, ErrorHandler)
+        if not ok then
+            geterrorhandler()(result)
+            return nil
+        end
+        return result
+    end
+
+    local originalCreate = U.CreateCollapsible
+    local originalBuildPosition = U.BuildPositionCollapsible
+    local originalOpenLink = U.BuildOpenFullSettingsLink
+
+    U.CreateCollapsible = function(parent, title, contentHeight, buildFunc, sections, relayout)
+        U._nextBorderless = true
+        local section = originalCreate(parent, title, contentHeight, buildFunc, sections, relayout)
+        ApplyDualColumnLayoutWhenReady(section)
+        return section
+    end
+
+    if originalBuildPosition then
+        ---@type fun(...)
+        U.BuildPositionCollapsible = function() end
+    end
+    if originalOpenLink then
+        ---@type fun(...)
+        U.BuildOpenFullSettingsLink = function() end
+    end
+
+    local ok, result = xpcall(fn, ErrorHandler)
+
+    U.CreateCollapsible = originalCreate
+    if originalBuildPosition then
+        U.BuildPositionCollapsible = originalBuildPosition
+    end
+    if originalOpenLink then
+        U.BuildOpenFullSettingsLink = originalOpenLink
+    end
+
+    if not ok then
+        geterrorhandler()(result)
+        return nil
+    end
+    return result
+end
+
+SettingsBuilders.WithSuppressedPosition = WithSuppressedPosition
+SettingsBuilders.WithOnlyPosition = WithOnlyPosition
+SettingsBuilders.RenderWithTileChrome = RenderWithTileChrome
+
+SettingsBuilders.ApplyDualColumnLayoutWhenReady = ApplyDualColumnLayoutWhenReady
+
+local function BuildViaProvider(providerKey, parent, width, options)
+    if not parent then return 80 end
+
+    ClearHost(parent)
+
+    local provider = GetProvider(providerKey)
+    if not provider or type(provider.build) ~= "function" then
+        return ShowProviderUnavailable(parent, "Settings are still initializing. Please reopen this tab in a moment.")
+    end
+
+    local targetWidth = width or (parent and parent.GetWidth and parent:GetWidth()) or 400
+    local surfaceId = parent._h3z0uiProviderSurfaceId or NextSurfaceId("options-provider")
+    parent._h3z0uiProviderSurfaceId = surfaceId
+    parent._h3z0uiProviderSync = {
+        providerKey = providerKey,
+        surfaceId = surfaceId,
+    }
+
+    local function RefreshSurface()
+        local latestWidth = math.max(300, (parent and parent.GetWidth and parent:GetWidth()) or targetWidth or 400)
+        return BuildViaProvider(providerKey, parent, latestWidth, options)
+    end
+
+    parent._h3z0uiProviderSurfaceInfo = {
+        providerKey = providerKey,
+        surfaceId = surfaceId,
+        refreshFn = RefreshSurface,
+    }
+
+    parent._h3z0uiBuiltProviderRevision = providerRevisions[providerKey] or 0
+
+    SettingsBuilders.RegisterProviderSurface(providerKey, surfaceId, RefreshSurface, function()
+        return IsSurfaceVisible(parent)
+    end)
+
+    if not parent._h3z0uiProviderSurfaceHooks then
+        parent._h3z0uiProviderSurfaceHooks = true
+        parent:HookScript("OnHide", function(self)
+            local info = self._h3z0uiProviderSurfaceInfo
+            if info then
+                SettingsBuilders.UnregisterProviderSurface(info.surfaceId)
+            end
+        end)
+        parent:HookScript("OnShow", function(self)
+            local info = self._h3z0uiProviderSurfaceInfo
+            if not info then return end
+            SettingsBuilders.RegisterProviderSurface(info.providerKey, info.surfaceId, info.refreshFn, function()
+                return IsSurfaceVisible(self)
+            end)
+            if self._h3z0uiProviderShownRefreshed
+                and not SettingsBuilders.SurfaceNeedsRebuildOnShow(self, info.providerKey) then
+                return
+            end
+            self._h3z0uiProviderShownRefreshed = true
+            C_Timer.After(0, function()
+                local latestInfo = self._h3z0uiProviderSurfaceInfo
+                if latestInfo ~= info or not IsSurfaceVisible(self) then
+                    return
+                end
+                info.refreshFn()
+            end)
+        end)
+    end
+
+    local function BuildSurfaceContent()
+        local U = ns.H3z0UI_LayoutMode_Utils
+        local prevPositionOnly, prevMinimalChrome
+        local appliedPositionOnly, appliedMinimalChrome = false, false
+        if U and options then
+            if options.layoutModePositionOnly ~= nil then
+                prevPositionOnly = U._layoutModePositionOnly
+                U._layoutModePositionOnly = options.layoutModePositionOnly
+                appliedPositionOnly = true
+            end
+            if options.useMinimalDrawerChrome ~= nil then
+                prevMinimalChrome = U._useMinimalDrawerChrome
+                U._useMinimalDrawerChrome = options.useMinimalDrawerChrome
+                appliedMinimalChrome = true
+            end
+        end
+        local result = WithSuppressedPosition(options and options.includePosition, function()
+            return provider.build(parent, providerKey, targetWidth, options)
+        end)
+        if U then
+            if appliedPositionOnly then
+                U._layoutModePositionOnly = prevPositionOnly
+            end
+            if appliedMinimalChrome then
+                U._useMinimalDrawerChrome = prevMinimalChrome
+            end
+        end
+        return result
+    end
+
+    local height
+    if options and options.tileLayout then
+        height = RenderWithTileChrome(BuildSurfaceContent)
+    else
+        height = BuildSurfaceContent()
+    end
+
+    if not height and parent and parent.GetHeight then
+        height = parent:GetHeight()
+    end
+    if type(height) ~= "number" then
+        height = parent and parent.GetHeight and parent:GetHeight() or 80
+    end
+    if parent and parent.SetHeight and height then
+        parent:SetHeight(math.max(height, 80))
+    end
+    return height or 80
+end
+
+function SettingsBuilders.BuildProvider(providerKey, parent, width, options)
+    return BuildViaProvider(providerKey, parent, width, options)
+end
+
+SettingsBuilders.PROVIDER_LABELS = {
+    combatTimer        = "Combat Timer",
+    lustTimer          = "Lust Timer",
+    brezCounter        = "Battle Res Counter",
+    atonementCounter   = "Atonement Counter",
+    rotationAssistIcon = "Rotation Assist",
+    focusCastAlert     = "Focus Cast Alert",
+    petWarning         = "Pet Warning",
+    noTargetWarning    = "No Target Warning",
+    h3z0uiPanel           = "Options Window",
+    reloadBehavior     = "Reload Behavior",
+    readyCheck         = "Ready Check",
+    mplusTimer         = "Mythic+ Timer",
+    mplusProgress      = "Mythic+ Mob Progress",
+    actionTracker      = "Action Tracker",
+
+    missingRaidBuffs   = "Missing Raid Buffs",
+    consumables        = "Consumables",
+
+    buffIcon           = "Buff Icons",
+    buffBar            = "Buff Bars",
+    primaryPower       = "Primary Resource",
+    secondaryPower     = "Secondary Resource",
+
+    topCenterWidgets    = "Top-Center Widgets",
+    belowMinimapWidgets = "Below-Minimap Widgets",
+    objectiveTracker    = "Objective Tracker",
+
+    bar1 = "Bar 1", bar2 = "Bar 2", bar3 = "Bar 3", bar4 = "Bar 4",
+    bar5 = "Bar 5", bar6 = "Bar 6", bar7 = "Bar 7", bar8 = "Bar 8",
+    stanceBar = "Stance Bar",
+    petBar    = "Pet Bar",
+    microMenu = "Micro Menu",
+    bagBar    = "Bag Bar",
+    extraActionButton = "Extra Action Button",
+    zoneAbility       = "Zone Ability",
+    totemBar          = "Totem Bar",
+    raidMarkersBar    = "Raid Markers Bar",
+
+    partyFrames     = "Party Frames",
+    raidFrames      = "Raid Frames",
+    spotlightFrames = "Spotlight Frames",
+    dandersParty    = "Danders Party",
+    dandersRaid     = "Danders Raid",
+    dandersPinned1  = "Danders Pinned Set 1",
+    dandersPinned2  = "Danders Pinned Set 2",
+
+    datatextPanel = "Datatext Panel",
+    minimap       = "Minimap",
+}

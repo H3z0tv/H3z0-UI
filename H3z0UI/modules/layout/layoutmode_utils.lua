@@ -1,0 +1,579 @@
+local ADDON_NAME, ns = ...
+
+local function EnsureCJKFont(fs)
+    if not fs or not fs.GetFont then return fs end
+    local fp, sz, fl = fs:GetFont()
+    if fp and ns.Helpers and ns.Helpers.ApplyFontWithFallback then
+        ns.Helpers.ApplyFontWithFallback(fs, fp, sz, fl)
+    end
+    return fs
+end
+
+local Helpers = ns.Helpers
+local LSM = ns.LSM
+local UIKit = ns.UIKit
+
+local Utils = {}
+ns.H3z0UI_LayoutMode_Utils = Utils
+
+Utils.ACCENT_R, Utils.ACCENT_G, Utils.ACCENT_B = 0.376, 0.647, 0.980
+
+function Utils:RefreshAccentColor()
+    local GUI = _G.H3z0UI and _G.H3z0UI.GUI
+    if GUI and GUI.Colors and GUI.Colors.accent then
+        self.ACCENT_R = GUI.Colors.accent[1]
+        self.ACCENT_G = GUI.Colors.accent[2]
+        self.ACCENT_B = GUI.Colors.accent[3]
+    end
+end
+Utils.HEADER_HEIGHT = 24
+Utils.FORM_ROW = 32
+Utils.PADDING = 0
+
+Utils.PROVIDER_TO_V2 = {
+}
+
+function Utils.GetProfileDB()
+    local core = Helpers.GetCore()
+    return core and core.db and core.db.profile
+end
+
+function Utils.GetTextureList()
+    local list = {}
+    if LSM then
+        for name in pairs(LSM:HashTable("statusbar")) do
+            list[#list + 1] = {value = name, text = name}
+        end
+        table.sort(list, function(a, b) return a.text < b.text end)
+    end
+    return list
+end
+
+function Utils.GetFontList()
+    local list = {}
+    if LSM then
+        for name in pairs(LSM:HashTable("font")) do
+            list[#list + 1] = {value = name, text = name}
+        end
+        table.sort(list, function(a, b) return a.text < b.text end)
+    end
+    return list
+end
+
+function Utils.GetSoundList()
+    local sounds = {{value = "None", text = "None"}}
+    if LSM then
+        for _, name in ipairs(LSM:List("sound") or {}) do
+            if name ~= "None" then
+                sounds[#sounds + 1] = {value = name, text = name}
+            end
+        end
+    end
+    return sounds
+end
+
+function Utils.ApplyAlternatingRowBackgrounds(body)
+    if not body or not body.GetNumChildren then return end
+
+    if body._h3z0uiAltRowStrips then
+        for i = 1, #body._h3z0uiAltRowStrips do
+            local t = body._h3z0uiAltRowStrips[i]
+            if t and t.Hide then t:Hide() end
+            if t and t.SetParent then t:SetParent(nil) end
+        end
+    end
+    body._h3z0uiAltRowStrips = {}
+
+    local children = {}
+    local childCount = body:GetNumChildren() or 0
+    for i = 1, childCount do
+        local child = select(i, body:GetChildren())
+        if child and (not child.IsShown or child:IsShown()) and child.GetTop and child:GetTop() then
+            children[#children + 1] = child
+        end
+    end
+    if #children < 2 then return end
+
+    table.sort(children, function(a, b)
+        return (a:GetTop() or 0) > (b:GetTop() or 0)
+    end)
+
+    for i, child in ipairs(children) do
+        if (i % 2) == 0 then
+            local rowBg = body:CreateTexture(nil, "BACKGROUND", nil, -1)
+            rowBg:SetPoint("LEFT", body, "LEFT", -2, 0)
+            rowBg:SetPoint("RIGHT", body, "RIGHT", 2, 0)
+            rowBg:SetPoint("TOP", child, "TOP", 0, 2)
+            rowBg:SetPoint("BOTTOM", child, "BOTTOM", 0, -2)
+            rowBg:SetColorTexture(1, 1, 1, 0.02)
+            body._h3z0uiAltRowStrips[#body._h3z0uiAltRowStrips + 1] = rowBg
+        end
+    end
+end
+
+function Utils.StandardRelayout(content, sections)
+    if sections._h3z0uiLayoutGeneration ~= nil and sections._h3z0uiLayoutGeneration ~= content._h3z0uiLayoutGeneration then return end
+    local compact = content._h3z0uiCompactLayout
+    local cy = compact and -2 or -8
+    for _, s in ipairs(sections) do
+        s:ClearAllPoints()
+        s:SetPoint("TOPLEFT", content, "TOPLEFT", Utils.PADDING, cy)
+        s:SetPoint("TOPRIGHT", content, "TOPRIGHT", -Utils.PADDING, cy)
+        cy = cy - s:GetHeight() - 4
+    end
+    content:SetHeight(math.abs(cy) + (compact and 0 or 16))
+end
+
+function Utils.CreateCollapsible(parent, title, contentHeight, buildFunc, sections, relayout)
+    if Utils._layoutModePositionOnly and not Utils._insidePositionCollapsible then
+        return nil
+    end
+    Utils:RefreshAccentColor()
+    local ACCENT_R, ACCENT_G, ACCENT_B = Utils.ACCENT_R, Utils.ACCENT_G, Utils.ACCENT_B
+    local baseHeaderHeight = Utils.HEADER_HEIGHT
+    local headerless = Utils._nextHeaderless == true
+    Utils._nextHeaderless = false
+    local borderless = Utils._nextBorderless == true or Utils._useMinimalDrawerChrome == true
+    Utils._nextBorderless = false
+    local HEADER_HEIGHT = headerless and 0 or baseHeaderHeight
+    local CARD_GAP = headerless and 0 or (borderless and 2 or 6)
+    local CARD_PAD = borderless and 2 or 8
+
+    local generation = parent._h3z0uiLayoutGeneration
+    sections._h3z0uiLayoutGeneration = generation
+    local section = CreateFrame("Frame", nil, parent)
+
+    if not headerless and type(title) == "string" and title ~= "" then
+        local GUI = H3z0UI and H3z0UI.GUI
+        if GUI and type(GUI.SetSearchSection) == "function" then
+            GUI:SetSearchSection(title)
+        end
+
+        local target = parent
+        while target do
+            if type(target.RegisterSection) == "function" then
+                if not target._sectionsAuthoritative then
+                    target:RegisterSection(title, title, section)
+                end
+                break
+            end
+            if not target.GetParent then break end
+            target = target:GetParent()
+        end
+    end
+
+    if not headerless then
+        local dot = section:CreateTexture(nil, "OVERLAY")
+        dot:SetSize(4, 4)
+        dot:SetPoint("TOPLEFT", section, "TOPLEFT", 2, -((HEADER_HEIGHT - 4) / 2))
+        dot:SetColorTexture(ACCENT_R, ACCENT_G, ACCENT_B, 1)
+
+        local label = EnsureCJKFont(section:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        label:SetPoint("LEFT", dot, "RIGHT", 8, 0)
+        label:SetTextColor(ACCENT_R, ACCENT_G, ACCENT_B, 1)
+        label:SetText(title)
+
+        local underline = section:CreateTexture(nil, "ARTWORK")
+        underline:SetHeight(1)
+        underline:SetPoint("TOPLEFT", section, "TOPLEFT", 0, -HEADER_HEIGHT)
+        underline:SetPoint("TOPRIGHT", section, "TOPRIGHT", 0, -HEADER_HEIGHT)
+        underline:SetColorTexture(ACCENT_R, ACCENT_G, ACCENT_B, 0.3)
+    end
+
+    if not borderless then
+        local cardBg = section:CreateTexture(nil, "BACKGROUND")
+        cardBg:SetPoint("TOPLEFT", section, "TOPLEFT", 0, -(HEADER_HEIGHT + CARD_GAP))
+        cardBg:SetPoint("BOTTOMRIGHT", section, "BOTTOMRIGHT", 0, 0)
+        cardBg:SetColorTexture(1, 1, 1, 0.02)
+
+        local function Hairline()
+            local t = section:CreateTexture(nil, "BORDER")
+            t:SetColorTexture(1, 1, 1, 0.06)
+            return t
+        end
+        local cardTop = Hairline(); cardTop:SetHeight(1)
+        cardTop:SetPoint("TOPLEFT", cardBg, "TOPLEFT", 0, 0)
+        cardTop:SetPoint("TOPRIGHT", cardBg, "TOPRIGHT", 0, 0)
+        local cardBot = Hairline(); cardBot:SetHeight(1)
+        cardBot:SetPoint("BOTTOMLEFT", cardBg, "BOTTOMLEFT", 0, 0)
+        cardBot:SetPoint("BOTTOMRIGHT", cardBg, "BOTTOMRIGHT", 0, 0)
+        local cardLeft = Hairline(); cardLeft:SetWidth(1)
+        cardLeft:SetPoint("TOPLEFT", cardBg, "TOPLEFT", 0, 0)
+        cardLeft:SetPoint("BOTTOMLEFT", cardBg, "BOTTOMLEFT", 0, 0)
+        local cardRight = Hairline(); cardRight:SetWidth(1)
+        cardRight:SetPoint("TOPRIGHT", cardBg, "TOPRIGHT", 0, 0)
+        cardRight:SetPoint("BOTTOMRIGHT", cardBg, "BOTTOMRIGHT", 0, 0)
+    end
+
+    local body = CreateFrame("Frame", nil, section)
+    body:SetPoint("TOPLEFT", section, "TOPLEFT", 0, -(HEADER_HEIGHT + CARD_GAP + CARD_PAD))
+    body:SetPoint("TOPRIGHT", section, "TOPRIGHT", 0, -(HEADER_HEIGHT + CARD_GAP + CARD_PAD))
+    body:SetHeight(contentHeight)
+    body._logicalSection = section
+
+    section._expanded = true
+    section._contentHeight = contentHeight
+    section._body = body
+    section._sectionTitle = title
+
+    local function MeasureBodyContentHeight()
+        local bodyTop = body.GetTop and body:GetTop()
+        if not bodyTop then return nil end
+        local maxOffset = 0
+        local function Accumulate(region)
+            if not region or not region.GetBottom then return end
+            if region.IsShown and not region:IsShown() then return end
+            local bottom = region:GetBottom()
+            if bottom then
+                maxOffset = math.max(maxOffset, bodyTop - bottom)
+            end
+        end
+        local childCount = body.GetNumChildren and body:GetNumChildren() or 0
+        for i = 1, childCount do Accumulate(select(i, body:GetChildren())) end
+        local regionCount = body.GetNumRegions and body:GetNumRegions() or 0
+        for i = 1, regionCount do Accumulate(select(i, body:GetRegions())) end
+        if maxOffset <= 0 then return nil end
+        return math.ceil(maxOffset + 4)
+    end
+
+    local function RefreshContentHeight()
+        if parent._h3z0uiLayoutGeneration ~= generation or section:GetParent() ~= parent then return end
+        if type(body._contentHeight) == "number" and body._contentHeight > 0 then
+            section._contentHeight = math.max(section._contentHeight or 0, body._contentHeight)
+            body._contentHeight = nil
+        end
+        local measured = MeasureBodyContentHeight()
+        if measured and measured > 0 then
+            section._contentHeight = math.max(section._contentHeight or 0, measured)
+        end
+        local bh = section._contentHeight or contentHeight
+        body:SetHeight(bh)
+        section:SetHeight(HEADER_HEIGHT + CARD_GAP + (CARD_PAD * 2) + bh)
+    end
+
+    section.RefreshContentHeight = RefreshContentHeight
+
+    section.SetExpanded = function(self, _expanded, skipRelayout)
+        RefreshContentHeight()
+        if not skipRelayout and relayout then relayout() end
+    end
+
+    buildFunc(body)
+    RefreshContentHeight()
+    C_Timer.After(0, function()
+        if parent._h3z0uiLayoutGeneration ~= generation or section:GetParent() ~= parent then return end
+        RefreshContentHeight()
+        Utils.ApplyAlternatingRowBackgrounds(body)
+        if relayout then relayout() end
+    end)
+
+    table.insert(sections, section)
+    return section
+end
+
+function Utils.MakeSuppressedProviderLayout(content)
+    local sections = {}
+    ---@type fun(...)
+    local noop = function() end
+
+    local trash = CreateFrame("Frame", nil, content)
+    trash:Hide()
+    trash:SetSize(1, 1)
+
+    local stubSection = {
+        frame = trash,
+        AddRow = noop,
+        Finalize = noop,
+        GetRowCount = function() return 0 end,
+    }
+
+    local L = {
+        sections = sections,
+        headerAt = noop,
+        sectionAt = function() return stubSection end,
+        closeSection = noop,
+        placeCustom = function(frame)
+            if frame and frame.Hide then frame:Hide() end
+        end,
+    }
+
+    function L.relayoutSections()
+        local PAD = Utils.PADDING or 0
+        local cy = -10
+        for _, s in ipairs(sections) do
+            s:ClearAllPoints()
+            s:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, cy)
+            s:SetPoint("TOPRIGHT", content, "TOPRIGHT", -PAD, cy)
+            cy = cy - (s:GetHeight() or 0) - 4
+        end
+        content:SetHeight(math.abs(cy) + 16)
+    end
+
+    return L
+end
+
+local function SetBodyContentHeight(body, height, relayout)
+    local section = body._logicalSection
+    if section then section._contentHeight = height end
+    body:SetHeight(height)
+    if section and section.RefreshContentHeight then section:RefreshContentHeight() end
+    if relayout then relayout() end
+end
+
+function Utils.BuildPositionCollapsible(content, frameKey, anchorOpts, sections, relayout)
+    local AnchorOpts = ns.H3z0UI_Anchoring_Options
+    if not AnchorOpts or not AnchorOpts.BuildAnchoringSection then return end
+
+    local PLACEHOLDER = 6 * Utils.FORM_ROW + 8
+    local prevInside = Utils._insidePositionCollapsible
+    Utils._insidePositionCollapsible = true
+    local ok, err = xpcall(function()
+        Utils.CreateCollapsible(content, ns.L["Position"], PLACEHOLDER, function(body)
+            local opts = {}
+            if anchorOpts then
+                for k, v in pairs(anchorOpts) do opts[k] = v end
+            end
+            opts.noHeader = true
+            opts.labelWidth = 132
+            opts.onHeightChanged = function(finalY)
+                SetBodyContentHeight(body, math.abs(finalY) + 2, relayout)
+            end
+            AnchorOpts:BuildAnchoringSection(body, frameKey, opts, 0)
+        end, sections, relayout)
+    end, function(msg) return msg end)
+    Utils._insidePositionCollapsible = prevInside
+    if not ok and geterrorhandler then
+        geterrorhandler()(err)
+    end
+end
+
+local function ResolveTileDisplayName(tileId)
+    local GUI = H3z0UI and H3z0UI.GUI
+    local frame = GUI and GUI.MainFrame
+    if frame and frame._tiles then
+        for _, tile in ipairs(frame._tiles) do
+            if tile.id == tileId and tile.config and tile.config.name then
+                return tile.config.name
+            end
+        end
+    end
+    return tileId
+end
+
+function Utils.BuildOpenFullSettingsLink(content, providerKey, sections, relayout)
+    local Settings = ns.Settings
+    local Nav = Settings and Settings.Nav
+    local Registry = Settings and Settings.Registry
+    local feature = Registry and type(Registry.GetFeature) == "function"
+        and Registry:GetFeature(providerKey) or nil
+    local route = Nav and type(Nav.GetRoute) == "function"
+        and Nav:GetRoute(providerKey) or nil
+    if not route and Nav and type(Nav.GetLookupTarget) == "function" then
+        route, feature = Nav:GetLookupTarget(providerKey)
+    elseif not route and Nav and type(Nav.GetRouteByLookupKey) == "function" then
+        route = Nav:GetRouteByLookupKey(providerKey)
+    end
+    if not feature and Registry and type(Registry.GetFeatureByLookupKey) == "function" then
+        feature = Registry:GetFeatureByLookupKey(providerKey)
+    end
+    if not route then
+        route = Utils.PROVIDER_TO_V2 and Utils.PROVIDER_TO_V2[providerKey]
+    end
+    if not route then return end
+
+    local GUI = H3z0UI and H3z0UI.GUI
+    if not GUI then return end
+
+    local ROW_HEIGHT = content._h3z0uiCompactLayout and 22 or 26
+    local row = CreateFrame("Button", nil, content)
+    row:SetHeight(ROW_HEIGHT)
+    row._contentHeight = ROW_HEIGHT
+    row._expanded = true
+    table.insert(sections, row)
+
+    local divider = row:CreateTexture(nil, "ARTWORK")
+    divider:SetPoint("TOPLEFT", row, "TOPLEFT", 8, 0)
+    divider:SetPoint("TOPRIGHT", row, "TOPRIGHT", -8, 0)
+    divider:SetHeight(1)
+    divider:SetColorTexture(1, 1, 1, 0.06)
+
+    local label = EnsureCJKFont(row:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    label:SetPoint("LEFT", row, "LEFT", 12, -2)
+    local tileName = ResolveTileDisplayName(route.tileId)
+    label:SetText(ns.L["Open %s settings"]:format(tileName))
+    local accent = GUI.Colors and GUI.Colors.accent or { 0.2, 0.83, 0.6, 1 }
+    row.label = label
+
+    local chevron = UIKit and UIKit.CreateChevronCaret and UIKit.CreateChevronCaret(row, {
+        point = "LEFT",
+        relativeTo = label,
+        relativePoint = "RIGHT",
+        xPixels = 6,
+        yPixels = -1,
+        sizePixels = 10,
+        lineWidthPixels = 6,
+        lineHeightPixels = 1,
+        expanded = false,
+        collapsedDirection = "right",
+        r = accent[1],
+        g = accent[2],
+        b = accent[3],
+        a = 1,
+    }) or EnsureCJKFont(row:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    if not (UIKit and UIKit.CreateChevronCaret) then
+        chevron:SetPoint("LEFT", label, "RIGHT", 6, 0)
+        chevron:SetText(">")
+    end
+    row.chevron = chevron
+
+    local function SetLinkColor(r, g, b, a)
+        label:SetTextColor(r, g, b, a or 1)
+        if UIKit and UIKit.SetChevronCaretColor and chevron.GetObjectType and chevron:GetObjectType() == "Frame" then
+            UIKit.SetChevronCaretColor(chevron, r, g, b, a or 1)
+        elseif chevron.SetTextColor then
+            chevron:SetTextColor(r, g, b, a or 1)
+        end
+    end
+
+    SetLinkColor(accent[1], accent[2], accent[3], 1)
+    row:SetScript("OnEnter", function() SetLinkColor(1, 1, 1, 1) end)
+    row:SetScript("OnLeave", function() SetLinkColor(accent[1], accent[2], accent[3], 1) end)
+    row:SetScript("OnClick", function()
+        if feature and type(feature.onNavigate) == "function" then
+            ns.SafeCall("bulkhead", feature.onNavigate, providerKey, route, {
+                source = "layoutmode",
+            })
+        end
+        if _G.H3z0UI_ToggleLayoutMode then
+            ns.SafeCall("bulkhead", _G.H3z0UI_ToggleLayoutMode)
+        end
+        if H3z0UI and H3z0UI.SlashCommandOpen then
+            H3z0UI:SlashCommandOpen("")
+        elseif GUI and GUI.Toggle then
+            GUI:Toggle()
+        end
+        local frame = GUI and GUI.MainFrame
+        if frame and GUI.FindV2TileByID and GUI.SelectFeatureTile then
+            local _, idx = GUI:FindV2TileByID(frame, route.tileId)
+            if idx then
+                GUI:SelectFeatureTile(frame, idx, { subPageIndex = route.subPageIndex })
+            end
+        end
+    end)
+
+    if relayout then relayout() end
+end
+
+Utils.PlaceRow = Helpers.PlaceRow
+Utils.EnsureDefaults = Helpers.EnsureDefaults
+
+function Utils.BuildSizeCollapsible(content, opts, sections, relayout)
+    local GUI = H3z0UI and H3z0UI.GUI
+    if not GUI or type(opts) ~= "table"
+        or type(opts.getSize) ~= "function"
+        or type(opts.setSize) ~= "function" then
+        return
+    end
+
+    local minW = opts.minW or 100
+    local maxW = opts.maxW or 1400
+    local minH = opts.minH or 100
+    local maxH = opts.maxH or 900
+    local widthDescription  = opts.widthDescription  or ns.L["Frame width in pixels."]
+    local heightDescription = opts.heightDescription or ns.L["Frame height in pixels."]
+
+    local function ReadSize()
+        local w, h = opts.getSize()
+        return tonumber(w) or 0, tonumber(h) or 0
+    end
+
+    local proxy = setmetatable({}, {
+        __index = function(_, k)
+            local w, h = ReadSize()
+            if k == "width"  then return math.floor(w + 0.5) end
+            if k == "height" then return math.floor(h + 0.5) end
+            return 0
+        end,
+        __newindex = function(_, k, v)
+            if type(v) ~= "number" then return end
+            local cw, ch = ReadSize()
+            if k == "width"  then opts.setSize(v, ch) end
+            if k == "height" then opts.setSize(cw, v) end
+        end,
+    })
+
+    local PLACEHOLDER = 2 * Utils.FORM_ROW + 8
+    local widthSlider, heightSlider
+    Utils.CreateCollapsible(content, ns.L["Frame Size"], PLACEHOLDER, function(body)
+        widthSlider  = GUI:CreateFormSlider(body, ns.L["Width"],  minW, maxW, 1, "width",  proxy, nil, nil, { description = widthDescription })
+        heightSlider = GUI:CreateFormSlider(body, ns.L["Height"], minH, maxH, 1, "height", proxy, nil, nil, { description = heightDescription })
+        local layingOutRows = false
+        local function RelayoutRows()
+            if layingOutRows or body._dualRowFrames then return end
+            layingOutRows = true
+            local sy = -4
+            for _, slider in ipairs({widthSlider, heightSlider}) do
+                slider:SetPoint("TOPLEFT", body, "TOPLEFT", 0, sy)
+                slider:SetPoint("RIGHT", body, "RIGHT", 0, 0)
+                if slider._h3z0uiLayoutFormSlider then
+                    slider:_h3z0uiLayoutFormSlider(slider:GetWidth())
+                end
+                sy = sy - math.max(Utils.FORM_ROW, slider:GetHeight() + 4)
+            end
+            SetBodyContentHeight(body, math.abs(sy) + 4, relayout)
+            layingOutRows = false
+        end
+        widthSlider:HookScript("OnSizeChanged", RelayoutRows)
+        heightSlider:HookScript("OnSizeChanged", RelayoutRows)
+        body:HookScript("OnSizeChanged", RelayoutRows)
+        RelayoutRows()
+    end, sections, relayout)
+
+    Utils._activeSizeSliderRefresh = function()
+        if widthSlider and widthSlider.SetValue then widthSlider:SetValue(proxy.width) end
+        if heightSlider and heightSlider.SetValue then heightSlider:SetValue(proxy.height) end
+    end
+end
+
+function Utils.RefreshActiveSizeSliders()
+    local fn = Utils._activeSizeSliderRefresh
+    if type(fn) ~= "function" then return end
+    local ok, err = pcall(fn)
+    if not ok and geterrorhandler then geterrorhandler()(err) end
+end
+
+do
+    local Settings = ns.Settings
+    local Registry = Settings and Settings.Registry
+    local Schema = Settings and Settings.Schema
+    local RenderAdapters = Settings and Settings.RenderAdapters
+
+    if Registry and Schema and RenderAdapters
+        and type(Registry.RegisterFeature) == "function"
+        and type(Schema.Feature) == "function" then
+        for _, frameKey in ipairs({
+            "leaveVehicle",
+            "equipmentDurability",
+            "topCenterWidgets",
+            "belowMinimapWidgets",
+            "rangeCheck",
+            "lootFrame",
+            "lootRollAnchor",
+            "alertAnchor",
+            "toastAnchor",
+            "bnetToastAnchor",
+            "powerBarAlt",
+        }) do
+            local key = frameKey
+            Registry:RegisterFeature(Schema.Feature({
+                id = key,
+                moverKey = key,
+                render = {
+                    layout = function(host, options)
+                        return RenderAdapters.RenderPositionOnly(host, options and options.providerKey or key)
+                    end,
+                },
+            }))
+        end
+    end
+end

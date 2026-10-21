@@ -1,0 +1,280 @@
+local GetSpecialization = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization
+local GetSpecializationInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo
+local ADDON_NAME, ns = ...
+local Helpers = ns.Helpers
+local SkinBase = ns.SkinBase
+
+local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)
+local eventFrame = CreateFrame("Frame")
+local combatEventsRegistered = false
+
+local GetSettings = Helpers.CreateDBGetter("general")
+
+local PET_SPEC_IDS = {
+    [253] = true,
+    [255] = true,
+    [265] = true,
+    [266] = true,
+    [267] = true,
+    [252] = true,
+}
+
+local function IsPetSpec()
+    local specIndex = GetSpecialization()
+    if not specIndex then return false end
+
+    local specID = GetSpecializationInfo(specIndex)
+    return specID and PET_SPEC_IDS[specID] or false
+end
+
+local function IsPetOnPassive()
+    if not UnitExists("pet") then return false end
+
+    for i = 1, 10 do
+        local name, _, isToken, isActive = GetPetActionInfo(i)
+        if name and isToken and isActive and name == "PET_MODE_PASSIVE" then
+            return true
+        end
+    end
+
+    return false
+end
+
+local PetWarningFrame = CreateFrame("Frame", "H3z0UI_PetWarningFrame", UIParent, "BackdropTemplate")
+PetWarningFrame:SetSize(220, 50)
+PetWarningFrame:SetFrameStrata("HIGH")
+PetWarningFrame:Hide()
+
+do
+    local bgr, bgg, bgb = 0.1, 0.1, 0.1
+    if Helpers and Helpers.GetSkinBgColor then
+        bgr, bgg, bgb = Helpers.GetSkinBgColor()
+    end
+    local sr, sg, sb = 1, 0.3, 0.3
+    if SkinBase and SkinBase.CreateBackdrop then
+        SkinBase.CreateBackdrop(PetWarningFrame, sr, sg, sb, 1, bgr, bgg, bgb, 0.9)
+    elseif SkinBase and SkinBase.ApplyPixelBackdrop then
+        SkinBase.ApplyPixelBackdrop(PetWarningFrame, 2, true, false, { sr, sg, sb, 1 }, { bgr, bgg, bgb, 0.9 })
+    end
+end
+
+PetWarningFrame.icon = PetWarningFrame:CreateTexture(nil, "ARTWORK")
+PetWarningFrame.icon:SetSize(32, 32)
+PetWarningFrame.icon:SetPoint("LEFT", PetWarningFrame, "LEFT", 10, 0)
+PetWarningFrame.icon:SetTexture(132599)
+Helpers.ApplyIconStyle(PetWarningFrame, PetWarningFrame.icon)
+
+PetWarningFrame.text = PetWarningFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+PetWarningFrame.text:SetPoint("LEFT", PetWarningFrame.icon, "RIGHT", 10, 0)
+PetWarningFrame.text:SetPoint("RIGHT", PetWarningFrame, "RIGHT", -30, 0)
+PetWarningFrame.text:SetTextColor(1, 0.3, 0.3, 1)
+PetWarningFrame.text:SetText(ns.L["NO PET!"])
+
+PetWarningFrame.closeBtn = SkinBase.CreateCloseButton(PetWarningFrame, {
+    size = 20,
+    point = "RIGHT",
+    x = -8,
+    onClick = function()
+        PetWarningFrame.dismissedThisFight = true
+        PetWarningFrame:Hide()
+        if LCG then
+            LCG.PixelGlow_Stop(PetWarningFrame, "_H3z0UIPetWarning")
+            PetWarningFrame.glowActive = false
+        end
+    end,
+})
+
+PetWarningFrame.dismissedThisFight = false
+
+local function PositionPetWarningFrame()
+    if _G.H3z0UI_HasFrameAnchor and _G.H3z0UI_HasFrameAnchor("petWarning") then return end
+
+    local settings = GetSettings()
+    local xOffset = (settings and settings.petWarningOffsetX) or 0
+    local yOffset = (settings and settings.petWarningOffsetY) or -200
+
+    PetWarningFrame:ClearAllPoints()
+    PetWarningFrame:SetPoint("CENTER", UIParent, "CENTER", xOffset, yOffset)
+end
+
+PositionPetWarningFrame()
+
+local petWarningTicker = nil
+local currentWarningState = nil
+
+local function ClearPetWarning()
+    PetWarningFrame:Hide()
+    if LCG and PetWarningFrame.glowActive then
+        LCG.PixelGlow_Stop(PetWarningFrame, "_H3z0UIPetWarning")
+        PetWarningFrame.glowActive = false
+    end
+    currentWarningState = nil
+end
+
+local function UpdatePetWarningState()
+    if PetWarningFrame.dismissedThisFight then
+        return false
+    end
+
+    local settings = GetSettings()
+    if not settings or settings.petCombatWarning == false then
+        ClearPetWarning()
+        return false
+    end
+
+    if not IsPetSpec() then
+        ClearPetWarning()
+        return false
+    end
+
+    local inInstance, instanceType = IsInInstance()
+    if not inInstance or (instanceType ~= "party" and instanceType ~= "raid") then
+        ClearPetWarning()
+        return false
+    end
+
+    if not UnitExists("pet") then
+        PetWarningFrame.text:SetText(ns.L["NO PET SUMMONED!"])
+        PetWarningFrame.icon:SetTexture(132599)
+        PetWarningFrame:Show()
+        if LCG and (currentWarningState ~= "nopet" or not PetWarningFrame.glowActive) then
+            LCG.PixelGlow_Stop(PetWarningFrame, "_H3z0UIPetWarning")
+            LCG.PixelGlow_Start(PetWarningFrame, {1, 0.3, 0.3, 1}, 8, 0.25, nil, 3, 0, 0, false, "_H3z0UIPetWarning")
+            PetWarningFrame.glowActive = true
+        end
+        currentWarningState = "nopet"
+        return true
+    end
+
+    if IsPetOnPassive() then
+        PetWarningFrame.text:SetText(ns.L["PET IS ON PASSIVE!"])
+        PetWarningFrame.icon:SetTexture(132311)
+        PetWarningFrame:Show()
+        if LCG and (currentWarningState ~= "passive" or not PetWarningFrame.glowActive) then
+            LCG.PixelGlow_Stop(PetWarningFrame, "_H3z0UIPetWarning")
+            LCG.PixelGlow_Start(PetWarningFrame, {1, 0.8, 0, 1}, 8, 0.25, nil, 3, 0, 0, false, "_H3z0UIPetWarning")
+            PetWarningFrame.glowActive = true
+        end
+        currentWarningState = "passive"
+        return true
+    end
+
+    ClearPetWarning()
+    return false
+end
+
+local function StartPetWarningPolling()
+    if petWarningTicker then
+        petWarningTicker:Cancel()
+        petWarningTicker = nil
+    end
+
+    PositionPetWarningFrame()
+    UpdatePetWarningState()
+
+    petWarningTicker = C_Timer.NewTicker(0.5, UpdatePetWarningState)
+end
+
+local function StopPetWarningPolling()
+    if petWarningTicker then
+        petWarningTicker:Cancel()
+        petWarningTicker = nil
+    end
+
+    ClearPetWarning()
+
+    PetWarningFrame.dismissedThisFight = false
+end
+
+local function SetCombatEventsRegistered(shouldRegister)
+    if shouldRegister and not combatEventsRegistered then
+        eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+        eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+        combatEventsRegistered = true
+    elseif not shouldRegister and combatEventsRegistered then
+        eventFrame:UnregisterEvent("PLAYER_REGEN_DISABLED")
+        eventFrame:UnregisterEvent("PLAYER_REGEN_ENABLED")
+        combatEventsRegistered = false
+    end
+end
+
+local function UpdatePetWarningEventRegistration()
+    local settings = GetSettings()
+    local enabled = settings and settings.petCombatWarning ~= false
+    SetCombatEventsRegistered(enabled)
+    if not enabled then
+        StopPetWarningPolling()
+    end
+end
+
+eventFrame:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        StartPetWarningPolling()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        StopPetWarningPolling()
+    end
+end)
+
+if ns.WhenLoggedIn then
+    ns.WhenLoggedIn(function()
+        UpdatePetWarningEventRegistration()
+        if InCombatLockdown() and combatEventsRegistered then
+            StartPetWarningPolling()
+        end
+    end)
+end
+
+_G.H3z0UI_RepositionPetWarning = PositionPetWarningFrame
+_G.H3z0UI_RefreshPetWarning = function()
+    PositionPetWarningFrame()
+    UpdatePetWarningEventRegistration()
+    local bgr, bgg, bgb = 0.1, 0.1, 0.1
+    if Helpers and Helpers.GetSkinBgColor then
+        bgr, bgg, bgb = Helpers.GetSkinBgColor()
+    end
+    local sr, sg, sb = 1, 0.3, 0.3
+    if SkinBase and SkinBase.CreateBackdrop then
+        SkinBase.CreateBackdrop(PetWarningFrame, sr, sg, sb, 1, bgr, bgg, bgb, 0.9)
+    else
+        PetWarningFrame:SetBackdropColor(bgr, bgg, bgb, 0.9)
+    end
+    if InCombatLockdown() and combatEventsRegistered then
+        StartPetWarningPolling()
+    else
+        StopPetWarningPolling()
+    end
+end
+
+_G.H3z0UI_TogglePetWarningPreview = function(show)
+    if show then
+        PositionPetWarningFrame()
+        PetWarningFrame.text:SetText(ns.L["PET WARNING PREVIEW"])
+        PetWarningFrame.icon:SetTexture(132599)
+        PetWarningFrame:Show()
+        if LCG then
+            LCG.PixelGlow_Start(PetWarningFrame, {1, 0.3, 0.3, 1}, 8, 0.25, nil, 3, 0, 0, false, "_H3z0UIPetWarning")
+            PetWarningFrame.glowActive = true
+        end
+    else
+        PetWarningFrame:Hide()
+        if LCG then
+            LCG.PixelGlow_Stop(PetWarningFrame, "_H3z0UIPetWarning")
+            PetWarningFrame.glowActive = false
+        end
+    end
+end
+
+if ns.Registry then
+    ns.Registry:Register("petWarning", {
+        refresh = _G.H3z0UI_RefreshPetWarning,
+        priority = 30,
+        group = "qol",
+        importCategories = { "qol" },
+    })
+    ns.Registry:Register("petWarningSkin", {
+        refresh = _G.H3z0UI_RefreshPetWarning,
+        priority = 30,
+        group = "skinning",
+        importCategories = { "skinning", "theme" },
+    })
+end

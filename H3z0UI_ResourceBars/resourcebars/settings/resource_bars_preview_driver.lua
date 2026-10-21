@@ -1,0 +1,727 @@
+local _, ns = ...
+
+local function CJKFont(fs, p, s, f)
+    if ns.Helpers and ns.Helpers.ApplyFontWithFallback then
+        ns.Helpers.ApplyFontWithFallback(fs, p, s, f)
+    else
+        fs:SetFont(p, s, f)
+    end
+end
+
+local function GetInternal()
+    return ns.H3z0UI_ResourceBars_Internal
+end
+
+local math_abs, math_max, math_min, math_floor = math.abs, math.max, math.min, math.floor
+local string_format = string.format
+
+local Module = {}
+ns.H3z0UI_ResourceBarsPreview = Module
+
+local CYCLE_LENGTH = 10
+
+local state = {
+    host       = nil,
+    ticker     = nil,
+    cycle      = { t = 0 },
+    previewRef = nil,
+    autoHeight = nil,
+}
+
+local function ComputePcts(t)
+    local primaryPct
+    if t < 4 then
+        primaryPct = 1.0 - t / 4
+    elseif t < 6 then
+        primaryPct = (t - 4) / 2
+    else
+        primaryPct = 1.0
+    end
+
+    local secondaryPct
+    if t < 2 then
+        secondaryPct = 1.0
+    elseif t < 6 then
+        secondaryPct = 1.0 - (t - 2) / 4
+    elseif t < 8 then
+        secondaryPct = (t - 6) / 2
+    else
+        secondaryPct = 1.0
+    end
+
+    return primaryPct, secondaryPct
+end
+
+local function AdvanceCycle(elapsed)
+    state.cycle.t = (state.cycle.t + elapsed) % CYCLE_LENGTH
+end
+
+local POWER_DISPLAY_NAMES = {
+    ["STAGGER"] = ns.L["Stagger"],
+    ["SOUL"]    = ns.L["Soul Fragments"],
+}
+local PREVIEW_POWER_MAX_FALLBACKS = {}
+if Enum and Enum.PowerType then
+    POWER_DISPLAY_NAMES[Enum.PowerType.Mana]            = ns.L["Mana"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.Rage]            = ns.L["Rage"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.Focus]           = ns.L["Focus"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.Energy]          = ns.L["Energy"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.RunicPower]      = ns.L["Runic Power"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.SoulShards]      = ns.L["Soul Shards"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.LunarPower]      = ns.L["Lunar Power"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.HolyPower]       = ns.L["Holy Power"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.Maelstrom]       = ns.L["Maelstrom"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.Chi]             = ns.L["Chi"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.Insanity]        = ns.L["Insanity"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.ArcaneCharges]   = ns.L["Arcane Charges"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.Runes]           = ns.L["Runes"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.Fury]            = ns.L["Fury"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.Essence]         = ns.L["Essence"]
+    POWER_DISPLAY_NAMES[Enum.PowerType.ComboPoints]     = ns.L["Combo Points"]
+end
+
+local H3z0UI_POWER = ns.H3z0UI_ResourceBars_Internal and ns.H3z0UI_ResourceBars_Internal.PseudoPowerTypes
+if H3z0UI_POWER then
+    POWER_DISPLAY_NAMES[H3z0UI_POWER.MaelstromWeapon]   = ns.L["Maelstrom Weapon"]
+    POWER_DISPLAY_NAMES[H3z0UI_POWER.TipOfTheSpear]     = ns.L["Tip of the Spear"]
+    POWER_DISPLAY_NAMES[H3z0UI_POWER.Whirlwind]         = ns.L["Whirlwind"]
+    POWER_DISPLAY_NAMES[H3z0UI_POWER.VengSoulFragments] = ns.L["Soul Fragments"]
+
+    PREVIEW_POWER_MAX_FALLBACKS[H3z0UI_POWER.MaelstromWeapon]   = 10
+    PREVIEW_POWER_MAX_FALLBACKS[H3z0UI_POWER.Whirlwind]         = 4
+    PREVIEW_POWER_MAX_FALLBACKS[H3z0UI_POWER.TipOfTheSpear]     = 3
+    PREVIEW_POWER_MAX_FALLBACKS[H3z0UI_POWER.VengSoulFragments] = 6
+end
+
+local BAR_PAD_X                     = 12
+local PREVIEW_LABEL_GAP             = 2
+local PREVIEW_SECTION_GAP           = 8
+local PREVIEW_MIN_HORIZONTAL_LENGTH = 80
+local PREVIEW_MIN_VERTICAL_LENGTH   = 20
+local PREVIEW_MIN_THICKNESS         = 8
+local PREVIEW_MAX_THICKNESS         = 22
+local PREVIEW_CONTENT_TOP           = 20
+local DEFAULT_PREVIEW_OPTIONS       = {
+    autoHeight = true,
+    contentTop = PREVIEW_CONTENT_TOP,
+    minHeight = 60,
+    verticalPadding = 2,
+}
+
+local function GetPreviewPowerMax(resource)
+    if type(resource) ~= "number" then return 0 end
+
+    local fallback = PREVIEW_POWER_MAX_FALLBACKS[resource]
+    if fallback then return fallback end
+
+    local ok, maxValue = pcall(UnitPowerMax, "player", resource)
+    if not ok then return 0 end
+    local Helpers = ns.Helpers
+    if Helpers and Helpers.SafeToNumber then
+        return Helpers.SafeToNumber(maxValue, 0)
+    end
+    if issecretvalue and issecretvalue(maxValue) then
+        return 0 -- @secret-policy: zero-degrade
+    end
+    return tonumber(maxValue) or 0
+end
+
+local function MapPreviewMetric(value, minValue, maxValue, minPixels, maxPixels)
+    value = tonumber(value) or minValue
+    value = math_max(minValue, math_min(maxValue, value))
+
+    if maxValue <= minValue or maxPixels <= minPixels then
+        return minPixels
+    end
+
+    local pct = (value - minValue) / (maxValue - minValue)
+    return math_floor(minPixels + ((maxPixels - minPixels) * pct) + 0.5)
+end
+
+local function GetPreviewTextConfig(cfg, isSecondary)
+    local Internal = GetInternal()
+    if isSecondary and Internal and Internal.GetSecondaryTextConfig then
+        return Internal.GetSecondaryTextConfig(cfg)
+    end
+    return cfg
+end
+
+local function GetPreviewDisplaySize(cfg, pv, visibleCount)
+    local orientation = cfg and cfg.orientation or "HORIZONTAL"
+    local isVertical = orientation == "VERTICAL"
+    local previewWidth = pv and pv.GetWidth and pv:GetWidth() or 280
+    local maxHorizontalLength = math_max(PREVIEW_MIN_HORIZONTAL_LENGTH, previewWidth - (BAR_PAD_X * 2))
+    local maxVerticalLength = visibleCount > 1 and 30 or 42
+    local maxThickness = visibleCount > 1 and 18 or PREVIEW_MAX_THICKNESS
+
+    local displayLength = MapPreviewMetric(cfg and cfg.width or 200, 50, 600,
+        isVertical and PREVIEW_MIN_VERTICAL_LENGTH or PREVIEW_MIN_HORIZONTAL_LENGTH,
+        isVertical and maxVerticalLength or maxHorizontalLength)
+    local displayThickness = MapPreviewMetric(cfg and cfg.height or 8, 2, 40,
+        PREVIEW_MIN_THICKNESS, maxThickness)
+
+    if isVertical then
+        return displayThickness, displayLength, true
+    end
+
+    return displayLength, displayThickness, false
+end
+
+local function GetPreviewBarColor(cfg, resource)
+    local Internal = GetInternal()
+    local mode = Internal and Internal.GetResourceBarColorMode
+        and Internal.GetResourceBarColorMode(cfg)
+        or (cfg and cfg.colorMode or "power")
+    if mode == "custom" and cfg and cfg.customColor then
+        local c = cfg.customColor
+        return (c[1] or c.r or 0.2), (c[2] or c.g or 0.5), (c[3] or c.b or 1.0)
+    elseif mode == "class" then
+        local _, class = UnitClass("player")
+        -- @secret-policy: collapse-only — secret class falls back to the resource color
+        if issecretvalue and issecretvalue(class) then class = nil end
+        local cc = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+        if cc then return cc.r, cc.g, cc.b end
+    end
+    local col = resource and Internal and Internal.GetResourceColor
+        and Internal.GetResourceColor(resource)
+    if col then return col.r, col.g, col.b end
+    return 0.2, 0.5, 1.0
+end
+
+local function ApplyPreviewTicks(section, cfg, resource)
+    section.ticks = section.ticks or {}
+    for _, t in ipairs(section.ticks) do t:Hide() end
+    if not cfg or not cfg.showTicks then return end
+    local Internal = GetInternal()
+    local tickedPowerTypes = Internal and Internal.tickedPowerTypes
+    local fragmentedPowerTypes = Internal and Internal.fragmentedPowerTypes
+    if type(resource) ~= "number" or not tickedPowerTypes or not tickedPowerTypes[resource] then return end
+    if fragmentedPowerTypes and fragmentedPowerTypes[resource] then return end
+
+    local max = GetPreviewPowerMax(resource)
+    if max < 2 then return end
+
+    local bar = section.bar
+    local width, height = bar:GetWidth(), bar:GetHeight()
+    if width <= 0 or height <= 0 then return end
+
+    local thickness = math_max(1, cfg.tickThickness or 1)
+    local tc = cfg.tickColor or { 0, 0, 0, 1 }
+    local isVertical = cfg.orientation == "VERTICAL"
+
+    for i = 1, max - 1 do
+        local tick = section.ticks[i]
+        if not tick then
+            tick = bar:CreateTexture(nil, "OVERLAY")
+            section.ticks[i] = tick
+        end
+        tick:SetColorTexture(tc[1], tc[2], tc[3], tc[4] or 1)
+        tick:ClearAllPoints()
+        if isVertical then
+            local y = (i / max) * height
+            tick:SetPoint("BOTTOM", bar, "BOTTOM", 0, y - (thickness / 2))
+            tick:SetSize(width, thickness)
+        else
+            local x = (i / max) * width
+            tick:SetPoint("LEFT", bar, "LEFT", x - (thickness / 2), 0)
+            tick:SetSize(thickness, height)
+        end
+        tick:Show()
+    end
+end
+
+local function ApplyPreviewIndicators(section, cfg, resource)
+    section.indicators = section.indicators or {}
+    for _, line in ipairs(section.indicators) do line:Hide() end
+
+    local Internal = GetInternal()
+    local GetValues = Internal and Internal.GetIndicatorValuesForCurrentSpec
+    if not GetValues or not cfg then return end
+
+    local max = GetPreviewPowerMax(resource)
+    if max <= 0 then return end
+
+    local values = GetValues(cfg.indicators, max)
+    if #values == 0 then return end
+
+    local bar = section.bar
+    local width, height = bar:GetWidth(), bar:GetHeight()
+    if width <= 0 or height <= 0 then return end
+
+    local indicatorCfg = cfg.indicators
+    local thickness = math_max(1, indicatorCfg.thickness or 1)
+    local c = indicatorCfg.color or { 1, 1, 1, 1 }
+    local isVertical = cfg.orientation == "VERTICAL"
+
+    for i, value in ipairs(values) do
+        local line = section.indicators[i]
+        if not line then
+            line = bar:CreateTexture(nil, "OVERLAY")
+            section.indicators[i] = line
+        end
+        line:SetColorTexture(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
+        line:ClearAllPoints()
+        if isVertical then
+            local y = (value / max) * height
+            line:SetPoint("BOTTOM", bar, "BOTTOM", 0, y - (thickness / 2))
+            line:SetSize(width, thickness)
+        else
+            local x = (value / max) * width
+            line:SetPoint("LEFT", bar, "LEFT", x - (thickness / 2), 0)
+            line:SetSize(thickness, height)
+        end
+        line:Show()
+    end
+end
+
+local function GetPreviewBgColor(cfg)
+    local bg = cfg and cfg.bgColor
+    if bg then
+        return (bg[1] or bg.r or 0), (bg[2] or bg.g or 0), (bg[3] or bg.b or 0), (bg[4] or bg.a or 0.4)
+    end
+    return 0, 0, 0, 0.4
+end
+
+local function MockValueText(cfg, textCfg, pct, resource)
+    local Internal = GetInternal()
+    local fragmentedPowerTypes = Internal and Internal.fragmentedPowerTypes
+    if type(resource) == "number" and fragmentedPowerTypes and fragmentedPowerTypes[resource] then
+        if cfg and cfg.showFragmentedPowerBarText == false then
+            return ""
+        end
+        local maxValue = GetPreviewPowerMax(resource)
+        if maxValue <= 0 then
+            maxValue = 5
+        end
+        local current = math_max(1, math_floor((pct * maxValue) + 0.5))
+        return string_format("%d / %d", current, maxValue)
+    end
+
+    if not textCfg or not textCfg.showText then return "" end
+    if textCfg.showPercent then
+        local v = math_floor(pct * 100)
+        return textCfg.hidePercentSymbol and tostring(v) or (v .. "%")
+    end
+    return math_floor(pct * 100000)
+end
+
+local function MakeMockBar(parent, fpath)
+    local section = CreateFrame("Frame", nil, parent)
+
+    local lbl = section:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    if fpath then CJKFont(lbl, fpath, 9, "") end
+    lbl:SetTextColor(1, 1, 1, 0.75)
+    lbl:SetPoint("TOP", section, "TOP", 0, 0)
+    section.lbl = lbl
+
+    local barFrame = CreateFrame("Frame", nil, section)
+    barFrame:SetPoint("TOP", lbl, "BOTTOM", 0, -PREVIEW_LABEL_GAP)
+    section.barFrame = barFrame
+
+    local bg = barFrame:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(barFrame)
+    bg:SetColorTexture(0, 0, 0, 0.4)
+    section.bg = bg
+
+    local bar = CreateFrame("StatusBar", nil, barFrame)
+    bar:SetAllPoints(barFrame)
+    bar:SetMinMaxValues(0, 1)
+    bar:SetValue(0.7)
+    section.bar = bar
+
+    local UIKit = ns.UIKit
+    if UIKit and UIKit.CreateBorderLines then
+        UIKit.CreateBorderLines(barFrame)
+    end
+
+    section.textFrame = CreateFrame("Frame", nil, barFrame)
+    section.textFrame:SetAllPoints(barFrame)
+    if section.textFrame.SetFrameLevel then
+        local barLevel = bar.GetFrameLevel and bar:GetFrameLevel() or 0
+        section.textFrame:SetFrameLevel(barLevel + 2)
+    end
+
+    local val = section.textFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    if fpath then CJKFont(val, fpath, 9, "") end
+    val:SetTextColor(1, 1, 1, 0.9)
+    val:SetPoint("CENTER", section.textFrame, "CENTER", 0, 0)
+    section.val = val
+
+    return section
+end
+
+local function ApplyPreviewSectionLayout(section, cfg, pv, visibleCount)
+    local width, height, isVertical = GetPreviewDisplaySize(cfg, pv, visibleCount)
+    section:SetSize(math_max(width, 80), 12 + PREVIEW_LABEL_GAP + height)
+
+    section.barFrame:ClearAllPoints()
+    section.barFrame:SetSize(width, height)
+    section.barFrame:SetPoint("TOP", section.lbl, "BOTTOM", 0, -PREVIEW_LABEL_GAP)
+
+    section.bar:SetOrientation(isVertical and "VERTICAL" or "HORIZONTAL")
+    if section.textFrame then
+        section.textFrame:SetAllPoints(section.barFrame)
+        if section.textFrame.SetFrameLevel then
+            local barLevel = section.bar.GetFrameLevel and section.bar:GetFrameLevel() or 0
+            section.textFrame:SetFrameLevel(barLevel + 2)
+        end
+    end
+
+    local borderSize = cfg and cfg.borderSize or 0
+    local UIKit = ns.UIKit
+    if UIKit and UIKit.UpdateBorderLines then
+        local br, bg, bb, ba = 0, 0, 0, 1
+        if ns.Helpers and ns.Helpers.GetSkinBorderColor then
+            br, bg, bb, ba = ns.Helpers.GetSkinBorderColor(cfg, "")
+        end
+        UIKit.UpdateBorderLines(section.barFrame, borderSize, br, bg, bb, ba, borderSize <= 0)
+    end
+end
+
+local function ApplyDynamics(primaryPct, secondaryPct)
+    local pr = state.previewRef
+    if not pr then return end
+
+    local p, s = pr.primary, pr.secondary
+    if p and p:IsShown() and p._cfg then
+        p.bar:SetValue(primaryPct)
+        if p.val then
+            local cfg = p._cfg
+            local textCfg = p._textCfg or GetPreviewTextConfig(cfg, false)
+            p.val:SetText(MockValueText(cfg, textCfg, primaryPct, p._resource))
+        end
+    end
+    if s and s:IsShown() and s._cfg then
+        s.bar:SetValue(secondaryPct)
+        if s.val then
+            local cfg = s._cfg
+            local textCfg = s._textCfg or GetPreviewTextConfig(cfg, true)
+            s.val:SetText(MockValueText(cfg, textCfg, secondaryPct, s._resource))
+        end
+    end
+end
+
+local function IncludeContentBounds(object, bounds, onlyWhenShown)
+    if not object then return end
+    if onlyWhenShown and object.IsShown and not object:IsShown() then return end
+
+    local top = object.GetTop and object:GetTop()
+    local bottom = object.GetBottom and object:GetBottom()
+    if top and bottom then
+        bounds.top = bounds.top and math_max(bounds.top, top) or top
+        bounds.bottom = bounds.bottom and math_min(bounds.bottom, bottom) or bottom
+    end
+end
+
+local function IncludeSectionBounds(section, bounds)
+    if not section or (section.IsShown and not section:IsShown()) then return end
+
+    IncludeContentBounds(section, bounds, false)
+    IncludeContentBounds(section.lbl, bounds, true)
+    IncludeContentBounds(section.barFrame, bounds, true)
+
+    local valueText = section.val and section.val.GetText and section.val:GetText()
+    if valueText ~= nil and valueText ~= "" then
+        IncludeContentBounds(section.val, bounds, true)
+    end
+end
+
+local function MeasurePreviewContentBounds()
+    local pr = state.previewRef
+    if not pr then return nil end
+
+    local bounds = {}
+    IncludeSectionBounds(pr.primary, bounds)
+    IncludeSectionBounds(pr.secondary, bounds)
+    if not bounds.top or not bounds.bottom then return nil end
+    return bounds
+end
+
+local function ApplyPreviewTopShift(shift)
+    local pr = state.previewRef
+    if not pr then return end
+
+    for _, section in ipairs({ pr.primary, pr.secondary }) do
+        if section and section._previewStackY
+            and (not section.IsShown or section:IsShown()) then
+            section:ClearAllPoints()
+            section:SetPoint("TOP", pr.pv, "TOP", 0, section._previewStackY - shift)
+        end
+    end
+end
+
+local function ResizePreviewToContent(host)
+    local options = state.autoHeight
+    if not host or not options or options.autoHeight == false then return end
+
+    local desiredHeight = options.minHeight or 0
+    local bounds = MeasurePreviewContentBounds()
+    local hostTop = host.GetTop and host:GetTop()
+    if bounds and hostTop then
+        local padding = options.verticalPadding or 0
+        local contentTop = options.contentTop or PREVIEW_CONTENT_TOP
+        local topLimit = hostTop - contentTop - padding
+        local topShift = math_max(0, bounds.top - topLimit)
+
+        ApplyPreviewTopShift(topShift)
+        desiredHeight = math_floor(hostTop - (bounds.bottom - topShift) + padding + 0.5)
+        desiredHeight = math_max(options.minHeight or 0, desiredHeight)
+    end
+
+    local currentHeight = host.GetHeight and host:GetHeight() or 0
+    if math_abs(currentHeight - desiredHeight) <= 0.5 then return end
+
+    host._previewAutoHeightApplying = true
+    host:SetHeight(desiredHeight)
+    host._previewAutoHeightApplying = nil
+end
+
+local function RequestPreviewAutoHeight()
+    local host = state.host
+    if not host or not state.autoHeight or state.autoHeight.autoHeight == false
+        or host._previewAutoHeightPending then
+        return
+    end
+
+    host._previewAutoHeightPending = true
+    local function Apply()
+        host._previewAutoHeightPending = nil
+        if state.host == host then
+            ResizePreviewToContent(host)
+        end
+    end
+
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, Apply)
+    else
+        Apply()
+    end
+end
+
+function Module.Build(host, options)
+    if state.ticker then
+        if state.host == host then
+            state.autoHeight = options or state.autoHeight or DEFAULT_PREVIEW_OPTIONS
+            Module.Refresh()
+            return
+        end
+        Module.Teardown()
+    end
+    state.host = host
+    state.autoHeight = options or DEFAULT_PREVIEW_OPTIONS
+
+    local GUI    = H3z0UI and H3z0UI.GUI
+    local C      = (GUI and GUI.Colors) or {}
+    local border = C.border or { 1, 1, 1, 0.06 }
+    local UIKit  = ns.UIKit
+    local fpath  = UIKit and UIKit.ResolveFontPath
+                   and UIKit.ResolveFontPath(GUI and GUI:GetFontPath())
+
+    if not host._h3z0uiPreviewSurface then
+        local fill = host:CreateTexture(nil, "BACKGROUND")
+        fill:SetAllPoints(host)
+        fill:SetColorTexture(0, 0, 0, 0.2)
+        if UIKit and UIKit.CreateBorderLines then
+            UIKit.CreateBorderLines(host)
+            UIKit.UpdateBorderLines(host, 1, border[1] or 1, border[2] or 1, border[3] or 1, 0.15, false)
+        end
+    end
+
+    local lbl = host:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local SkinBase = ns.SkinBase
+    if SkinBase and SkinBase.SkinFontString then
+        SkinBase.SkinFontString(lbl, { fontOnly = true, font = GUI and GUI:GetFontPath(), outline = "" })
+    end
+    lbl:SetPoint("TOPLEFT", host, "TOPLEFT", 8, -6)
+    lbl:SetText(ns.L["Live Preview"])
+    lbl:SetTextColor(0.6, 0.6, 0.6, 1)
+
+    local previewHost = CreateFrame("Frame", nil, host)
+    previewHost:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -PREVIEW_CONTENT_TOP)
+    previewHost:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 0)
+    host._h3z0uiPreviewHost = previewHost
+    host._h3z0uiPreviewChromeHeight = PREVIEW_CONTENT_TOP
+    host._h3z0uiPreviewCollapsedHeight = 30
+    local primary = MakeMockBar(previewHost, fpath)
+    primary:SetPoint("TOPLEFT", previewHost, "TOPLEFT", BAR_PAD_X, 0)
+    primary:SetPoint("TOPRIGHT", previewHost, "TOPRIGHT", -BAR_PAD_X, 0)
+    primary:SetSize(100, 24)
+
+    local secondary = MakeMockBar(previewHost, fpath)
+    secondary:Hide()
+
+    state.previewRef = { pv = previewHost, primary = primary, secondary = secondary, fpath = fpath }
+
+    state.ticker = CreateFrame("Frame", nil, previewHost)
+    state.ticker:SetScript("OnUpdate", function(_, elapsed)
+        AdvanceCycle(elapsed)
+        ApplyDynamics(ComputePcts(state.cycle.t))
+    end)
+
+    host:SetScript("OnSizeChanged", function()
+        if not host._previewAutoHeightApplying then
+            Module.Refresh()
+        end
+    end)
+
+    Module.Refresh()
+end
+
+function Module.Refresh()
+    local pr = state.previewRef
+    if not pr then return end
+    local p, s, fp = pr.primary, pr.secondary, pr.fpath
+
+    local Helpers = ns.Helpers
+    local core    = Helpers and Helpers.GetCore and Helpers.GetCore()
+    local profile = core and core.db and core.db.profile
+    if not profile then return end
+
+    local pc = profile.powerBar
+    local sc = profile.secondaryPowerBar
+
+    local Internal           = GetInternal() or {}
+    local GetPrimaryResource   = Internal.GetPrimaryResource   or function() end
+    local GetSecondaryResource = Internal.GetSecondaryResource or function() end
+    local ShouldSwapBars       = Internal.ShouldSwapBars       or function() return false end
+    local ShouldHidePrimaryOnSwap = Internal.ShouldHidePrimaryOnSwap or function() return false end
+    ---@type fun(...): ... -- the `or` fallback is narrower than Internal.GetBarTexture
+    local GetBarTexture        = Internal.GetBarTexture        or function() return "" end
+
+    local LSM = ns.LSM
+
+    local primaryResource   = GetPrimaryResource()
+    local secondaryResource = GetSecondaryResource()
+    local primaryTextCfg    = GetPreviewTextConfig(pc, false)
+    local secondaryTextCfg  = GetPreviewTextConfig(sc, true)
+    local showPrimary       = pc and pc.enabled ~= false
+    local showSecondary     = sc and sc.enabled ~= false and secondaryResource ~= nil
+    local swapBars          = showSecondary and ShouldSwapBars()
+    local valueFont         = Helpers and Helpers.GetGeneralFont and Helpers.GetGeneralFont()
+    local valueFontOutline  = Helpers and Helpers.GetGeneralFontOutline and Helpers.GetGeneralFontOutline() or ""
+
+    if showPrimary and swapBars and ShouldHidePrimaryOnSwap() then
+        showPrimary = false
+    end
+
+    local visibleCount = (showPrimary and 1 or 0) + (showSecondary and 1 or 0)
+    if visibleCount == 0 then
+        p:Hide()
+        s:Hide()
+        p._previewStackY = nil
+        s._previewStackY = nil
+        RequestPreviewAutoHeight()
+        return
+    end
+
+    p:Hide()
+    s:Hide()
+
+    local primaryInfo   = showPrimary   and { section = p, cfg = pc, textCfg = primaryTextCfg,   resource = primaryResource,   label = POWER_DISPLAY_NAMES[primaryResource]   or ns.L["Power"] }     or nil
+    local secondaryInfo = showSecondary and { section = s, cfg = sc, textCfg = secondaryTextCfg, resource = secondaryResource, label = POWER_DISPLAY_NAMES[secondaryResource] or ns.L["Secondary"] } or nil
+
+    local orderedSections = {}
+    if swapBars then
+        if secondaryInfo then orderedSections[#orderedSections + 1] = secondaryInfo end
+        if primaryInfo   then orderedSections[#orderedSections + 1] = primaryInfo   end
+    else
+        if primaryInfo   then orderedSections[#orderedSections + 1] = primaryInfo   end
+        if secondaryInfo then orderedSections[#orderedSections + 1] = secondaryInfo end
+    end
+
+    local nextY = 0
+    for _, info in ipairs(orderedSections) do
+        local section = info.section
+        local cfg = info.cfg
+        local textCfg = info.textCfg
+        local resource = info.resource
+
+        section:Show()
+        section:ClearAllPoints()
+        ApplyPreviewSectionLayout(section, cfg, pr.pv, visibleCount)
+        section:SetPoint("TOP", pr.pv, "TOP", 0, nextY)
+        section._previewStackY = nextY
+        nextY = nextY - section:GetHeight() - PREVIEW_SECTION_GAP
+
+        section.lbl:SetText(info.label)
+
+        local r, g, b = GetPreviewBarColor(cfg, resource)
+        local bgr, bgg, bgb, bga = GetPreviewBgColor(cfg)
+        section.bg:SetColorTexture(bgr, bgg, bgb, bga)
+
+        local tex = LSM and LSM.Fetch and LSM:Fetch("statusbar", GetBarTexture(cfg))
+        if tex then ns.Helpers.ApplyBarStyle(section.bar, tex) end
+        section.bar:SetStatusBarColor(r, g, b)
+
+        ApplyPreviewTicks(section, cfg, resource)
+        ApplyPreviewIndicators(section, cfg, resource)
+
+        local fontSize = textCfg and math_max(7, math_min(textCfg.textSize or 9, 13)) or 9
+        if valueFont then
+            CJKFont(section.val, valueFont, fontSize, valueFontOutline)
+        elseif fp then
+            CJKFont(section.val, fp, fontSize, "")
+        end
+
+        local textR, textG, textB, textA = 1, 1, 1, 0.9
+        if textCfg and textCfg.textUseClassColor then
+            local _, class = UnitClass("player")
+            -- @secret-policy: collapse-only — secret class keeps the default text color
+            if issecretvalue and issecretvalue(class) then class = nil end
+            local classColor = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+            if classColor then
+                textR, textG, textB, textA = classColor.r, classColor.g, classColor.b, 1
+            end
+        else
+            local c = textCfg and textCfg.textCustomColor
+            if c then
+                textR, textG, textB, textA = (c[1] or c.r or 1), (c[2] or c.g or 1), (c[3] or c.b or 1), (c[4] or c.a or 1)
+            end
+        end
+        section.val:SetTextColor(textR, textG, textB, textA)
+
+        local align = textCfg and textCfg.textAlign or "CENTER"
+        if align ~= "LEFT" and align ~= "RIGHT" then
+            align = "CENTER"
+        end
+        local textX = textCfg and textCfg.textX or 0
+        local textY = textCfg and textCfg.textY or 0
+        section.val:ClearAllPoints()
+        section.val:SetJustifyH(align)
+        if align == "LEFT" then
+            section.val:SetPoint("LEFT", section.textFrame, "LEFT", textX, textY)
+        elseif align == "RIGHT" then
+            section.val:SetPoint("RIGHT", section.textFrame, "RIGHT", textX, textY)
+        else
+            section.val:SetPoint("CENTER", section.textFrame, "CENTER", textX, textY)
+        end
+
+        section._cfg      = cfg
+        section._resource = resource
+        section._textCfg  = textCfg
+    end
+
+    local pp, ss = ComputePcts(state.cycle.t)
+    ApplyDynamics(pp, ss)
+    RequestPreviewAutoHeight()
+end
+
+function Module.Teardown()
+    if state.ticker then
+        state.ticker:SetScript("OnUpdate", nil)
+    end
+    if state.host then
+        state.host:SetScript("OnSizeChanged", nil)
+        state.host._previewAutoHeightPending = nil
+    end
+    state.host       = nil
+    state.ticker     = nil
+    state.previewRef = nil
+    state.cycle      = { t = 0 }
+    state.autoHeight = nil
+end
+
+function Module.GetCurrentPcts()
+    local p, s = ComputePcts(state.cycle.t)
+    return { primary = p, secondary = s }
+end

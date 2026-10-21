@@ -1,0 +1,937 @@
+local ADDON_NAME, ns = ...
+local Helpers = ns.Helpers or {}
+ns.Addon = ns.Addon or {}
+local AuraTheme = ns.Addon.AuraTheme
+local AuraSkin = {}
+ns.Addon.AuraSkin = AuraSkin
+ns.AuraSkin = AuraSkin
+_G.H3z0UI = _G.H3z0UI or {}
+_G.H3z0UI.AuraSkin = AuraSkin
+
+local DISPEL_STYLES = Enum and Enum.CustomAuraButtonDispelTypeTextureStyle
+local STYLE_PRESERVE_ASSET = (DISPEL_STYLES and DISPEL_STYLES.PreserveAsset) or 3
+local STYLE_CUSTOM_ASSET = (DISPEL_STYLES and DISPEL_STYLES.CustomAsset) or 4
+
+local function AurasAreSecret()
+    return C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret()
+end
+
+local _restrictedRestyle = {}
+local _restrictedPollArmed = false
+local function ScheduleRestrictedRestyle(container)
+    _restrictedRestyle[container] = true
+    if _restrictedPollArmed then return end
+    local After = C_Timer and C_Timer.After
+    if not After then return end
+    _restrictedPollArmed = true
+    local function tick()
+        if AurasAreSecret() or (InCombatLockdown and InCombatLockdown()) then
+            After(0.5, tick)
+            return
+        end
+        _restrictedPollArmed = false
+        local run = _restrictedRestyle
+        _restrictedRestyle = {}
+        for c in pairs(run) do
+            if c._h3z0uiProfile then
+                AuraSkin.Restyle(c, c._h3z0uiProfile)
+            end
+        end
+    end
+    After(0.5, tick)
+end
+
+local AuraElements
+local function ResolveAuraElements()
+    AuraElements = AuraElements or ns.AuraElements
+    return AuraElements
+end
+
+local function ResolveLayout(profile)
+    profile = profile or {}
+    local m = AuraTheme.Metrics(profile)
+    return {
+        maxIcons  = m.maxIcons,
+        iconSize  = m.iconSize,
+        iconWidth = profile.iconWidth or m.iconSize,
+        iconHeight = profile.iconHeight or m.iconSize,
+        spacing   = m.spacing,
+        rowSpacing = (profile.rowSpacing and profile.rowSpacing > 0)
+            and profile.rowSpacing or m.spacing,
+        grow      = m.grow,
+        maxPerRow = profile.maxPerRow or 0,
+        offsetX   = profile.offsetX or 0,
+        offsetY   = profile.offsetY or 0,
+        anchor    = profile.anchor or "TOPLEFT",
+        attachPoint = profile.attachPoint or profile.anchor or "TOPLEFT",
+        wrap = profile.wrap,
+        crossEnd = profile.crossEnd,
+    }
+end
+
+local function buildButtonArt(button)
+    if button._h3z0uiWired then return end
+    button._h3z0uiWired = true
+
+    local border = button:CreateTexture(nil, "BACKGROUND")
+    border:SetAllPoints(button)
+    button._h3z0uiBorder = border
+
+    local dispel = button:CreateTexture(nil, "BORDER")
+    dispel:SetAllPoints(button)
+    dispel:SetColorTexture(1, 1, 1, 1)
+    if dispel.DisablePixelSnap then dispel:DisablePixelSnap() end
+    button._h3z0uiDispel = dispel
+
+    local steal = button:CreateTexture(nil, "BORDER")
+    steal:SetAllPoints(button)
+    steal:SetColorTexture(1, 1, 1, 1)
+    if steal.DisablePixelSnap then steal:DisablePixelSnap() end
+    if steal.Hide then steal:Hide() end
+    button._h3z0uiDispelSteal = steal
+
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
+    icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    button.Icon = icon
+    if button.SetIcon then button:SetIcon(icon) end
+
+    local backdrop = button:CreateTexture(nil, "BACKGROUND", nil, -8)
+    backdrop:SetAllPoints(button)
+    backdrop:SetColorTexture(0, 0, 0, 1)
+    if backdrop.Hide then backdrop:Hide() end
+    button._h3z0uiBackdrop = backdrop
+
+    local gloss = button:CreateTexture(nil, "OVERLAY")
+    if ns.IconSkin and gloss.SetTexture then gloss:SetTexture(ns.IconSkin.GlossTexture) end
+    if gloss.SetBlendMode then gloss:SetBlendMode("ADD") end
+    gloss:SetAllPoints(button)
+    if gloss.Hide then gloss:Hide() end
+    button._h3z0uiGloss = gloss
+
+    local pandemic = button:CreateTexture(nil, "OVERLAY")
+    if ns.IconSkin and pandemic.SetTexture then pandemic:SetTexture(ns.IconSkin.FlashTexture) end
+    if pandemic.SetBlendMode then pandemic:SetBlendMode("ADD") end
+    pandemic:SetAllPoints(button)
+    if pandemic.SetVertexColor then pandemic:SetVertexColor(1, 0.85, 0.2, 1) end
+    if pandemic.SetAlpha then pandemic:SetAlpha(0) end
+    if pandemic.Hide then pandemic:Hide() end
+    button._h3z0uiPandemic = pandemic
+    if button.AddPandemicRegion then
+        button:AddPandemicRegion(pandemic)
+    end
+
+    local cd = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+    cd:SetAllPoints(button)
+    cd:SetHideCountdownNumbers(true)
+    button._h3z0uiCooldown = cd
+    if button.SetDurationCooldown then button:SetDurationCooldown(cd) end
+
+    local fill = CreateFrame("StatusBar", nil, button)
+    if Helpers and Helpers.ApplyBarStyle then
+        Helpers.ApplyBarStyle(fill, "Interface\\Buttons\\WHITE8x8")
+    else
+        fill:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+    end
+    fill:SetAllPoints(button)
+    fill:Hide()
+    button._h3z0uiDurationBar = fill
+
+    -- The cooldown swipe and the duration bar are child FRAMES, which always
+    -- draw above regions on the button itself — so the texts live on their
+    -- own overlay frame stacked higher, or the swipe covers them.
+    local textOverlay = CreateFrame("Frame", nil, button)
+    textOverlay:SetAllPoints(button)
+    if textOverlay.SetFrameLevel and cd.GetFrameLevel and fill.GetFrameLevel then
+        textOverlay:SetFrameLevel(math.max(cd:GetFrameLevel(), fill:GetFrameLevel()) + 1)
+    end
+    button._h3z0uiTextOverlay = textOverlay
+
+    local symbol = textOverlay:CreateFontString(nil, "OVERLAY", "TextStatusBarText")
+    symbol:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
+    button._h3z0uiSymbol = symbol
+    if button.SetDispelTypeText then
+        button:SetDispelTypeText(symbol, {
+            showWhenHarmful = true,
+            showWhenHelpful = false,
+        })
+    end
+
+    local durText = textOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    durText:SetPoint("CENTER", button, "CENTER", 0, 0)
+    button._h3z0uiDuration = durText
+    if button.SetDurationText then button:SetDurationText(durText, {}) end
+
+    local count = textOverlay:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    count:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
+    button._h3z0uiCount = count
+    if button.SetApplicationCount then button:SetApplicationCount(count, {}) end
+end
+
+local function ApplyIconSkinOwnership(button, profile)
+    local Bridge = ns.ExternalSkinBridge
+    local surfaceKey = profile.externalSkinKey
+    local external = profile.externalSkinning == true
+        and surfaceKey ~= nil
+        and Bridge and Bridge.IsAvailable and Bridge.IsAvailable()
+
+    if external then
+        if button._h3z0uiBridgedKey and button._h3z0uiBridgedKey ~= surfaceKey then
+            Bridge.RemoveButton(button._h3z0uiBridgedKey, button)
+            button._h3z0uiBridgedKey = nil
+        end
+        if button._h3z0uiBridgedKey ~= surfaceKey then
+            local regions = button._h3z0uiRegions or {}
+            button._h3z0uiRegions = regions
+            regions.Icon = button.Icon
+            regions.Cooldown = button._h3z0uiCooldown
+            Bridge.AddButton(surfaceKey, button, regions)
+            button._h3z0uiBridgedKey = surfaceKey
+        end
+        button._h3z0uiBridged = true
+        if button._h3z0uiBorder and button._h3z0uiBorder.Hide then button._h3z0uiBorder:Hide() end
+        if button._h3z0uiBackdrop and button._h3z0uiBackdrop.Hide then button._h3z0uiBackdrop:Hide() end
+        if button._h3z0uiGloss and button._h3z0uiGloss.Hide then button._h3z0uiGloss:Hide() end
+        if Helpers.ApplyIconStyle then Helpers.ApplyIconStyle(button, button.Icon, "External") end
+        return
+    end
+
+    if button._h3z0uiBridgedKey and Bridge then
+        Bridge.RemoveButton(button._h3z0uiBridgedKey, button)
+    end
+    button._h3z0uiBridgedKey = nil
+    button._h3z0uiBridged = nil
+
+    if button._h3z0uiBorder and button._h3z0uiBorder.Show then button._h3z0uiBorder:Show() end
+    local skinName = profile.iconSkin or "Default"
+    if ns.IconSkin and skinName ~= "Default" then
+        local regions = button._h3z0uiRegions or {}
+        button._h3z0uiRegions = regions
+        regions.Backdrop = button._h3z0uiBackdrop
+        regions.Gloss = button._h3z0uiGloss
+        regions.Icon = button.Icon
+        ns.IconSkin.ApplySkin(button, regions, skinName)
+    else
+        if button._h3z0uiBackdrop and button._h3z0uiBackdrop.Hide then button._h3z0uiBackdrop:Hide() end
+        if button._h3z0uiGloss and button._h3z0uiGloss.Hide then button._h3z0uiGloss:Hide() end
+    end
+end
+
+function AuraSkin.StyleIconArt(button, profile)
+    profile = profile or {}
+    local icon = button.Icon
+    local showBorder = profile.showBorder ~= false
+    if not button._h3z0uiBridged and icon then
+        local zoom = profile.zoom or 0
+        local left = 0.08 + zoom
+        local right = 0.92 - zoom
+        local top = 0.08 + zoom
+        local bottom = 0.92 - zoom
+        local aspect = profile.aspectRatioCrop or 1
+        if aspect > 1 then
+            local offset = (1 - (1 / aspect)) * (bottom - top) / 2
+            top = top + offset
+            bottom = bottom - offset
+        end
+        if icon.SetTexCoord then icon:SetTexCoord(left, right, top, bottom) end
+        local inset = showBorder and (profile.borderSize or 1) or 0
+        if inset < 0 then inset = 0 end
+        if icon.ClearAllPoints then icon:ClearAllPoints() end
+        icon:SetPoint("TOPLEFT", button, "TOPLEFT", inset, -inset)
+        icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -inset, inset)
+    end
+
+    if Helpers.ApplyIconStyle then
+        Helpers.ApplyIconStyle(button, icon, button._h3z0uiBridged and "External" or (profile.iconSkin or "Default"))
+    end
+    local border = button._h3z0uiBorder
+    if not border then return end
+    if button._h3z0uiBridged or not showBorder then
+        if border.Hide then border:Hide() end
+        return
+    end
+    local color = profile.borderColor
+    local r, g, b, a
+    if type(color) == "table" then
+        r, g, b, a = color[1] or 1, color[2] or 1, color[3] or 1, color[4]
+    else
+        r, g, b, a = AuraTheme.BorderColor()
+    end
+    border:SetColorTexture(r, g, b, a or 1)
+    if border.DisablePixelSnap then border:DisablePixelSnap() end
+    if border.Show then border:Show() end
+end
+
+local durationFormatters = {}
+local function DurationFormatter(decimals, hideUnit)
+    local key = (decimals and "d" or "-") .. (hideUnit and "u" or "-")
+    local cached = durationFormatters[key]
+    if cached ~= nil then return cached or nil end
+    local rounding = Enum and Enum.NumericRuleFormatRounding
+    local built
+    if C_StringUtil and C_StringUtil.CreateNumericRuleFormatter and rounding then
+        local ok, formatter = pcall(C_StringUtil.CreateNumericRuleFormatter)
+        if ok and formatter then
+            local breakpoints = {}
+            local secondsFmt = hideUnit and "%d" or "%ds"
+            if decimals then
+                breakpoints[#breakpoints + 1] = { threshold = 0, format = hideUnit and "%.1f" or "%.1fs" }
+                breakpoints[#breakpoints + 1] = { threshold = 3, step = 1, rounding = rounding.Up, format = secondsFmt }
+            else
+                breakpoints[#breakpoints + 1] = { threshold = 0, step = 1, rounding = rounding.Up, format = secondsFmt }
+            end
+            -- Minute+ bands keep their unit even with hideUnit: a bare "2"
+            -- for two minutes is indistinguishable from two seconds.
+            breakpoints[#breakpoints + 1] = { threshold = 90, format = "%dm",
+                components = { { div = 60, step = 1, rounding = rounding.Up } } }
+            breakpoints[#breakpoints + 1] = { threshold = 5400, format = "%dh",
+                components = { { div = 3600, step = 1, rounding = rounding.Up } } }
+            breakpoints[#breakpoints + 1] = { threshold = 129600, format = "%dd",
+                components = { { div = 86400, step = 1, rounding = rounding.Up } } }
+            local applied = pcall(formatter.SetBreakpoints, formatter, breakpoints)
+            if applied then built = formatter end
+        end
+    end
+    durationFormatters[key] = built or false
+    return built
+end
+
+function AuraSkin.BuildDurationTextOptions(profile)
+    local durS = (profile and profile.duration) or {}
+    local opts = {}
+    local decimals = durS.decimals == true
+    local hideUnit = durS.hideUnit == true
+    if decimals or hideUnit then
+        opts.textFormatter = DurationFormatter(decimals, hideUnit)
+    end
+    return opts
+end
+
+function AuraSkin.ResolveDurationTextOptions(_button, profile)
+    return AuraSkin.BuildDurationTextOptions(profile)
+end
+
+local Helpers = ns.Helpers
+local function StylePandemic(button, glow)
+    local texture = button._h3z0uiPandemic
+    if not texture then return end
+    local color = type(glow) == "table" and not glow.glowType and type(glow.color) == "table" and glow.color
+    local style = color and glow.style or "steady"
+    local add = style == "pulse" and button.AddPandemicActiveAnimation
+        or style == "flash" and button.AddPandemicEnterAnimation
+    local remove = style == "pulse" and button.RemovePandemicActiveAnimation
+        or style == "flash" and button.RemovePandemicEnterAnimation
+    if not texture.CreateAnimationGroup or not ((add and remove) or button._h3z0uiPreview) then
+        style = "steady"
+    end
+    if style ~= "pulse" and style ~= "flash" then style = "steady" end
+
+    local previous = button._h3z0uiPandemicStyle
+    if previous ~= style then
+        local old = button._h3z0uiPandemicAnimations and button._h3z0uiPandemicAnimations[previous]
+        if old then
+            old:Stop()
+            if not button._h3z0uiPreview then
+                local unregister = previous == "pulse" and button.RemovePandemicActiveAnimation
+                    or button.RemovePandemicEnterAnimation
+                unregister(button, old)
+            end
+        end
+        button._h3z0uiPandemicStyle = style
+    end
+
+    if texture.SetVertexColor and color then
+        texture:SetVertexColor(color[1] or 1, color[2] or 0.85, color[3] or 0.2,
+            style == "steady" and 1 or (color[4] or 1))
+    end
+    if texture.SetAlpha then
+        texture:SetAlpha(not color and 0 or style == "flash" and 0
+            or style == "pulse" and 1 or (color[4] or 1))
+    end
+    if style == "steady" or previous == style then return end
+
+    local animations = button._h3z0uiPandemicAnimations or {}
+    button._h3z0uiPandemicAnimations = animations
+    local group = animations[style]
+    if not group then
+        group = texture:CreateAnimationGroup()
+        group:SetLooping(style == "pulse" and "REPEAT" or "NONE")
+        local fade = group:CreateAnimation("Alpha")
+        fade:SetOrder(1)
+        fade:SetFromAlpha(style == "pulse" and 0.25 or 1)
+        fade:SetToAlpha(style == "pulse" and 1 or 0)
+        fade:SetDuration(style == "pulse" and 0.45 or 0.6)
+        if style == "pulse" then
+            local down = group:CreateAnimation("Alpha")
+            down:SetOrder(2)
+            down:SetFromAlpha(1)
+            down:SetToAlpha(0.25)
+            down:SetDuration(0.45)
+        end
+        animations[style] = group
+    end
+    if not button._h3z0uiPreview then add(button, group) end
+    group:Play()
+end
+
+local function styleButton(button, profile)
+    local size = profile.iconSize or 22
+    if size <= 0 then size = 22 end
+    local width = profile.iconWidth or size
+    local height = profile.iconHeight or size
+    button:SetSize(width, height)
+
+    if button.SetTooltipAnchorPoint then
+        if profile.tooltipAnchor then
+            if not button._h3z0uiTipPrev and button.GetTooltipAnchorPoint then
+                button._h3z0uiTipPrev = { button:GetTooltipAnchorPoint() }
+            end
+            local ok = pcall(button.SetTooltipAnchorPoint, button, profile.tooltipAnchor,
+                profile.tooltipAnchorX or 0, profile.tooltipAnchorY or 0)
+            if ok then button._h3z0uiTipAnchored = true end
+        elseif button._h3z0uiTipAnchored then
+            local prev = button._h3z0uiTipPrev
+            pcall(button.SetTooltipAnchorPoint, button,
+                (prev and prev[1]) or "ANCHOR_BOTTOMLEFT",
+                (prev and prev[2]) or 0, (prev and prev[3]) or 0)
+            button._h3z0uiTipAnchored = nil
+        end
+    end
+    if button.SetHideTooltipInCombat then
+        button:SetHideTooltipInCombat(profile.tooltipHideInCombat == true)
+    end
+
+    ApplyIconSkinOwnership(button, profile)
+    button:SetAlpha(profile.opacity or 1)
+    AuraSkin.StyleIconArt(button, profile)
+
+    local dispel = button._h3z0uiDispel
+    if dispel and button.ClearDispelTypeTextures and button.AddDispelTypeTexture then
+        local mode = profile.dispelBorderMode
+        local borderOpts = {
+            style = STYLE_PRESERVE_ASSET,
+            showWhenHarmful = true,
+            showWhenHelpful = false,
+        }
+        if mode == "all" then
+            borderOpts.showAlways = true
+        end
+        if type(profile.dispelColors) == "table" then
+            borderOpts.customDispelColorMap = profile.dispelColors
+        elseif profile.dispelColorCurve then
+            borderOpts.customDispelColorCurve = profile.dispelColorCurve
+        end
+        if type(profile.dispelAssets) == "table" then
+            borderOpts.style = STYLE_CUSTOM_ASSET
+            borderOpts.customDispelAssetMap = profile.dispelAssets
+        end
+        local steal = button._h3z0uiDispelSteal
+        button:ClearDispelTypeTextures()
+        if button._h3z0uiBridged or profile.showDispelBorder == false then
+            if dispel.Hide then dispel:Hide() end
+            if steal and steal.Hide then steal:Hide() end
+        else
+            if dispel.Show then dispel:Show() end
+            button:AddDispelTypeTexture(dispel, borderOpts)
+            local filters = Enum and Enum.CustomAuraButtonDispelTypeStealableFilter
+            if mode == "stealable" and steal and filters then
+                local stealOpts = {
+                    style = borderOpts.style,
+                    showWhenHarmful = false,
+                    showWhenHelpful = true,
+                    stealableFilter = filters.Stealable,
+                    customDispelColorMap = borderOpts.customDispelColorMap,
+                    customDispelColorCurve = borderOpts.customDispelColorCurve,
+                    customDispelAssetMap = borderOpts.customDispelAssetMap,
+                }
+                if steal.Show then steal:Show() end
+                button:AddDispelTypeTexture(steal, stealOpts)
+            elseif steal and steal.Hide then
+                steal:Hide()
+            end
+        end
+    end
+
+    StylePandemic(button, profile.pandemicGlow)
+
+    local fontPath = (Helpers and Helpers.GetGeneralFont and Helpers.GetGeneralFont())
+    local fontFlags = (Helpers and Helpers.GetGeneralFontOutline and Helpers.GetGeneralFontOutline()) or "OUTLINE"
+    local function styleText(fs, cfg, fallbackSize, defAnchor, defX, defY)
+        if not fs then return end
+        local size = (cfg and cfg.fontSize) or fallbackSize or 11
+        if size <= 0 then size = 11 end
+        local font = (cfg and cfg.font) or fontPath
+        if font then fs:SetFont(font, size, fontFlags) end
+        fs:ClearAllPoints()
+        fs:SetPoint((cfg and cfg.anchor) or defAnchor, button, (cfg and cfg.anchor) or defAnchor,
+            (cfg and cfg.offsetX) or defX, (cfg and cfg.offsetY) or defY)
+        local c = cfg and cfg.color
+        if c then fs:SetTextColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1) end
+        fs:SetAlpha(cfg and cfg.show == false and 0 or 1)
+    end
+    styleText(button._h3z0uiDuration, profile.duration, profile.fontSize, "CENTER", 0, 0)
+    if button.SetDurationText and button._h3z0uiDuration then
+        local options = AuraSkin.ResolveDurationTextOptions(button, profile)
+        if button._h3z0uiDurationTextFontString ~= button._h3z0uiDuration
+            or button._h3z0uiDurationTextFormatter ~= options.textFormatter then
+            button._h3z0uiDurationTextFontString = nil
+            if ns.SafeCall("sink-forward", button.SetDurationText, button, button._h3z0uiDuration, options) then
+                button._h3z0uiDurationTextFontString = button._h3z0uiDuration
+                button._h3z0uiDurationTextFormatter = options.textFormatter
+            end
+        end
+    end
+    styleText(button._h3z0uiCount, profile.stack, profile.fontSize, "BOTTOMRIGHT", -1, 1)
+    local caster = type(profile.casterName) == "table" and profile.casterName
+    if caster and (button.SetCasterName or button._h3z0uiPreview) then
+        local text = button._h3z0uiCaster
+        if not text then
+            text = button._h3z0uiTextOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            text:SetWordWrap(false)
+            text:SetJustifyH("CENTER")
+            button._h3z0uiCaster = text
+        end
+        styleText(text, caster, 10, "BOTTOM", 0, 1)
+        text:SetWidth(width)
+        if button._h3z0uiPreview then
+            text:SetText(caster.showRealmName and "Caster-Realm" or "Caster")
+            if caster.useClassColors then text:SetTextColor(1, 0.49, 0.04) end
+        else
+            button:SetCasterName(text, {
+                showRealmName = caster.showRealmName == true,
+                useClassColors = caster.useClassColors == true,
+            })
+        end
+    elseif button._h3z0uiCaster then
+        if button.ClearCasterName then button:ClearCasterName() end
+        button._h3z0uiCaster:SetAlpha(0)
+    end
+    if fontPath and button._h3z0uiSymbol then button._h3z0uiSymbol:SetFont(fontPath, (profile.fontSize and profile.fontSize > 0) and profile.fontSize or 11, fontFlags) end
+
+    local cd = button._h3z0uiCooldown
+    local wantsLinear = profile.swipeStyle == "horizontal" or profile.swipeStyle == "vertical"
+    if wantsLinear and button.SetDurationBar and profile.hideSwipe ~= true then
+        if cd and cd.SetDrawSwipe then cd:SetDrawSwipe(false) end
+        if cd and cd.SetDrawEdge then cd:SetDrawEdge(false) end
+        if cd and cd.SetDrawBling then cd:SetDrawBling(false) end
+        local fill = button._h3z0uiDurationBar
+        if not fill and InCombatLockdown() then
+            return
+        end
+        if not fill then
+            fill = CreateFrame("StatusBar", nil, button)
+            if Helpers and Helpers.ApplyBarStyle then
+                Helpers.ApplyBarStyle(fill, "Interface\\Buttons\\WHITE8x8")
+            else
+                fill:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+            end
+            fill:SetAllPoints(button)
+            button._h3z0uiDurationBar = fill
+        end
+        button:SetDurationBar(fill, {
+            direction = (profile.reverseSwipe and Enum.StatusBarTimerDirection.ElapsedTime)
+                or Enum.StatusBarTimerDirection.RemainingTime,
+            interpolation = Enum.StatusBarInterpolation.Immediate,
+        })
+        fill:SetOrientation(profile.swipeStyle == "vertical" and "VERTICAL" or "HORIZONTAL")
+        fill:Show()
+    else
+        if button._h3z0uiDurationBar then button._h3z0uiDurationBar:Hide() end
+        if cd then
+            if cd.SetSwipeTexture and profile.swipeTexture then
+                cd:SetSwipeTexture(profile.swipeTexture)
+            end
+            local showSwipe = profile.hideSwipe ~= true
+            cd:SetDrawSwipe(showSwipe)
+            if cd.SetDrawEdge then
+                cd:SetDrawEdge(showSwipe and profile.showEdge ~= false)
+            end
+            if cd.SetDrawBling then
+                cd:SetDrawBling(showSwipe)
+            end
+            if profile.swipeColor and cd.SetSwipeColor then
+                local c = profile.swipeColor
+                cd:SetSwipeColor(c[1] or 1, c[2] or 1, c[3] or 1, c[4] or 1)
+            end
+            cd:SetReverse(profile.reverseSwipe == true)
+            cd:SetHideCountdownNumbers(true)
+        end
+    end
+end
+
+local function FlowFor(L)
+    local grow = L.grow == "CENTER" and "RIGHT" or L.grow
+    local column = (grow == "UP" or grow == "DOWN")
+    local left = (grow == "LEFT")
+    local up
+    if column then
+        up = (grow == "UP")
+        -- Vertical flows anchor their cross axis on the left unless the
+        -- profile asks for the far edge (packed group blocks aligned END).
+        if L.crossEnd ~= nil then left = (L.crossEnd == true) end
+    else
+        up = (L.wrap == "UP")
+    end
+    local anchor = (up and "BOTTOM" or "TOP") .. (left and "RIGHT" or "LEFT")
+    return anchor, left, up, column
+end
+
+function AuraSkin.LayoutAnchor(profile)
+    local L = ResolveLayout(profile)
+    if L.grow == "CENTER" then
+        return "CENTER"
+    end
+    local anchor = FlowFor(L)
+    return anchor
+end
+
+local function ApplyContainerLayout(container, L)
+    local anchor, left, up, column = FlowFor(L)
+    local FD = AnchorUtil.FlowDirection
+    local AX = AnchorUtil.FlowLayoutAxis
+    container:SetFlowLayoutAnchorPoint(anchor)
+    container:SetFlowLayoutGrowthDirection(
+        left and FD.Left or FD.Right,
+        up and FD.Up or FD.Down)
+    container:SetFlowLayoutPadding(0, 0, 0, 0)
+    container:SetFlowLayoutAxis(column and AX.Vertical or AX.Horizontal)
+    local lineSize
+    if L.maxPerRow and L.maxPerRow > 0 then
+        lineSize = L.maxPerRow * L.iconSize + (L.maxPerRow - 1) * L.spacing + 0.5
+    end
+    container:SetFlowLayoutMaximumLineSize(lineSize)
+end
+
+local function GroupLayout(L, g)
+    local t = {
+        elementSpacing = g and g.elementSpacing or L.spacing,
+        lineSpacing    = L.rowSpacing,
+        elementWidth   = g and g.elementWidth or L.iconWidth,
+        elementHeight  = g and g.elementHeight or L.iconHeight,
+    }
+    if g and type(g._h3z0uiOrder) == "number" then
+        t.layoutIndex = g._h3z0uiOrder
+    end
+    if g and type(g.groupSpacing) == "number" then
+        t.groupSpacing = g.groupSpacing
+    end
+    return t
+end
+
+local function ApplyLatchedMouseMotion(container, button)
+    local mouseMotion = container._h3z0uiRangeGateMouseEnabled
+    if mouseMotion == nil then return end
+    if AurasAreSecret() or (InCombatLockdown and InCombatLockdown()) then
+        ScheduleRestrictedRestyle(container)
+        return
+    end
+    if button.SetMouseMotionEnabled and button.SetMouseClickEnabled then
+        button:SetMouseMotionEnabled(mouseMotion)
+        button:SetMouseClickEnabled(mouseMotion)
+    elseif button.EnableMouse then
+        button:EnableMouse(mouseMotion)
+    end
+end
+
+-- A group may carry its own style profile (packed aura-display groups mix
+-- displays with different icon sizes in one container); it is looked up by
+-- key at style time so later Configure passes can swap it without rebirth.
+local function GroupProfile(container, key)
+    local byKey = key ~= nil and container._h3z0uiGroupProfiles or nil
+    return (byKey and byKey[key]) or container._h3z0uiProfile or {}
+end
+
+local function MakeInitializer(container, _groupDesc, key)
+    return function(button)
+        buildButtonArt(button)
+        styleButton(button, GroupProfile(container, key))
+        if button.SetCancelAuraButtons then
+            button:SetCancelAuraButtons(container._h3z0uiCancelButtons)
+        end
+        ApplyLatchedMouseMotion(container, button)
+        local reg = container._h3z0uiButtons
+        if not reg then
+            reg = {}
+            container._h3z0uiButtons = reg
+        end
+        if not button._h3z0uiTracked then
+            button._h3z0uiTracked = true
+            reg[#reg + 1] = button
+        end
+    end
+end
+
+local function EachTrackedButton(container, fn)
+    local seen
+    if container.GetAuraGroupFrame and container.GetAuraGroupFrameCount then
+        seen = {}
+        local registered = container._h3z0uiGroups
+        if registered then
+            for key in pairs(registered) do
+                local count = container:GetAuraGroupFrameCount(key)
+                for i = 1, count or 0 do
+                    local button = container:GetAuraGroupFrame(key, i)
+                    if button then
+                        seen[button] = true
+                        fn(button, key)
+                    end
+                end
+            end
+        end
+    end
+    local reg = container._h3z0uiButtons
+    if reg then
+        for i = 1, #reg do
+            local button = reg[i]
+            if button and not (seen and seen[button]) then
+                fn(button)
+            end
+        end
+    end
+end
+
+local EMPTY_CANDIDATE_FILTERS = {}
+
+local function CandidateFiltersMatch(previous, filters)
+    if not previous then return false end
+    filters = filters or EMPTY_CANDIDATE_FILTERS
+    for field, value in pairs(filters) do
+        local old = previous[field]
+        if type(value) == "table" then
+            if type(old) ~= "table" then return false end
+            for key, entry in pairs(value) do
+                if old[key] ~= entry then return false end
+            end
+            for key in pairs(old) do
+                if value[key] == nil then return false end
+            end
+        elseif old ~= value then
+            return false
+        end
+    end
+    for field in pairs(previous) do
+        if filters[field] == nil then return false end
+    end
+    return true
+end
+
+local function CacheGroupCandidateFilters(container, key, filters)
+    local cache = container._h3z0uiGroupCandidateFilters
+    if not cache then
+        cache = {}
+        container._h3z0uiGroupCandidateFilters = cache
+    end
+    local snapshot = {}
+    for field, value in pairs(filters or EMPTY_CANDIDATE_FILTERS) do
+        if type(value) == "table" then
+            local copy = {}
+            for entry, enabled in pairs(value) do copy[entry] = enabled end
+            snapshot[field] = copy
+        else
+            snapshot[field] = value
+        end
+    end
+    cache[key] = snapshot
+end
+
+function AuraSkin.SetGroupCandidateFilters(container, key, filters)
+    local cache = container._h3z0uiGroupCandidateFilters
+    if CandidateFiltersMatch(cache and cache[key], filters) then return end
+    container:SetAuraGroupCandidateFilters(key, filters)
+    CacheGroupCandidateFilters(container, key, filters)
+end
+
+local function GroupLayoutsMatch(a, b)
+    return a and a.elementSpacing == b.elementSpacing
+        and a.lineSpacing == b.lineSpacing
+        and a.elementWidth == b.elementWidth
+        and a.elementHeight == b.elementHeight
+        and a.layoutIndex == b.layoutIndex
+        and a.groupSpacing == b.groupSpacing
+end
+
+function AuraSkin.Configure(container, profile, groups)
+    local L = ResolveLayout(profile)
+    container._h3z0uiProfile = profile
+    local cancel
+    for i = 1, #groups do
+        local c = groups[i].cancelButtons
+        if c then cancel = c end
+    end
+    container._h3z0uiCancelButtons = cancel
+    local registered = container._h3z0uiGroups
+    if not registered then
+        registered = {}
+        container._h3z0uiGroups = registered
+    end
+    local groupProfiles = container._h3z0uiGroupProfiles
+    if not groupProfiles then
+        groupProfiles = {}
+        container._h3z0uiGroupProfiles = groupProfiles
+    end
+    local groupConfigs = container._h3z0uiGroupConfigs
+    if not groupConfigs then
+        groupConfigs = {}
+        container._h3z0uiGroupConfigs = groupConfigs
+    end
+    local wanted = {}
+    local E = ResolveAuraElements()
+    local canMutateFilter = container.SetAuraGroupFilterString ~= nil
+    for i = 1, #groups do
+        local g = groups[i]
+        g._h3z0uiOrder = i
+        local gkey = g.key or ""
+        assert(not gkey:find("|", 1, true),
+            "AuraSkin group key must not contain '|'")
+        local filter = (E and E.CanonicalizeFilterString) and E.CanonicalizeFilterString(g.filter) or g.filter
+        local key = canMutateFilter and gkey or (gkey .. "|" .. filter)
+        wanted[key] = true
+        groupProfiles[key] = g.profile
+        local maxCount   = g.maxFrameCount or L.maxIcons
+        local sortMethod = g.sortMethod or AuraContainerSortMethod.Default
+        local sortDir    = g.sortDirection or AuraContainerSortDirection.Normal
+        local layout = GroupLayout(L, g)
+        local config = groupConfigs[key]
+        if not config then
+            config = {}
+            groupConfigs[key] = config
+        end
+        if registered[key] or container:HasAuraGroup(key) then
+            if canMutateFilter and registered[key] ~= filter then
+                container:SetAuraGroupFilterString(key, filter)
+            end
+            container:SetAuraGroupMaxFrameCount(key, maxCount)
+            if config.sortMethod ~= sortMethod or config.sortDirection ~= sortDir then
+                container:SetAuraGroupSortMethod(key, sortMethod, sortDir)
+                config.sortMethod, config.sortDirection = sortMethod, sortDir
+            end
+            AuraSkin.SetGroupCandidateFilters(container, key, g.candidateFilters)
+            if not GroupLayoutsMatch(config.layout, layout) then
+                container:SetAuraGroupLayout(key, layout)
+                config.layout = layout
+            end
+            registered[key] = filter
+        else
+            container:AddAuraGroup(key, filter, {
+                maxFrameCount    = maxCount,
+                sortMethod       = sortMethod,
+                sortDirection    = sortDir,
+                candidateFilters = g.candidateFilters,
+                initializeFrame  = MakeInitializer(container, g, key),
+                layout           = layout,
+            })
+            config.sortMethod, config.sortDirection, config.layout = sortMethod, sortDir, layout
+            CacheGroupCandidateFilters(container, key, g.candidateFilters)
+            registered[key] = filter
+        end
+    end
+    for key in pairs(registered) do
+        if not wanted[key] then
+            container:SetAuraGroupMaxFrameCount(key, 0)
+            groupProfiles[key] = nil
+        end
+    end
+    ApplyContainerLayout(container, L)
+
+    if AurasAreSecret() then
+        ScheduleRestrictedRestyle(container)
+        return
+    end
+    EachTrackedButton(container, function(button, key)
+        styleButton(button, GroupProfile(container, key))
+        if button.SetCancelAuraButtons then
+            button:SetCancelAuraButtons(container._h3z0uiCancelButtons)
+        end
+        ApplyLatchedMouseMotion(container, button)
+    end)
+end
+
+function AuraSkin.Restyle(container, profile)
+    container._h3z0uiProfile = profile
+    if AurasAreSecret() then
+        ScheduleRestrictedRestyle(container)
+        return
+    end
+    EachTrackedButton(container, function(button, key)
+        styleButton(button, GroupProfile(container, key))
+        if button.SetCancelAuraButtons then
+            button:SetCancelAuraButtons(container._h3z0uiCancelButtons)
+        end
+        ApplyLatchedMouseMotion(container, button)
+    end)
+end
+
+function AuraSkin.ConfigureEnchantments(container, profile)
+    local slots = _G.AuraContainerItemEnchantmentSlot
+    local placement = _G.CustomAuraContainerItemEnchantmentPlacement
+    if not (slots and placement and container.AddItemEnchantment) then
+        return false
+    end
+    container._h3z0uiProfile = profile
+    local L = ResolveLayout(profile)
+    container:SetItemEnchantmentLayout({
+        placement      = placement.BeforeAuraGroups,
+        elementSpacing = L.spacing,
+        lineSpacing    = L.rowSpacing,
+        elementWidth   = L.iconSize,
+        elementHeight  = L.iconSize,
+    })
+    if not AurasAreSecret() then
+        local reg = container._h3z0uiButtons
+        if reg then
+            for i = 1, #reg do
+                local b = reg[i]
+                if b and b.SetCancelAuraButtons then
+                    b:SetCancelAuraButtons(container._h3z0uiCancelButtons)
+                end
+            end
+        end
+    end
+    if not container._h3z0uiEnchantsAdded then
+        local init = MakeInitializer(container, {})
+        for _, slot in ipairs({ slots.MainHand, slots.OffHand, slots.Ranged }) do
+            container:AddItemEnchantment(slot, {
+                initializeFrame = init,
+                hidePermanent   = true,
+            })
+        end
+        container._h3z0uiEnchantsAdded = true
+    end
+    return true
+end
+
+function AuraSkin.WireButton(button, profile)
+    buildButtonArt(button)
+    styleButton(button, profile or {})
+end
+
+function AuraSkin.WirePreviewButton(button, profile)
+    button._h3z0uiPreview = true
+    if not button.SetDurationBar then
+        button.SetDurationBar = function(self, bar, options)
+            self._h3z0uiPreviewDurationBar = bar
+            self._h3z0uiPreviewDurationOptions = options
+        end
+        button._h3z0uiPreviewDurationBarShim = true
+    end
+    buildButtonArt(button)
+    styleButton(button, profile or {})
+    button._tex = button.Icon
+    if button._h3z0uiDispel and button._h3z0uiDispel.Hide then button._h3z0uiDispel:Hide() end
+end
+
+function AuraSkin.ReleasePreviewButton(button)
+    local key = button and button._h3z0uiBridgedKey
+    local Bridge = ns.ExternalSkinBridge
+    if key and Bridge then Bridge.RemoveButton(key, button) end
+    if button then
+        if button._h3z0uiCaster then button._h3z0uiCaster:SetAlpha(0) end
+        if button._h3z0uiPandemicAnimations then
+            for _, animation in pairs(button._h3z0uiPandemicAnimations) do animation:Stop() end
+        end
+        button._h3z0uiPandemicStyle = nil
+        button._h3z0uiBridgedKey = nil
+        button._h3z0uiBridged = nil
+    end
+end

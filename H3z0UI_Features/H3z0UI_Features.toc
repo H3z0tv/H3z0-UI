@@ -1,0 +1,27 @@
+## Interface: 120105, 120100, 120001, 120000, 16001
+## Title: |cFF30D1FFH3z0 UI|r Features
+## Notes: H3z0 Features: UI Look, Bottom Bar, Steam Deck + PC Controller, Combat Mode, Setup Wizard. Requires the H3z0 UI core addon.
+## Author: H3z0
+## Version: 0.25.0
+## Category: User Interface
+## Group: H3z0UI
+## Dependencies: H3z0UI
+## OptionalDeps: H3z0UI_Chat, H3z0UI_DamageMeter, H3z0UI_Nameplates, H3z0UI_UnitFrames, H3z0UI_ActionBars, CombatMode, ConsolePort
+## IconTexture: Interface\AddOns\H3z0UI\assets\icon
+
+bootstrap.lua
+features\datatexts_extra.lua
+features\bottombar.lua
+features\layoutsets.lua
+features\handheld_layout.lua
+features\handheld.lua
+features\compactbars.lua
+features\charbg.lua
+features\h3z_fixes.lua
+features\quickaccess.lua
+features\raidcontrol.lua
+features\hovername.lua
+features\setupwizard.lua
+features\whatsnew_data.lua
+features\whatsnew.lua
+features\h3z_commands.lua

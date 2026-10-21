@@ -1,0 +1,43 @@
+## Interface: 120105, 120100, 120001, 120000, 16001
+## Title: |cFF30D1FFH3z0 UI|r Bags
+## Notes: H3z0 UI module. Requires the H3z0 UI core addon.
+## Author: H3z0
+## Version: 0.25.0
+## Category: User Interface
+## Group: H3z0UI
+## Dependencies: H3z0UI
+## IconTexture: Interface\AddOns\H3z0UI\assets\icon
+## LoadOnDemand: 1
+
+bootstrap.lua
+# == bags load order (was modules/bags/bags.xml) ==
+bags\newitems.lua
+bags\search\compiler.lua
+bags\search\everywhere.lua
+bags\ops\sort_planner.lua
+bags\ops\reagent_fill.lua
+bags\ops\shared.lua
+bags\ops\sort_executor.lua
+bags\ops\transfers.lua
+bags\ops\junk.lua
+bags\views\details.lua
+bags\views\grid_layout.lua
+bags\views\category_layout.lua
+bags\views\inventory_view.lua
+bags\views\refresh_scope.lua
+bags\views\chassis.lua
+bags\views\corner_widgets.lua
+bags\views\item_buttons.lua
+bags\views\owner_select.lua
+bags\views\currency_bar.lua
+bags\views\bag_window.lua
+bags\views\bank_window.lua
+bags\views\guild_window.lua
+bags\views\search_window.lua
+bags\tooltip_counts.lua
+bags\autoopen.lua
+bags\takeover_shared.lua
+bags\takeover.lua
+bags\bank_takeover.lua
+bags\guild_takeover.lua
+bags\bags.lua

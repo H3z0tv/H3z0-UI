@@ -1,0 +1,330 @@
+local addonName, ns = ...
+
+if ns.IsSkinningEnabled and not ns.IsSkinningEnabled() then return end
+
+local GetCore = ns.Helpers.GetCore
+local SkinBase = ns.SkinBase
+local Helpers = ns.Helpers
+
+local BAR_WIDTH = 250
+local BAR_HEIGHT = 20
+
+local floor = math.floor
+local UnitPower = UnitPower
+local UnitPowerMax = UnitPowerMax
+local GetUnitPowerBarInfo = GetUnitPowerBarInfo
+local GetUnitPowerBarStrings = GetUnitPowerBarStrings
+local ALTERNATE_POWER_INDEX = Enum.PowerType.Alternate or 10
+
+local H3z0UIAltPowerBar = nil
+local isEnabled = false
+
+local function RunAfterFirstFrame(callback, delay)
+    if ns.RunAfterFirstFrame then
+        return ns.RunAfterFirstFrame(callback, delay)
+    end
+    if C_Timer and C_Timer.After then
+        return C_Timer.After(delay or 0, callback)
+    end
+    if type(callback) == "function" then
+        return callback()
+    end
+    return nil
+end
+
+local function GetDB()
+    local core = GetCore()
+    return core and core.db and core.db.profile or {}
+end
+
+local function GetGeneralSettings()
+    local db = GetDB()
+    return db.general or {}
+end
+
+local function GetModuleSkinColors()
+    return SkinBase.GetSkinColors(GetGeneralSettings(), "powerBarAlt")
+end
+
+local function OnEnter(self)
+    if not self:IsVisible() or GameTooltip:IsForbidden() then return end
+
+    GameTooltip:ClearAllPoints()
+    GameTooltip_SetDefaultAnchor(GameTooltip, self)
+
+    if self.powerName and self.powerTooltip then
+        GameTooltip:SetText(self.powerName, 1, 1, 1)
+        GameTooltip:AddLine(self.powerTooltip, nil, nil, nil, true)
+        GameTooltip:Show()
+    end
+end
+
+local function OnLeave()
+    GameTooltip:Hide()
+end
+
+local function SetSecretPercentText(text, powerName)
+    if not text then return end
+    if type(UnitPowerPercent) ~= "function" or not (CurveConstants and CurveConstants.ScaleTo100) then
+        text:SetText("") -- @secret-policy: empty-text-degrade
+        return
+    end
+    local perc = UnitPowerPercent("player", ALTERNATE_POWER_INDEX, false, CurveConstants.ScaleTo100)
+    if powerName then
+        text:SetFormattedText("%s: %.0f%%", powerName, perc) -- @secret-policy: sink-passthrough
+    else
+        text:SetFormattedText("%.0f%%", perc) -- @secret-policy: sink-passthrough
+    end
+end
+
+local function UpdateBar(self)
+    local barInfo = GetUnitPowerBarInfo("player")
+
+    if barInfo then
+        local powerName, powerTooltip = GetUnitPowerBarStrings("player")
+        local power = UnitPower("player", ALTERNATE_POWER_INDEX)
+        local maxPower = UnitPowerMax("player", ALTERNATE_POWER_INDEX)
+
+        self.powerName = powerName
+        self.powerTooltip = powerTooltip
+
+        if Helpers.IsSecretValue(power) or Helpers.IsSecretValue(maxPower) then
+            -- @secret-policy: sink-passthrough — StatusBar SetMinMaxValues/
+            self:SetMinMaxValues(barInfo.minPower or 0, maxPower)
+            self:SetValue(power)
+            SetSecretPercentText(self.text, powerName)
+            self:Show()
+            return
+        end
+
+        local perc = 0
+        if maxPower > 0 then
+            perc = floor(power / maxPower * 100)
+        end
+
+        self.powerValue = power
+        self.powerMaxValue = maxPower
+        self.powerPercent = perc
+
+        self:SetMinMaxValues(barInfo.minPower or 0, maxPower)
+        self:SetValue(power)
+
+        if powerName then
+            self.text:SetText(string.format("%s: %d%%", powerName, perc))
+        else
+            self.text:SetText(string.format("%d%%", perc))
+        end
+
+        self:Show()
+    else
+        self.powerName = nil
+        self.powerTooltip = nil
+        self.powerValue = nil
+        self.powerMaxValue = nil
+        self.powerPercent = nil
+
+        self:Hide()
+    end
+end
+
+local function OnEvent(self, event, arg1, arg2)
+    if event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" then
+        if arg1 == "player" and arg2 == "ALTERNATE" then
+            UpdateBar(self)
+        end
+    elseif event == "UNIT_POWER_BAR_SHOW" or event == "UNIT_POWER_BAR_HIDE" then
+        if arg1 == "player" then
+            UpdateBar(self)
+        end
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        UpdateBar(self)
+    end
+end
+
+local function CreateH3z0UIAltPowerBar()
+    local sr, sg, sb, sa, bgr, bgg, bgb, bga = SkinBase.GetWindowColors(GetGeneralSettings(), "powerBarAlt")
+
+    local bar = CreateFrame("StatusBar", "H3z0UI_AltPowerBar", UIParent)
+    bar:SetSize(BAR_WIDTH, BAR_HEIGHT)
+
+    bar:SetPoint("TOP", UIParent, "TOP", 0, -100)
+
+    ns.Helpers.ApplyBarStyle(bar, "Interface\\Buttons\\WHITE8x8")
+    local ar, ag, ab = GetModuleSkinColors()
+    bar:SetStatusBarColor(ar, ag, ab)
+    SkinBase.RoundBarTexture(bar, bar:GetStatusBarTexture())
+    bar:SetMinMaxValues(0, 100)
+    bar:SetValue(0)
+    bar:Hide()
+
+    bar:SetMovable(true)
+    bar:SetClampedToScreen(true)
+
+    bar.backdrop = CreateFrame("Frame", nil, bar, "BackdropTemplate")
+    SkinBase.SetExpandedPixelPoints(bar.backdrop, bar, 2)
+    local safeLevel = bar:GetFrameLevel() - 1
+    if safeLevel < 0 then
+        safeLevel = 0
+    end
+    bar.backdrop:SetFrameLevel(safeLevel)
+    SkinBase.ApplyChromeBackdrop(bar.backdrop, { radius = 3, borderPixels = 1, withBackground = true })
+    Helpers.SetFrameBackdropColor(bar.backdrop, bgr, bgg, bgb, bga)
+    Helpers.SetFrameBackdropBorderColor(bar.backdrop, sr, sg, sb, sa)
+
+    bar.text = bar:CreateFontString(nil, "OVERLAY")
+    bar.text:SetPoint("CENTER", bar, "CENTER")
+    SkinBase.SkinFontString(bar.text, { size = 11, color = { 1, 1, 1, 1 } })
+    bar.text:SetJustifyH("CENTER")
+
+    SkinBase.SetFrameData(bar, "skinColor", { sr, sg, sb, sa })
+    SkinBase.SetFrameData(bar, "bgColor", { bgr, bgg, bgb, bga })
+    SkinBase.MarkSkinned(bar)
+
+    bar:EnableMouse(true)
+    bar:SetScript("OnEnter", OnEnter)
+    bar:SetScript("OnLeave", OnLeave)
+
+    bar:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
+    bar:RegisterUnitEvent("UNIT_MAXPOWER", "player")
+    bar:RegisterUnitEvent("UNIT_POWER_BAR_SHOW", "player")
+    bar:RegisterUnitEvent("UNIT_POWER_BAR_HIDE", "player")
+    bar:RegisterEvent("PLAYER_ENTERING_WORLD")
+    bar:SetScript("OnEvent", OnEvent)
+
+    return bar
+end
+
+local blizzardBarHooked = false
+
+local function HideBlizzardBar()
+    local bar = _G.PlayerPowerBarAlt
+    if bar then
+        bar:UnregisterAllEvents()
+        bar:Hide()
+        bar:SetAlpha(0)
+    end
+
+    if not blizzardBarHooked and _G.UnitPowerBarAlt_SetUp then
+        hooksecurefunc("UnitPowerBarAlt_SetUp", function(self)
+            local bar = self
+            C_Timer.After(0, function()
+                if bar == _G.PlayerPowerBarAlt and isEnabled then
+                    bar:UnregisterAllEvents()
+                    bar:Hide()
+                    bar:SetAlpha(0)
+                end
+            end)
+        end)
+        blizzardBarHooked = true
+    end
+end
+
+local widgetCarryInstalled = false
+
+local function PowerBarWidgetsMoverActive()
+    local mover = GetDB().blizzardMover
+    if not mover or not mover.enabled or not mover.frames then return false end
+    local row = mover.frames.UIWidgetPowerBarContainerFrame
+    return row ~= nil and row.enabled == true
+end
+
+local function CarryPowerBarWidgetContainer()
+    if widgetCarryInstalled then return end
+    if PowerBarWidgetsMoverActive() then return end
+    local container = _G.UIWidgetPowerBarContainerFrame
+    if not container or not H3z0UIAltPowerBar then return end
+
+    if InCombatLockdown() then
+        local waiter = CreateFrame("Frame")
+        waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+        waiter:SetScript("OnEvent", function(self)
+            self:UnregisterAllEvents()
+            CarryPowerBarWidgetContainer()
+        end)
+        return
+    end
+
+    container:SetParent(UIParent)
+    container:SetFrameStrata("MEDIUM")
+    container:ClearAllPoints()
+    container:SetPoint("TOP", H3z0UIAltPowerBar, "BOTTOM", 0, -6)
+    widgetCarryInstalled = true
+end
+
+local function RefreshNativeBuffTimerSkins()
+    if not GetGeneralSettings().skinPowerBarAlt then return end
+    local sr, sg, sb, sa, bgr, bgg, bgb, bga = SkinBase.GetWindowColors(GetGeneralSettings(), "powerBarAlt")
+    local index = 1
+    while _G["BuffTimer" .. index] do
+        local timer = _G["BuffTimer" .. index]
+        for _, key in ipairs({ "frame", "background", "BG", "BGL", "BGR", "artTop", "artBottom" }) do
+            if timer[key] then timer[key]:SetAlpha(0) end
+        end
+        SkinBase.ApplyPixelBackdrop(timer, 1, true, true)
+        Helpers.SetFrameBackdropColor(timer, bgr, bgg, bgb, bga)
+        Helpers.SetFrameBackdropBorderColor(timer, sr, sg, sb, sa)
+        if timer.statusFrame and timer.statusFrame.text then
+            SkinBase.SkinFontString(timer.statusFrame.text, { fontOnly = true })
+        end
+        index = index + 1
+    end
+end
+
+local function RefreshPowerBarAltColors()
+    if not H3z0UIAltPowerBar then return end
+
+    local sr, sg, sb, sa, bgr, bgg, bgb, bga = SkinBase.GetWindowColors(GetGeneralSettings(), "powerBarAlt")
+
+    local ar, ag, ab = GetModuleSkinColors()
+    H3z0UIAltPowerBar:SetStatusBarColor(ar, ag, ab)
+    Helpers.SetFrameBackdropColor(H3z0UIAltPowerBar.backdrop, bgr, bgg, bgb, bga)
+    Helpers.SetFrameBackdropBorderColor(H3z0UIAltPowerBar.backdrop, sr, sg, sb, sa)
+
+    SkinBase.SetFrameData(H3z0UIAltPowerBar, "skinColor", { sr, sg, sb, sa })
+    SkinBase.SetFrameData(H3z0UIAltPowerBar, "bgColor", { bgr, bgg, bgb, bga })
+    RefreshNativeBuffTimerSkins()
+end
+
+_G.H3z0UI_RefreshPowerBarAltColors = RefreshPowerBarAltColors
+
+if ns.Registry then
+    ns.Registry:Register("skinPowerBarAlt", {
+        refresh = _G.H3z0UI_RefreshPowerBarAltColors,
+        priority = 80,
+        group = "skinning",
+        importCategories = { "skinning", "theme" },
+    })
+end
+
+local function Initialize()
+    local core = GetCore()
+    local settings = core and core.db and core.db.profile and core.db.profile.general
+
+    if not settings or not settings.skinPowerBarAlt then return end
+    if isEnabled then return end
+
+    HideBlizzardBar()
+
+    H3z0UIAltPowerBar = CreateH3z0UIAltPowerBar()
+
+    if _G.PlayerBuffTimerManager_UpdateTimers then
+        hooksecurefunc("PlayerBuffTimerManager_UpdateTimers", function()
+            RunAfterFirstFrame(RefreshNativeBuffTimerSkins, 0)
+        end)
+        RefreshNativeBuffTimerSkins()
+    end
+
+    CarryPowerBarWidgetContainer()
+
+    UpdateBar(H3z0UIAltPowerBar)
+
+    isEnabled = true
+end
+
+if ns.WhenLoggedIn then
+    ns.WhenLoggedIn(function()
+        RunAfterFirstFrame(function()
+            Initialize()
+        end, 0.1)
+    end)
+end

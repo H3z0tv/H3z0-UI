@@ -1,0 +1,13 @@
+## Interface: 120105, 120100, 120001, 120000, 16001
+## Title: |cFF30D1FFH3z0 UI|r Damage Meter
+## Notes: Dark rounded windows for Blizzard's damage meter and the chat. Requires the H3z0 UI core addon.
+## Author: H3z0
+## Version: 0.25.0
+## Category: User Interface
+## Group: H3z0UI
+## Dependencies: H3z0UI
+## OptionalDeps: H3z0UI_Chat
+## IconTexture: Interface\AddOns\H3z0UI\assets\icon
+
+bootstrap.lua
+damage_meter\windowskins.lua

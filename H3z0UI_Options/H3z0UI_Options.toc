@@ -1,0 +1,179 @@
+## Interface: 120105, 120100, 120001, 120000, 16001
+## Title: |cFF30D1FFH3z0 UI|r Options
+## IconTexture: Interface\AddOns\H3z0UI\assets\icon
+## Notes: Options window for H3z0 UI
+## Author: H3z0
+## Version: 0.25.0
+## Category: User Interface
+## Group: H3z0UI
+## RequiredDeps: H3z0UI
+## OptionalDeps: H3z0UI_ActionBars, H3z0UI_CDM, H3z0UI_ResourceBars, H3z0UI_Chat, H3z0UI_DamageMeter, H3z0UI_Nameplates, H3z0UI_UnitFrames, H3z0UI_Features
+## LoadOnDemand: 1
+
+bootstrap.lua
+
+# File list converted from the old options.xml include manifest.
+# Order is load-bearing. ..\H3z0UI\ paths load files from the main addon
+# (parent-dir TOC entries are client-supported; Blizzard_PTRFeedbackGlue ships them).
+#
+# NOTE: LoadOnDemand — ~2.9 MB stays off the login path; the first options
+# open pays the compile cost (H3z0UI:EnsureOptionsLoaded, every open path routes
+# through it). Login-time theme reads (accent color for layout mode, info bar,
+# datatexts) are served by core/theme.lua, which pre-creates H3z0UI.GUI; the
+# framework merges into that table on load. The OptionalDeps above only order
+# this addon after the login-class module addons when both load (their settings
+# builders are loaded here); no builder captures a module symbol at file scope,
+# so the ordering is belt-and-suspenders (proven by the headless generator
+# smoke test).
+search_synonyms.lua
+# The generated search index, packed as a long-bracket string (~1.2 MB).
+# Loading this file lexes ONE token; framework.lua compiles it on first search.
+# It used to be the LoadOnDemand H3z0UI_OptionsSearch addon — one folder for
+# one deferral point. Packing gives the same deferral without the folder.
+search_cache.lua
+framework.lua
+border_control.lua
+reorder_list.lua
+shared.lua
+# H3z0 UI option page helpers
+h3z_compat.lua
+navigation.lua
+wizard.lua
+# Options-only settings framework, deferred out of the login path. Every
+# consumer reaches these lazily (inside a function) from UI-build code; none
+# is captured at file scope on the login path. Loaded here ahead of the
+# surfaces/pins/content files that use them. Order among the 9 is irrelevant
+# (none cross-references another at file scope). The sibling framework files
+# util/render_adapters/registry/schema/provider_features/pins/pins_lifecycle
+# stay in H3z0UI.toc — feature registration needs them at login.
+..\H3z0UI\core\settings\providers.lua
+..\H3z0UI\core\settings\provider_panels.lua
+..\H3z0UI\core\settings\model_kit.lua
+..\H3z0UI\core\settings\fields.lua
+..\H3z0UI\core\settings\surfaces.lua
+..\H3z0UI\core\settings\surface_features.lua
+..\H3z0UI\core\settings\nav.lua
+..\H3z0UI\core\settings\renderer.lua
+# Options-only profile machinery, deferred out of the main-addon login path.
+# profile_io.lua (import/export engine) + bundled preset import strings:
+# nothing in the gameplay/login path references these, so they load here.
+..\H3z0UI\core\profile_io.lua
+..\H3z0UI\importstrings\h3z0ui_editmode_base.lua
+# starter_profile.lua moved to the root TOC: core/new_profile_defaults.lua
+# decodes it for the new-profile seed; the Profiles-tab preset reads the
+# same memoized H3z0UI.imports entry.
+..\H3z0UI\core\settings\full_surface.lua
+..\H3z0UI\core\settings\pins_ui.lua
+..\H3z0UI\core\settings\content\anchoring_shared_content.lua
+..\H3z0UI\core\settings\content\welcome_page.lua
+tiles\help_content.lua
+..\H3z0UI\core\settings\content\help_page.lua
+..\H3z0UI\core\settings\content\troubleshooting_page.lua
+..\H3z0UI\core\settings\content\profiles_content.lua
+..\H3z0UI\core\settings\content\import_export_content.lua
+..\H3z0UI_ActionBars\actionbars\settings\action_bars.lua
+..\H3z0UI_ActionBars\actionbars\settings\action_bars_per_bar.lua
+..\H3z0UI_ActionBars\actionbars\settings\action_bars_preview_driver.lua
+..\H3z0UI_ActionBars\actionbars\settings\action_bars_content.lua
+..\H3z0UI_ActionBars\actionbars\settings\action_bars_buffdebuff_content.lua
+..\H3z0UI_CDM\cdm\settings\cdm_effects_options.lua
+..\H3z0UI_CDM\cdm\settings\cdm_options.lua
+..\H3z0UI_CDM\cdm\settings\customtrackers_options.lua
+..\H3z0UI_ResourceBars\resourcebars\settings\resource_bars.lua
+..\H3z0UI_ResourceBars\resourcebars\settings\resource_bars_builders.lua
+..\H3z0UI_ResourceBars\resourcebars\settings\resource_bars_preview_driver.lua
+..\H3z0UI\modules\combat\settings\rotation_assist.lua
+..\H3z0UI_Reminders\spell_reminders\settings\spell_reminders.lua
+..\H3z0UI_Reminders\spell_reminders\settings\spell_reminder_tracking.lua
+..\H3z0UI_Reminders\reminders\settings\reminders_content.lua
+..\H3z0UI\modules\dungeon\settings\mplus_timer.lua
+..\H3z0UI\modules\dungeon\settings\mplus_timer_provider.lua
+..\H3z0UI\modules\dungeon\settings\mplus_progress.lua
+..\H3z0UI\modules\dungeon\settings\mplus_progress_provider.lua
+..\H3z0UI\modules\dungeon\settings\party_keystones.lua
+..\H3z0UI\modules\dungeon\settings\brez_counter.lua
+aura_spell_list.lua
+aura_elements_editor.lua
+..\H3z0UI\modules\layout\settings\bonus_roll_provider.lua
+..\H3z0UI\modules\layout\settings\third_party_anchoring_content.lua
+..\H3z0UI\modules\minimap\settings\minimap_options.lua
+..\H3z0UI\modules\datatexts\settings\datatexts_features.lua
+..\H3z0UI\modules\datatexts\settings\datatexts_providers.lua
+..\H3z0UI\modules\infobar\settings\infobar_features.lua
+..\H3z0UI\modules\infobar\settings\infobar_content.lua
+..\H3z0UI\modules\qol\settings\pet_warning.lua
+..\H3z0UI\modules\qol\settings\no_target_warning.lua
+..\H3z0UI\modules\qol\settings\consumables.lua
+..\H3z0UI\modules\qol\settings\combat_timer.lua
+..\H3z0UI\modules\qol\settings\lust_timer.lua
+..\H3z0UI\modules\qol\settings\swing_timers_content.lua
+..\H3z0UI\modules\qol\settings\tooltip_anchor.lua
+..\H3z0UI\modules\qol\settings\provider_panels.lua
+..\H3z0UI\modules\qol\settings\action_tracker.lua
+..\H3z0UI\modules\qol\settings\skyriding.lua
+..\H3z0UI\modules\qol\settings\xp_tracker.lua
+..\H3z0UI\modules\qol\settings\focus_cast_alert.lua
+..\H3z0UI\modules\qol\settings\qol_content.lua
+..\H3z0UI_Bags\bags\settings\bags_providers.lua
+..\H3z0UI_Bags\bags\settings\bags.lua
+..\H3z0UI\modules\alts\settings\alts_providers.lua
+..\H3z0UI\modules\alts\settings\alts.lua
+..\H3z0UI\modules\skinning\settings\skinning_content.lua
+..\H3z0UI\modules\skinning\settings\border_coloring_content.lua
+..\H3z0UI\modules\skinning\character_pane\settings\character_pane_content.lua
+..\H3z0UI\modules\trackers\settings\atonement_counter.lua
+..\H3z0UI\modules\trackers\settings\prey_tracker_content.lua
+..\H3z0UI\modules\trackers\settings\aura_displays_pickers.lua
+..\H3z0UI\modules\trackers\settings\aura_displays_create.lua
+..\H3z0UI\modules\trackers\settings\aura_displays_content.lua
+..\H3z0UI\modules\trackers\settings\incoming_casts_content.lua
+..\H3z0UI\modules\ui\settings\blizzard_mover_content.lua
+..\H3z0UI\modules\ui\settings\crosshair_content.lua
+..\H3z0UI\modules\ui\settings\hud_visibility_content.lua
+..\H3z0UI\modules\ui\settings\hud_layering_content.lua
+..\H3z0UI\modules\ui\settings\autohide_content.lua
+..\H3z0UI\modules\utility\settings\ready_check.lua
+..\H3z0UI\modules\utility\settings\ready_check_provider.lua
+..\H3z0UI\modules\utility\settings\keybinds_content.lua
+..\H3z0UI\core\settings\content\modules_visual_onboarding.lua
+..\H3z0UI\core\settings\content\modules_nonvisual_onboarding.lua
+..\H3z0UI\core\settings\content\module_addons_content.lua
+..\H3z0UI\core\settings\content\modules_page.lua
+..\H3z0UI\core\settings\content\auras_group_page.lua
+..\H3z0UI\core\settings\content\auras_unit_page.lua
+..\H3z0UI\core\settings\content\auras_actionbar_page.lua
+..\H3z0UI\core\settings\content\auras_wizard_page.lua
+..\H3z0UI\core\settings\content\auras_nameplate_page.lua
+..\H3z0UI\core\settings\content\auras_displays_page.lua
+# == H3z0 UI module option pages ==
+..\H3z0UI_Features\features\settings\combatmode_options.lua
+..\H3z0UI_Features\features\settings\bottombar_options.lua
+..\H3z0UI_Features\features\settings\handheld_options.lua
+..\H3z0UI_Features\features\settings\setup_options.lua
+..\H3z0UI_Features\features\settings\quickaccess_options.lua
+..\H3z0UI_Features\features\settings\hovername_options.lua
+..\H3z0UI_Chat\chat\settings\chat_options.lua
+..\H3z0UI_Nameplates\nameplates\settings\nameplates_options.lua
+..\H3z0UI_UnitFrames\unitframes\settings\castbar_options.lua
+..\H3z0UI_UnitFrames\unitframes\settings\partyframes_options.lua
+..\H3z0UI_UnitFrames\unitframes\settings\unitframes_options.lua
+..\H3z0UI_Features\features\settings\features_options.lua
+init.lua
+tiles\related.lua
+h3z_windows_options.lua
+tiles\h3z0.lua
+tiles\minimap.lua
+tiles\infobar.lua
+tiles\action_bars.lua
+tiles\auras.lua
+tiles\cooldown_manager.lua
+tiles\resource_bars.lua
+tiles\appearance.lua
+tiles\chat_tooltips.lua
+tiles\gameplay.lua
+tiles\reminders.lua
+tiles\qol.lua
+tiles\bags.lua
+tiles\alts.lua
+tiles\global.lua
+tiles\help.lua

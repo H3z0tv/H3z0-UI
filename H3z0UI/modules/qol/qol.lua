@@ -1,0 +1,1631 @@
+local addonName, ns = ...
+local Helpers = ns.Helpers
+addonName = addonName or "H3z0UI"
+
+local GetSettings = Helpers.CreateDBGetter("general")
+
+local qolFrame = CreateFrame("Frame")
+
+local popupBlockerDefaults = {
+    enabled = false,
+    blockTalentMicroButtonAlerts = false,
+    blockMicroButtonGlows = false,
+    blockHelpTips = false,
+    blockEventToasts = false,
+    blockMountAlerts = false,
+    blockPetAlerts = false,
+    blockToyAlerts = false,
+    blockCosmeticAlerts = false,
+    blockWarbandSceneAlerts = false,
+    blockEntitlementAlerts = false,
+    blockStaticTalentPopups = false,
+    blockStaticHousingPopups = false,
+}
+
+local staticPopupBlockRules = {
+    blockStaticTalentPopups = { "TALENT", "TRAIT", "PLAYER_SPELLS", "PLAYERSP" },
+    blockStaticHousingPopups = { "HOUSING", "HOMESTEAD", "WARBAND_HOME", "WARBANDHOME" },
+}
+
+local alertSystemToggleMap = {
+    NewMountAlertSystem = "blockMountAlerts",
+    NewPetAlertSystem = "blockPetAlerts",
+    NewToyAlertSystem = "blockToyAlerts",
+    NewCosmeticAlertFrameSystem = "blockCosmeticAlerts",
+    NewWarbandSceneAlertSystem = "blockWarbandSceneAlerts",
+    EntitlementDeliveredAlertSystem = "blockEntitlementAlerts",
+    RafRewardDeliveredAlertSystem = "blockEntitlementAlerts",
+}
+
+local talentMicroButtonCandidates = {
+    "PlayerSpellsMicroButton",
+    "TalentMicroButton",
+    "SpellbookMicroButton",
+}
+
+local talentMicroButtonAlertCandidates = {
+    "PlayerSpellsMicroButtonAlert",
+    "TalentMicroButtonAlert",
+    "SpellbookMicroButtonAlert",
+}
+
+local hookedAlertSystems = {}
+local eventToastHooked = false
+local mainMenuAlertHooked = false
+local microButtonPulseHooked = false
+local _h3z0uiPopupBlockerHooked = {}
+
+local function GetMaxStaticPopupDialogs()
+    return math.min(STATICPOPUP_NUMDIALOGS or 4, 8)
+end
+
+local function GetPopupBlockerSettings()
+    local settings = GetSettings()
+    if not settings then return nil end
+
+    if type(settings.popupBlocker) ~= "table" then
+        settings.popupBlocker = {}
+    end
+
+    local blocker = settings.popupBlocker
+    for key, defaultValue in pairs(popupBlockerDefaults) do
+        if blocker[key] == nil then
+            blocker[key] = defaultValue
+        end
+    end
+
+    return blocker
+end
+
+local function IsPopupBlockEnabled(toggleKey)
+    local blocker = GetPopupBlockerSettings()
+    if not blocker or not blocker.enabled then
+        return false
+    end
+    return blocker[toggleKey] == true
+end
+
+local function HideAlertFrame(frame)
+    if not frame then return end
+    if frame.Hide then
+        frame:Hide()
+    end
+end
+
+local function ShouldBlockStaticPopup(which)
+    if type(which) ~= "string" then return false end
+
+    local blocker = GetPopupBlockerSettings()
+    if not blocker or not blocker.enabled then
+        return false
+    end
+
+    local upperWhich = string.upper(which)
+    for toggleKey, keywords in pairs(staticPopupBlockRules) do
+        if blocker[toggleKey] then
+            for _, keyword in ipairs(keywords) do
+                if string.find(upperWhich, keyword, 1, true) then
+                    return true
+                end
+            end
+        end
+    end
+
+    return false
+end
+
+local function HideStaticPopupByWhich(which)
+    if type(which) ~= "string" then return end
+
+    for i = 1, GetMaxStaticPopupDialogs() do
+        local frame = _G["StaticPopup" .. i]
+        if frame and frame.which == which and frame:IsShown() then
+            frame:Hide()
+        end
+    end
+end
+
+local function HookAlertSystem(globalSystemName, toggleKey)
+    local system = _G[globalSystemName]
+    if not system or hookedAlertSystems[system] then
+        return
+    end
+
+    if type(system.setUpFunction) ~= "function" then
+        return
+    end
+
+    hooksecurefunc(system, "setUpFunction", function(frame)
+        C_Timer.After(0, function()
+            if IsPopupBlockEnabled(toggleKey) then
+                HideAlertFrame(frame)
+            end
+        end)
+    end)
+    hookedAlertSystems[system] = true
+end
+
+local function ShouldHideLootToast(itemLink, isCurrency, isUpgraded)
+    local settings = GetSettings()
+    local cfg = settings and settings.lootToastFilter
+    if not cfg or not cfg.enabled then return false end
+    if isCurrency or not itemLink then return false end
+
+    local minQuality = tonumber(cfg.minQuality) or 0
+    if minQuality <= 0 then return false end
+
+    local okInfo, _, _, quality, _, _, _, _, _, equipLoc, _, _, classID, subclassID =
+        pcall(C_Item.GetItemInfo, itemLink)
+    if not okInfo or type(quality) ~= "number" then return false end
+    if quality >= minQuality then return false end
+
+    if cfg.keepMounts ~= false and classID == 15 and subclassID == 5 then return false end
+    if cfg.keepPets ~= false and (classID == 17 or (classID == 15 and subclassID == 2)) then return false end
+    if cfg.keepUpgrades ~= false and isUpgraded then return false end
+
+    local minKeepIlvl = tonumber(cfg.minKeepIlvl) or 0
+    if minKeepIlvl > 0 and equipLoc and equipLoc ~= ""
+        and C_Item.GetDetailedItemLevelInfo then
+        local okIlvl, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, itemLink)
+        if okIlvl and type(ilvl) == "number" and ilvl >= minKeepIlvl then return false end
+    end
+
+    return true
+end
+
+local lootAlertHooked = false
+local function HookLootAlertSystem()
+    if lootAlertHooked then return end
+    local system = _G.LootAlertSystem
+    if not system or type(system.setUpFunction) ~= "function" then return end
+    hooksecurefunc(system, "setUpFunction",
+        function(frame, itemLink, _, _, _, _, isCurrency, _, _, _, isUpgraded)
+            C_Timer.After(0, function()
+                if ShouldHideLootToast(itemLink, isCurrency, isUpgraded) then
+                    HideAlertFrame(frame)
+                end
+            end)
+        end)
+    lootAlertHooked = true
+end
+
+local function HookPopupAlertSystems()
+    for globalSystemName, toggleKey in pairs(alertSystemToggleMap) do
+        HookAlertSystem(globalSystemName, toggleKey)
+    end
+    HookLootAlertSystem()
+end
+
+local function HideEventToasts()
+    if not IsPopupBlockEnabled("blockEventToasts") then return end
+    if not EventToastManagerFrame then return end
+    EventToastManagerFrame:Hide()
+end
+
+local function HookEventToastManager()
+    if eventToastHooked or not EventToastManagerFrame then
+        return
+    end
+
+    local function PostShowHide(self)
+        C_Timer.After(0, function()
+            if IsPopupBlockEnabled("blockEventToasts") then
+                self:Hide()
+            end
+        end)
+    end
+
+    hooksecurefunc(EventToastManagerFrame, "Show", PostShowHide)
+    if type(EventToastManagerFrame.ShowToast) == "function" then
+        hooksecurefunc(EventToastManagerFrame, "ShowToast", PostShowHide)
+    end
+    if type(EventToastManagerFrame.DisplayToast) == "function" then
+        hooksecurefunc(EventToastManagerFrame, "DisplayToast", PostShowHide)
+    end
+    if type(EventToastManagerFrame.QueueToast) == "function" then
+        hooksecurefunc(EventToastManagerFrame, "QueueToast", PostShowHide)
+    end
+
+    eventToastHooked = true
+end
+
+local function IsTalentMicroButton(button)
+    if not button then return false end
+    if (PlayerSpellsMicroButton and button == PlayerSpellsMicroButton)
+        or (TalentMicroButton and button == TalentMicroButton)
+        or (SpellbookMicroButton and button == SpellbookMicroButton) then
+        return true
+    end
+
+    local name = button.GetName and button:GetName()
+    if type(name) ~= "string" then
+        return false
+    end
+
+    local upperName = string.upper(name)
+    return string.find(upperName, "TALENT", 1, true)
+        or string.find(upperName, "SPELLBOOK", 1, true)
+        or string.find(upperName, "PLAYERSP", 1, true)
+end
+
+local function HideTalentMicroButtonAlert(button)
+    if not button then return end
+
+    local alert = button.alert
+    if not alert and button.GetName then
+        local n = button:GetName()
+        alert = n and _G[n .. "Alert"]
+    end
+    if alert then
+        alert:Hide()
+    end
+
+    if button.FlashBorder then
+        button.FlashBorder:SetAlpha(0)
+        button.FlashBorder:Hide()
+    end
+    if button.FlashContent then
+        button.FlashContent:SetAlpha(0)
+        button.FlashContent:Hide()
+    end
+    if button.NewFeatureTexture then
+        button.NewFeatureTexture:Hide()
+    end
+    if button.NewFeatureShine then
+        button.NewFeatureShine:Hide()
+    end
+    if button.Flash then
+        button.Flash:Hide()
+    end
+end
+
+local function IsMicrobarEffectivelyHidden()
+    local db = H3z0UI and H3z0UI.db and H3z0UI.db.profile
+    local bars = db and db.actionBars and db.actionBars.bars
+    local microDB = bars and bars.microbar
+    if not microDB or microDB.enabled == false then return true end
+    local abOwned = ns.ActionBarsOwned
+    local fs = abOwned and abOwned.fadeState and abOwned.fadeState["microbar"]
+    if fs and fs.currentAlpha <= 0 then return true end
+    local cont = abOwned and abOwned.containers and abOwned.containers["microbar"]
+    if cont and not cont:IsShown() then return true end
+    return false
+end
+
+local allMicroButtonNames = {
+    "CharacterMicroButton", "ProfessionMicroButton", "PlayerSpellsMicroButton",
+    "AchievementMicroButton", "QuestLogMicroButton", "HousingMicroButton",
+    "GuildMicroButton", "LFDMicroButton", "CollectionsMicroButton",
+    "EJMicroButton", "StoreMicroButton", "MainMenuMicroButton",
+}
+
+local extraAlertAnchorResolvers = {
+    function() return PerksProgramFrame and PerksProgramFrame.OpenButton end,
+}
+
+local extraAlertFrameNames = {
+    "PerksProgramFrameOpenButtonAlertFrame",
+}
+
+local function IsHelpTipShapedFrame(frame)
+    if type(frame) ~= "table" then return false end
+    if not (frame.Text and frame.CloseButton) then return false end
+    return frame.Arrow ~= nil or frame.BouncyArrow ~= nil
+end
+
+local helpTipGlowFieldNames = {
+    "GlowFrame",
+    "Glow",
+    "GlowTexture",
+    "BorderGlow",
+}
+
+local RUNAWAY_HELPTIP_WIDTH = 420
+local RUNAWAY_HELPTIP_HEIGHT = 240
+local RUNAWAY_HELPTIP_AREA = 70000
+
+local function AlphaZeroFrameVisual(frame)
+    if type(frame) ~= "table" then return end
+    if frame.SetAlpha then frame:SetAlpha(0) end
+    if frame.EnableMouse then frame:EnableMouse(false) end
+end
+
+local function AlphaZeroFrameChildren(frame)
+    if not frame then return end
+
+    if type(frame.GetChildren) == "function" then
+        local children = { frame:GetChildren() }
+        for i = 1, #children do
+            AlphaZeroFrameVisual(children[i])
+        end
+    end
+
+    if type(frame.GetRegions) == "function" then
+        local regions = { frame:GetRegions() }
+        for i = 1, #regions do
+            AlphaZeroFrameVisual(regions[i])
+        end
+    end
+end
+
+local function AlphaZeroHelpTipGlow(frame)
+    if type(frame) ~= "table" then return end
+
+    for i = 1, #helpTipGlowFieldNames do
+        local glow = frame[helpTipGlowFieldNames[i]]
+        if glow then
+            AlphaZeroFrameVisual(glow)
+            AlphaZeroFrameChildren(glow)
+        end
+    end
+end
+
+local function IsOversizedFrame(frame)
+    if type(frame) ~= "table" then return false end
+    if type(frame.GetWidth) ~= "function" or type(frame.GetHeight) ~= "function" then
+        return false
+    end
+
+    local width = frame:GetWidth() or 0
+    local height = frame:GetHeight() or 0
+    return width > RUNAWAY_HELPTIP_WIDTH
+        or height > RUNAWAY_HELPTIP_HEIGHT
+        or (width > 0 and height > 0 and (width * height) > RUNAWAY_HELPTIP_AREA)
+end
+
+local function IsRunawayHelpTipFrame(frame)
+    if IsOversizedFrame(frame) then return true end
+
+    for i = 1, #helpTipGlowFieldNames do
+        local glow = frame[helpTipGlowFieldNames[i]]
+        if IsOversizedFrame(glow) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function HandleMicroButtonHelpTip(frame, suppress)
+    if suppress then
+        AlphaZeroFrameVisual(frame)
+        AlphaZeroHelpTipGlow(frame)
+        return
+    end
+
+    if IsRunawayHelpTipFrame(frame) then
+        AlphaZeroHelpTipGlow(frame)
+    end
+end
+
+local function HideHelpTipsOnButton(button, suppress)
+    if not button or type(button.GetChildren) ~= "function" then return end
+    local children = { button:GetChildren() }
+    for i = 1, #children do
+        local child = children[i]
+        if IsHelpTipShapedFrame(child) and child.IsShown and child:IsShown() then
+            HandleMicroButtonHelpTip(child, suppress ~= false)
+        end
+    end
+end
+
+local function BuildMicroButtonSet()
+    local set = {}
+    for i = 1, #allMicroButtonNames do
+        local btn = _G[allMicroButtonNames[i]]
+        if btn then set[btn] = true end
+    end
+    for i = 1, #extraAlertAnchorResolvers do
+        local ok, btn = ns.SafeCall("bulkhead", extraAlertAnchorResolvers[i])
+        if ok and btn then set[btn] = true end
+    end
+    return set
+end
+
+local function SweepHelpTipsFromUIParent(suppress)
+    if not UIParent or type(UIParent.GetChildren) ~= "function" then return end
+    local micros = BuildMicroButtonSet()
+    local kids = { UIParent:GetChildren() }
+    for i = 1, #kids do
+        local child = kids[i]
+        if IsHelpTipShapedFrame(child) and child.IsShown and child:IsShown()
+            and type(child.GetNumPoints) == "function" then
+                local hit = false
+                for p = 1, child:GetNumPoints() do
+                    local _, relTo = child:GetPoint(p)
+                    if relTo and micros[relTo] then hit = true; break end
+                end
+                if hit then HandleMicroButtonHelpTip(child, suppress ~= false) end
+        end
+    end
+end
+
+local function HideAllMicroButtonAlerts()
+    for _, buttonName in ipairs(allMicroButtonNames) do
+        local button = _G[buttonName]
+        if button then
+            HideTalentMicroButtonAlert(button)
+            HideHelpTipsOnButton(button, true)
+        end
+        local alertFrame = _G[buttonName .. "Alert"]
+        if alertFrame and alertFrame:IsShown() then
+            alertFrame:Hide()
+        end
+    end
+    for _, alertName in ipairs(extraAlertFrameNames) do
+        local alertFrame = _G[alertName]
+        if alertFrame and alertFrame:IsShown() then
+            alertFrame:Hide()
+        end
+    end
+end
+
+local function HideTalentReminderAlerts()
+    if IsMicrobarEffectivelyHidden() or IsPopupBlockEnabled("blockMicroButtonGlows") then
+        HideAllMicroButtonAlerts()
+    end
+
+    if IsPopupBlockEnabled("blockTalentMicroButtonAlerts") then
+        for _, buttonName in ipairs(talentMicroButtonCandidates) do
+            local button = _G[buttonName]
+            if button then
+                HideTalentMicroButtonAlert(button)
+            end
+        end
+
+        for _, alertName in ipairs(talentMicroButtonAlertCandidates) do
+            local alertFrame = _G[alertName]
+            if alertFrame then
+                alertFrame:Hide()
+            end
+        end
+    end
+end
+
+local function HookAlertOnShow(alertFrame, alsoCheckTalentAlerts)
+    if not alertFrame or _h3z0uiPopupBlockerHooked[alertFrame] then return end
+    alertFrame:HookScript("OnShow", function(self)
+        C_Timer.After(0, function()
+            if not self or not self.Hide then return end
+            if IsMicrobarEffectivelyHidden()
+                or IsPopupBlockEnabled("blockMicroButtonGlows")
+                or (alsoCheckTalentAlerts and IsPopupBlockEnabled("blockTalentMicroButtonAlerts")) then
+                    self:Hide()
+            end
+        end)
+    end)
+    _h3z0uiPopupBlockerHooked[alertFrame] = true
+end
+
+local function HookTalentReminderAlerts()
+    if not mainMenuAlertHooked and type(MainMenuMicroButton_ShowAlert) == "function" then
+        hooksecurefunc("MainMenuMicroButton_ShowAlert", function(button)
+            C_Timer.After(0, function()
+                if IsMicrobarEffectivelyHidden() or IsPopupBlockEnabled("blockMicroButtonGlows") then
+                    HideTalentMicroButtonAlert(button)
+                    return
+                end
+                if IsPopupBlockEnabled("blockTalentMicroButtonAlerts") and IsTalentMicroButton(button) then
+                    HideTalentMicroButtonAlert(button)
+                end
+            end)
+        end)
+        mainMenuAlertHooked = true
+    end
+
+    for _, alertName in ipairs(talentMicroButtonAlertCandidates) do
+        HookAlertOnShow(_G[alertName], true)
+    end
+
+    for _, buttonName in ipairs(allMicroButtonNames) do
+        HookAlertOnShow(_G[buttonName .. "Alert"], false)
+    end
+
+    for _, alertName in ipairs(extraAlertFrameNames) do
+        HookAlertOnShow(_G[alertName], false)
+    end
+
+    if not microButtonPulseHooked then
+        if type(MicroButtonPulse) == "function" then
+            hooksecurefunc("MicroButtonPulse", function(button)
+                C_Timer.After(0, function()
+                    if not button then return end
+                    if IsMicrobarEffectivelyHidden()
+                        or IsPopupBlockEnabled("blockMicroButtonGlows")
+                        or (IsPopupBlockEnabled("blockTalentMicroButtonAlerts") and IsTalentMicroButton(button)) then
+                            HideTalentMicroButtonAlert(button)
+                    end
+                end)
+            end)
+        end
+        if type(MicroButtonPulseStop) == "function" then
+            hooksecurefunc("MicroButtonPulseStop", function(button)
+                C_Timer.After(0, function()
+                    if not button then return end
+                    if button.FlashBorder then
+                        button.FlashBorder:SetAlpha(0)
+                        button.FlashBorder:Hide()
+                    end
+                    if button.FlashContent then
+                        button.FlashContent:SetAlpha(0)
+                        button.FlashContent:Hide()
+                    end
+                end)
+            end)
+        end
+        microButtonPulseHooked = true
+    end
+
+    if EJMicroButton and EJMicroButton.UpdateNewAdventureNotice
+        and not _h3z0uiPopupBlockerHooked[EJMicroButton] then
+        hooksecurefunc(EJMicroButton, "UpdateNewAdventureNotice", function(self)
+            C_Timer.After(0, function()
+                if not self then return end
+                if IsMicrobarEffectivelyHidden() or IsPopupBlockEnabled("blockMicroButtonGlows") then
+                    HideTalentMicroButtonAlert(self)
+                end
+            end)
+        end)
+        _h3z0uiPopupBlockerHooked[EJMicroButton] = true
+    end
+end
+
+local function SweepMicroButtonHelpTips()
+    local suppress = IsMicrobarEffectivelyHidden() or IsPopupBlockEnabled("blockMicroButtonGlows")
+
+    for _, buttonName in ipairs(allMicroButtonNames) do
+        local btn = _G[buttonName]
+        if btn then HideHelpTipsOnButton(btn, suppress) end
+    end
+    SweepHelpTipsFromUIParent(suppress)
+end
+
+local helpTipSweepEvents = {
+    "PLAYER_ENTERING_WORLD",
+    "NEW_MOUNT_ADDED",
+    "NEW_PET_ADDED",
+    "NEW_TOY_ADDED",
+    "ACHIEVEMENT_EARNED",
+    "TRAIT_CONFIG_UPDATED",
+    "PLAYER_TALENT_UPDATE",
+    "QUEST_LOG_UPDATE",
+}
+local helpTipSweepFrame = CreateFrame("Frame")
+local helpTipSweepPending = false
+local function RunHelpTipSweep()
+    helpTipSweepPending = false
+    SweepMicroButtonHelpTips()
+end
+helpTipSweepFrame:SetScript("OnEvent", function()
+    if helpTipSweepPending then return end
+    if not (IsMicrobarEffectivelyHidden()
+        or IsPopupBlockEnabled("blockMicroButtonGlows")
+        or IsPopupBlockEnabled("blockHelpTips")) then
+        return
+    end
+    helpTipSweepPending = true
+    C_Timer.After(0.1, RunHelpTipSweep)
+end)
+
+local function RefreshHelpTipSweeper()
+    for _, ev in ipairs(helpTipSweepEvents) do
+        ns.SafeCallMethod("best-effort-style", helpTipSweepFrame, "RegisterEvent", ev)
+    end
+    SweepMicroButtonHelpTips()
+end
+
+local function RefreshPopupBlocker()
+    HookPopupAlertSystems()
+    HookEventToastManager()
+    HookTalentReminderAlerts()
+
+    HideEventToasts()
+    HideTalentReminderAlerts()
+    RefreshHelpTipSweeper()
+end
+
+_G.H3z0UI_RefreshPopupBlocker = RefreshPopupBlocker
+
+if ns.Registry then
+    ns.Registry:Register("popupBlocker", {
+        refresh = _G.H3z0UI_RefreshPopupBlocker,
+        priority = 30,
+        group = "qol",
+        importCategories = { "qol" },
+    })
+end
+
+local function OnMerchantShow()
+    local settings = GetSettings()
+    if not settings then return end
+
+    if settings.sellJunk then
+        local Junk = ns.Bags and ns.Bags.Junk
+        local exclusions
+        if Junk then
+            local bagsDB = Helpers.CreateDBGetter("bags")()
+            local junkCfg = bagsDB and bagsDB.behavior and bagsDB.behavior.junk
+            exclusions = junkCfg and junkCfg.exclusions
+        end
+        for bag = 0, 5 do
+            for slot = 1, C_Container.GetContainerNumSlots(bag) do
+                local info = C_Container.GetContainerItemInfo(bag, slot)
+                if info then
+                    local sell
+                    if Junk then
+                        sell = Junk.IsJunk(info, bag, exclusions)
+                    else
+                        sell = info.quality == Enum.ItemQuality.Poor
+                    end
+                    if sell then
+                        C_Container.UseContainerItem(bag, slot)
+                    end
+                end
+            end
+        end
+    end
+
+    local repairMode = settings.autoRepair
+    if repairMode and repairMode ~= "off" and CanMerchantRepair() then
+        local repairCost = GetRepairAllCost()
+        if repairCost and repairCost > 0 then
+            if repairMode == "guild" then
+                RepairAllItems(CanGuildBankRepair())
+            else
+                RepairAllItems(false)
+            end
+        end
+    end
+end
+
+local function OnRoleCheckShow()
+    local settings = GetSettings()
+    if settings and settings.autoRoleAccept then
+        CompleteLFGRoleCheck(true)
+    end
+end
+
+local function IsFriendOrBNet(name)
+    if not name then return false end
+    if C_FriendList.GetFriendInfo(name) then return true end
+    local numBNetTotal = BNGetNumFriends()
+    for i = 1, numBNetTotal do
+        local accountInfo = C_BattleNet.GetFriendAccountInfo(i)
+        if accountInfo and accountInfo.gameAccountInfo then
+            local charName = accountInfo.gameAccountInfo.characterName
+            local realmName = accountInfo.gameAccountInfo.realmName
+            if charName then
+                local fullName = realmName and (charName .. "-" .. realmName) or charName
+                if fullName == name or charName == name:match("^([^-]+)") then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function IsGuildMemberByName(name)
+    if not name or not IsInGuild() then return false end
+    local numMembers = GetNumGuildMembers()
+    local searchName = name:match("^([^-]+)") or name
+    for i = 1, numMembers do
+        local memberName = GetGuildRosterInfo(i)
+        if memberName then
+            local memberShort = memberName:match("^([^-]+)") or memberName
+            if memberShort == searchName then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function OnPartyInvite(inviterName)
+    if ns.ShouldAutoDeclineFrom and ns.ShouldAutoDeclineFrom(inviterName) then
+        DeclineGroup()
+        StaticPopup_Hide("PARTY_INVITE")
+        return
+    end
+
+    local settings = GetSettings()
+    if not settings then return end
+
+    local mode = settings.autoAcceptInvites
+    if not mode or mode == "off" then return end
+
+    local shouldAccept = false
+
+    if mode == "all" then
+        shouldAccept = true
+    elseif mode == "friends" then
+        shouldAccept = IsFriendOrBNet(inviterName)
+    elseif mode == "guild" then
+        shouldAccept = IsGuildMemberByName(inviterName)
+    elseif mode == "both" then
+        shouldAccept = IsFriendOrBNet(inviterName) or IsGuildMemberByName(inviterName)
+    end
+
+    if shouldAccept then
+        AcceptGroup()
+        StaticPopup_Hide("PARTY_INVITE")
+    end
+end
+
+local resurrectionScopes = { party = "dungeon", raid = "raid", pvp = "pvp", arena = "pvp" }
+
+local function ResurrectionIsOutOfCombat(offerer)
+    if Helpers.IsSecretValue(offerer) or type(offerer) ~= "string" or offerer == "" then return true end
+    if UnitExists(offerer) then return not UnitAffectingCombat(offerer) end
+
+    local function MatchesOfferer(unit)
+        local name, realm = UnitFullName(unit)
+        if Helpers.IsSecretValue(name) or Helpers.IsSecretValue(realm) then return false end -- @secret-policy: reject-secret-resurrector
+        if not name then return false end
+        return offerer == name or (realm and realm ~= "" and offerer == name .. "-" .. realm)
+    end
+
+    local inRaid = IsInRaid()
+    local prefix = inRaid and "raid" or "party"
+    local count = inRaid and GetNumGroupMembers() or 4
+    if MatchesOfferer("player") then return not UnitAffectingCombat("player") end
+    for i = 1, count do
+        local unit = prefix .. i
+        if UnitExists(unit) and MatchesOfferer(unit) then
+            return not UnitAffectingCombat(unit)
+        end
+    end
+    if UnitExists("target") and MatchesOfferer("target") then
+        return not UnitAffectingCombat("target")
+    end
+    return true
+end
+
+local function ShouldAcceptResurrection(offerer)
+    local settings = GetSettings()
+    local modes = settings and settings.autoAcceptResurrection
+    if type(modes) ~= "table" or IsShiftKeyDown() or not UnitIsDeadOrGhost("player") then return false end
+    local inInstance, instanceType = IsInInstance()
+    local scope = resurrectionScopes[instanceType]
+    if not inInstance then scope = "world" end
+    local mode = scope and modes[scope]
+    if mode ~= "always" and mode ~= "outOfCombat" then return false end
+    if ResurrectHasSickness() or ResurrectHasTimer() then return false end
+    return mode == "always" or ResurrectionIsOutOfCombat(offerer)
+end
+
+local function OnResurrectRequest(offerer)
+    if ShouldAcceptResurrection(offerer) then AcceptResurrect() end
+end
+
+local summonAcceptPending = false
+local PlayerCanTeleport = _G.PlayerCanTeleport
+
+local function GetAutoAcceptSummonMode()
+    local settings = GetSettings()
+    local mode = settings and settings.autoAcceptSummons
+    if mode == true then return "always" end
+    return mode
+end
+
+local function SummonIsActive()
+    return C_SummonInfo and C_SummonInfo.GetSummonConfirmTimeLeft
+        and C_SummonInfo.GetSummonConfirmTimeLeft() > 0
+end
+
+local function AcceptSummon()
+    if C_SummonInfo and C_SummonInfo.ConfirmSummon then
+        C_SummonInfo.ConfirmSummon()
+        C_Timer.After(0, _G.HideSummonConfirmationDialogs)
+    end
+end
+
+local function TryAcceptPendingSummon()
+    if not summonAcceptPending then return end
+    local mode = GetAutoAcceptSummonMode()
+    if (mode ~= "always" and mode ~= "outOfCombat") or not SummonIsActive() then
+        summonAcceptPending = false
+        return
+    end
+    if UnitAffectingCombat("player") then
+        if mode == "outOfCombat" then summonAcceptPending = false end
+        return
+    end
+    if not PlayerCanTeleport or not PlayerCanTeleport() then
+        C_Timer.After(0.2, TryAcceptPendingSummon)
+        return
+    end
+    summonAcceptPending = false
+    AcceptSummon()
+end
+
+local function OnConfirmSummon()
+    summonAcceptPending = false
+    local mode = GetAutoAcceptSummonMode()
+    if mode ~= "always" and mode ~= "outOfCombat" then return end
+    if UnitAffectingCombat("player") then
+        if mode == "always" then summonAcceptPending = true end
+        return
+    end
+    if not PlayerCanTeleport or not PlayerCanTeleport() then
+        summonAcceptPending = true
+        C_Timer.After(0.2, TryAcceptPendingSummon)
+        return
+    end
+    AcceptSummon()
+end
+
+local function OnDuelRequested(challengerName)
+    local ignored = ns.ShouldAutoDeclineFrom and ns.ShouldAutoDeclineFrom(challengerName)
+    local settings = GetSettings()
+    if not ignored and (not settings or not settings.autoDeclineDuel) then return end
+    C_Timer.After(0, function()
+        CancelDuel()
+        StaticPopup_Hide("DUEL_REQUESTED")
+    end)
+end
+
+local function OnPetBattleDuelRequested()
+    local settings = GetSettings()
+    if not settings or not settings.autoDeclinePetBattle then return end
+    C_Timer.After(0, function()
+        if C_PetBattles and C_PetBattles.CancelPVPDuel then
+            C_PetBattles.CancelPVPDuel()
+        end
+        StaticPopup_Hide("PET_BATTLE_PVP_DUEL_REQUESTED")
+    end)
+end
+
+-- <<< H3z0UI_TEST_EXTRACT release_scope
+local function ShouldAutoReleaseInScope(mode, inInstance, instanceType)
+    if not mode or mode == "off" then return false end
+    if instanceType == "pvp" then return true end
+    if not inInstance then return mode == "pvpworld" end
+    return false
+end
+-- <<< H3z0UI_TEST_EXTRACT release_scope
+
+local function OnPlayerDead()
+    local settings = GetSettings()
+    local mode = settings and settings.autoRelease
+    if not mode or mode == "off" then return end
+    if UnitIsGhost("player") then return end
+
+    local inInstance, instanceType = IsInInstance()
+    if not ShouldAutoReleaseInScope(mode, inInstance, instanceType) then return end
+
+    C_Timer.After(1.5, function()
+        local s = GetSettings()
+        if not s or s.autoRelease == "off" then return end
+        if UnitIsDead("player") and not UnitIsGhost("player") then
+            RepopMe()
+        end
+    end)
+end
+
+local RELEASE_GUARD_SECONDS = 3
+
+local releaseBlockHooked = setmetatable({}, { __mode = "k" })
+local releaseUnlockTime = setmetatable({}, { __mode = "k" })
+local releaseButtonCache = setmetatable({}, { __mode = "kv" })
+local releaseOverlays = setmetatable({}, { __mode = "k" })
+
+local function GetReleaseButton(frame)
+    local button = releaseButtonCache[frame]
+    if button then return button end
+
+    local name = frame.GetName and frame:GetName()
+    button = (frame.GetButton1 and frame:GetButton1())
+        or (frame.GetButton and frame:GetButton(1))
+        or frame.button1
+        or (name and _G[name .. "Button1"])
+    releaseButtonCache[frame] = button
+    return button
+end
+
+local function GetReleaseOverlay(frame, button)
+    local overlay = releaseOverlays[frame]
+    if overlay then return overlay end
+
+    overlay = CreateFrame("Frame", nil, button)
+    overlay:SetAllPoints(button)
+    overlay:EnableMouse(true)
+    overlay:Hide()
+
+    local cover = overlay:CreateTexture(nil, "OVERLAY")
+    cover:SetAllPoints(overlay)
+    cover:SetColorTexture(0, 0, 0, 0.65)
+
+    overlay.label = overlay:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    overlay.label:SetPoint("CENTER")
+
+    releaseOverlays[frame] = overlay
+    return overlay
+end
+
+-- value may be a countdown integer or a string; comparing before SetText
+-- keeps the per-frame OnUpdate path free of string conversions/allocations.
+local function SetOverlayLabel(overlay, value)
+    if overlay.lastLabel ~= value then
+        overlay.lastLabel = value
+        overlay.label:SetText(value)
+    end
+end
+
+local function IsReleaseGuardActive()
+    local settings = GetSettings()
+    if not settings or not settings.blockReleaseInRaid then return false end
+    local inInstance, instanceType = IsInInstance()
+    return (inInstance and instanceType == "raid") and true or false
+end
+
+-- Runs as an OnUpdate post-hook, i.e. after Blizzard's DEATH OnUpdate has
+-- already set the button's enabled state and text for its own restrictions
+-- (falling, encounter suppression, no-release auras) this same frame. The
+-- guard never touches the button itself — toggling its enabled state or text
+-- would trip Blizzard's per-frame transition detection, which blanks the
+-- dialog's timer text and resizes it. Instead a click-swallowing overlay sits
+-- on top of the button while the guard holds.
+local function EnforceReleaseBlock(frame)
+    local button = GetReleaseButton(frame)
+    if not button then return end
+
+    local overlay = releaseOverlays[frame]
+
+    if not IsReleaseGuardActive() or not button:IsEnabled() then
+        -- Off, not a raid, or Blizzard holds the button disabled natively —
+        -- its state and text are authoritative; stand back.
+        if overlay then overlay:Hide() end
+        return
+    end
+
+    local unlockAt = releaseUnlockTime[frame]
+    if not unlockAt then
+        unlockAt = GetTime() + RELEASE_GUARD_SECONDS
+        releaseUnlockTime[frame] = unlockAt
+    end
+
+    local remaining = unlockAt - GetTime()
+    if remaining <= 0 and IsControlKeyDown() then
+        if overlay then overlay:Hide() end
+        return
+    end
+
+    overlay = overlay or GetReleaseOverlay(frame, button)
+    if not overlay:IsShown() then
+        overlay:SetFrameLevel(button:GetFrameLevel() + 10)
+        overlay:Show()
+    end
+    if remaining > 0 then
+        SetOverlayLabel(overlay, math.ceil(remaining))
+    else
+        SetOverlayLabel(overlay, ns.L["Hold Ctrl"])
+    end
+end
+
+local function HookDeathPopups()
+    for i = 1, GetMaxStaticPopupDialogs() do
+        local frame = _G["StaticPopup" .. i]
+        if frame and frame.which == "DEATH" then
+            if not releaseBlockHooked[frame] then
+                releaseBlockHooked[frame] = true
+                frame:HookScript("OnUpdate", function(self)
+                    if self.which == "DEATH" then
+                        EnforceReleaseBlock(self)
+                    end
+                end)
+                frame:HookScript("OnHide", function(self)
+                    releaseUnlockTime[self] = nil
+                    if releaseOverlays[self] then
+                        releaseOverlays[self]:Hide()
+                    end
+                end)
+            end
+            releaseUnlockTime[frame] = nil
+            EnforceReleaseBlock(frame)
+        end
+    end
+end
+
+local function ShouldPauseQuest(settings)
+    return settings.questHoldShift and IsShiftKeyDown()
+end
+
+local function OnQuestDetail()
+    local settings = GetSettings()
+    if not settings or settings.autoAcceptQuest ~= true then return end
+    if ShouldPauseQuest(settings) then return end
+
+    AcceptQuest()
+end
+
+local function OnQuestComplete()
+    local settings = GetSettings()
+    if not settings or not settings.autoTurnInQuest then return end
+    if ShouldPauseQuest(settings) then return end
+
+    local numChoices = GetNumQuestChoices()
+    if numChoices > 1 then return end
+
+    GetQuestReward(numChoices > 0 and 1 or nil)
+end
+
+local gossipClicked = {}
+
+local function OnGossipShow()
+    local settings = GetSettings()
+    if not settings or not settings.autoSelectGossip then return end
+
+    if settings.questHoldShift and IsShiftKeyDown() then return end
+
+    local availableQuests = C_GossipInfo.GetAvailableQuests()
+    local numActiveQuests = C_GossipInfo.GetNumActiveQuests()
+
+    if (availableQuests and #availableQuests > 0) or (numActiveQuests and numActiveQuests > 0) then
+        return
+    end
+
+    local options = C_GossipInfo.GetOptions()
+    if not options or #options == 0 then return end
+
+    local validOptions = {}
+    for _, option in pairs(options) do
+        if option.gossipOptionID then
+            table.insert(validOptions, option)
+        end
+    end
+
+    if #validOptions == 1 then
+        local option = validOptions[1]
+        local optionID = option.gossipOptionID
+
+        if optionID and not gossipClicked[optionID] then
+            gossipClicked[optionID] = true
+            C_GossipInfo.SelectOption(optionID)
+        end
+    end
+end
+
+local function OnGossipClosed()
+    gossipClicked = {}
+end
+
+local lootRetryPending = false
+
+local function TryLootAll()
+    local numItems = GetNumLootItems()
+    for slotIndex = 1, numItems do
+        if LootSlotHasItem(slotIndex) then
+            LootSlot(slotIndex)
+        end
+    end
+end
+
+local function CheckRemainingLoot()
+    lootRetryPending = false
+    local settings = GetSettings()
+    if not settings or not settings.fastAutoLoot then return end
+
+    local numItems = GetNumLootItems()
+    for slotIndex = 1, numItems do
+        if LootSlotHasItem(slotIndex) then
+            TryLootAll()
+            return
+        end
+    end
+end
+
+local function OnLootReady()
+    local settings = GetSettings()
+    if not settings or not settings.fastAutoLoot then return end
+
+    if not GetCVarBool("autoLootDefault") then
+        SetCVar("autoLootDefault", "1")
+    end
+
+    TryLootAll()
+
+    if not lootRetryPending then
+        lootRetryPending = true
+        C_Timer.After(0.1, CheckRemainingLoot)
+    end
+end
+
+local wasLoggingBeforeChallenge = false
+local mplusAutoLoggingActive = false
+local wasInMythicPlus = false
+local pendingMythicPlusUpdate = nil
+local pendingMythicPlusStop = nil
+local raidAutoLoggingActive = false
+local wasInRaidInstance = false
+local MYTHIC_PLUS_STOP_GRACE_SECONDS = 8
+
+local function CancelPendingMythicPlusUpdate()
+    if pendingMythicPlusUpdate and pendingMythicPlusUpdate.Cancel then
+        pendingMythicPlusUpdate:Cancel()
+    end
+    pendingMythicPlusUpdate = nil
+end
+
+local function CancelPendingMythicPlusStop()
+    if pendingMythicPlusStop and pendingMythicPlusStop.Cancel then
+        pendingMythicPlusStop:Cancel()
+    end
+    pendingMythicPlusStop = nil
+end
+
+local function HasMythicPlusActiveSignal()
+    if C_MythicPlus and type(C_MythicPlus.IsMythicPlusActive) == "function" then
+        local ok, active = ns.SafeCall("chain-next", C_MythicPlus.IsMythicPlusActive)
+        if ok and active == true then
+            return true
+        end
+    end
+
+    if C_ChallengeMode and type(C_ChallengeMode.GetActiveChallengeMapID) == "function" then
+        local ok, mapID = ns.SafeCall("chain-next", C_ChallengeMode.GetActiveChallengeMapID)
+        if ok and mapID ~= nil then
+            return true
+        end
+    end
+
+    if C_ChallengeMode and type(C_ChallengeMode.IsChallengeModeActive) == "function" then
+        local ok, active = ns.SafeCall("chain-next", C_ChallengeMode.IsChallengeModeActive)
+        if ok and active == true then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function IsInMythicPlusInstance()
+    local _, instanceType, difficultyID = GetInstanceInfo()
+    return instanceType == "party" and difficultyID == 8
+end
+
+local function StopMythicPlusLogging()
+    if mplusAutoLoggingActive and LoggingCombat() then
+        LoggingCombat(false)
+        print("|cFF30D1FFH3z0UI:|r Combat logging stopped")
+    end
+
+    mplusAutoLoggingActive = false
+    wasLoggingBeforeChallenge = false
+end
+
+local function UpdateMythicPlusAutoLogging(allowImmediateStop)
+    local settings = GetSettings()
+    local hasActiveSignal = HasMythicPlusActiveSignal()
+    local inMythicPlusInstance = IsInMythicPlusInstance()
+    local inInstance = IsInInstance()
+    local inMythicPlus = (inInstance and hasActiveSignal)
+        or (inMythicPlusInstance and (wasInMythicPlus or mplusAutoLoggingActive or LoggingCombat()))
+
+    if not settings or not settings.autoCombatLog then
+        CancelPendingMythicPlusStop()
+        StopMythicPlusLogging()
+        wasInMythicPlus = inMythicPlus
+        return
+    end
+
+    if inMythicPlus then
+        CancelPendingMythicPlusStop()
+
+        if not wasInMythicPlus then
+            wasLoggingBeforeChallenge = LoggingCombat()
+            mplusAutoLoggingActive = false
+        end
+
+        if not LoggingCombat() then
+            LoggingCombat(true)
+            mplusAutoLoggingActive = true
+
+            if wasInMythicPlus then
+                print(ns.L["|cFF30D1FFH3z0UI:|r Combat logging resumed (active M+ detected)"])
+            else
+                print(ns.L["|cFF30D1FFH3z0UI:|r Combat logging started for M+"])
+            end
+        end
+    elseif wasInMythicPlus then
+        if allowImmediateStop then
+            StopMythicPlusLogging()
+        else
+            CancelPendingMythicPlusStop()
+            pendingMythicPlusStop = C_Timer.NewTimer(MYTHIC_PLUS_STOP_GRACE_SECONDS, function()
+                pendingMythicPlusStop = nil
+                UpdateMythicPlusAutoLogging(true)
+            end)
+            return
+        end
+    end
+
+    wasInMythicPlus = inMythicPlus
+end
+
+local function ScheduleMythicPlusUpdate(delaySeconds)
+    CancelPendingMythicPlusUpdate()
+    pendingMythicPlusUpdate = C_Timer.NewTimer(delaySeconds or 0, function()
+        pendingMythicPlusUpdate = nil
+        UpdateMythicPlusAutoLogging()
+    end)
+end
+
+local function IsInRaidInstance()
+    local inInstance, instanceType = IsInInstance()
+    return inInstance and instanceType == "raid"
+end
+
+local function UpdateRaidAutoLogging()
+    local settings = GetSettings()
+    local inRaidInstance = IsInRaidInstance()
+
+    if not settings or not settings.autoCombatLogRaid then
+        if raidAutoLoggingActive and LoggingCombat() then
+            LoggingCombat(false)
+            print(ns.L["|cFF30D1FFH3z0UI:|r Combat logging stopped"])
+        end
+        raidAutoLoggingActive = false
+        wasInRaidInstance = inRaidInstance
+        return
+    end
+
+    if inRaidInstance and not wasInRaidInstance then
+        raidAutoLoggingActive = false
+
+        if not LoggingCombat() then
+            LoggingCombat(true)
+            raidAutoLoggingActive = true
+            print(ns.L["|cFF30D1FFH3z0UI:|r Combat logging started for raid"])
+        end
+    elseif not inRaidInstance and wasInRaidInstance then
+        if raidAutoLoggingActive and LoggingCombat() then
+            LoggingCombat(false)
+            print(ns.L["|cFF30D1FFH3z0UI:|r Combat logging stopped"])
+        end
+        raidAutoLoggingActive = false
+    end
+
+    wasInRaidInstance = inRaidInstance
+end
+
+local function RefreshAutoCombatLogging()
+    CancelPendingMythicPlusUpdate()
+    CancelPendingMythicPlusStop()
+    UpdateMythicPlusAutoLogging()
+    UpdateRaidAutoLogging()
+end
+
+_G.H3z0UI_RefreshAutoCombatLogging = RefreshAutoCombatLogging
+
+local deletePopups = {
+    ["DELETE_ITEM"] = true,
+    ["DELETE_GOOD_ITEM"] = true,
+    ["DELETE_GOOD_QUEST_ITEM"] = true,
+    ["DELETE_QUEST_ITEM"] = true,
+}
+
+local autoConfirmPopups = {
+    ["CONFIRM_ACCEPT_SOCKETS"]      = "autoConfirmSocketReplace",
+    ["CONFIRM_PURCHASE_TOKEN_ITEM"] = "autoConfirmTokenPurchase",
+    ["CONFIRM_HIGH_COST_ITEM"]      = "autoConfirmHighCost",
+}
+
+local function AutoConfirmPopup(which)
+    for i = 1, GetMaxStaticPopupDialogs() do
+        local frame = _G["StaticPopup" .. i]
+        if frame and frame.which == which and frame:IsShown() then
+            local button = frame.button1 or _G["StaticPopup" .. i .. "Button1"]
+            if button and button:IsEnabled() then
+                button:Click()
+            end
+            break
+        end
+    end
+end
+
+hooksecurefunc("StaticPopup_Show", function(which)
+    if which == "DEATH" then
+        HookDeathPopups()
+    end
+
+    C_Timer.After(0, function()
+        if ShouldBlockStaticPopup(which) then
+            HideStaticPopupByWhich(which)
+            return
+        end
+
+        local confirmKey = autoConfirmPopups[which]
+        if confirmKey then
+            local settings = GetSettings()
+            if settings and settings[confirmKey] then
+                AutoConfirmPopup(which)
+            end
+            return
+        end
+
+        if not deletePopups[which] then return end
+
+        local settings = GetSettings()
+        if not settings or not settings.autoDeleteConfirm then return end
+
+        for i = 1, GetMaxStaticPopupDialogs() do
+            local frame = _G["StaticPopup" .. i]
+            if frame and frame.which == which and frame:IsShown() then
+                local editBox = frame.editBox or _G["StaticPopup" .. i .. "EditBox"]
+                if editBox then
+                    editBox:SetText(DELETE_ITEM_CONFIRM_STRING or "DELETE")
+                    local handler = editBox:GetScript("OnTextChanged")
+                    if handler then
+                        handler(editBox)
+                    end
+            end
+            break
+        end
+    end
+    end)
+end)
+
+local ahHooked = false
+
+local function SetupAuctionHouseFilter()
+    if ahHooked then return end
+    if not AuctionHouseFrame then return end
+
+    ahHooked = true
+
+    local searchBar = AuctionHouseFrame.SearchBar
+    local searchBox = searchBar.SearchBox
+
+    local function applyFilter()
+        local settings = GetSettings()
+        if not settings or not settings.auctionHouseExpansionFilter then return end
+        local filterButton = searchBar.FilterButton
+        if not filterButton then return end
+
+        local filters
+        if type(filterButton.GetFilters) == "function" then
+            filters = filterButton:GetFilters()
+        else
+            filters = filterButton.filters
+        end
+        if not filters then return end
+
+        filters[Enum.AuctionHouseFilter.CurrentExpansionOnly] = true
+        searchBar:UpdateClearFiltersButton()
+        searchBox:SetFocus()
+    end
+
+    searchBar:HookScript("OnShow", function() C_Timer.After(0, applyFilter) end)
+    C_Timer.After(0, applyFilter)
+end
+
+local coHooked = false
+
+local function SetupCraftingOrderFilter()
+    if coHooked then return end
+    local frame = ProfessionsCustomerOrdersFrame
+    if not frame then return end
+
+    local browseOrders = frame.BrowseOrders
+    if not browseOrders or not browseOrders.SearchBar then return end
+
+    coHooked = true
+
+    local filterDropdown = browseOrders.SearchBar.FilterDropdown
+    if not filterDropdown then return end
+
+    local function applyFilter()
+        local settings = GetSettings()
+        if not settings or not settings.craftingOrderExpansionFilter then return end
+        if not filterDropdown.filters then return end
+        filterDropdown.filters[Enum.AuctionHouseFilter.CurrentExpansionOnly] = true
+        filterDropdown:ValidateResetState()
+    end
+
+    browseOrders:HookScript("OnShow", function() C_Timer.After(0, applyFilter) end)
+    C_Timer.After(0, applyFilter)
+end
+
+qolFrame:RegisterEvent("MERCHANT_SHOW")
+qolFrame:RegisterEvent("LFG_ROLE_CHECK_SHOW")
+qolFrame:RegisterEvent("PARTY_INVITE_REQUEST")
+qolFrame:RegisterEvent("CONFIRM_SUMMON")
+qolFrame:RegisterEvent("RESURRECT_REQUEST")
+qolFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+qolFrame:RegisterEvent("DUEL_REQUESTED")
+qolFrame:RegisterEvent("PET_BATTLE_PVP_DUEL_REQUESTED")
+qolFrame:RegisterEvent("PLAYER_DEAD")
+qolFrame:RegisterEvent("QUEST_DETAIL")
+qolFrame:RegisterEvent("QUEST_COMPLETE")
+qolFrame:RegisterEvent("GOSSIP_SHOW")
+qolFrame:RegisterEvent("GOSSIP_CLOSED")
+qolFrame:RegisterEvent("LOOT_READY")
+qolFrame:RegisterEvent("CHALLENGE_MODE_START")
+qolFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+qolFrame:RegisterEvent("CHALLENGE_MODE_RESET")
+qolFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+qolFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+qolFrame:RegisterEvent("ADDON_LOADED")
+qolFrame:RegisterEvent("AUCTION_HOUSE_SHOW")
+
+qolFrame:SetScript("OnEvent", function(self, event, ...)
+    if event == "MERCHANT_SHOW" then
+        OnMerchantShow()
+    elseif event == "LFG_ROLE_CHECK_SHOW" then
+        OnRoleCheckShow()
+    elseif event == "PARTY_INVITE_REQUEST" then
+        OnPartyInvite(...)
+    elseif event == "CONFIRM_SUMMON" then
+        OnConfirmSummon()
+    elseif event == "RESURRECT_REQUEST" then
+        OnResurrectRequest(...)
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        TryAcceptPendingSummon()
+    elseif event == "DUEL_REQUESTED" then
+        OnDuelRequested(...)
+    elseif event == "PET_BATTLE_PVP_DUEL_REQUESTED" then
+        OnPetBattleDuelRequested()
+    elseif event == "PLAYER_DEAD" then
+        OnPlayerDead()
+    elseif event == "QUEST_DETAIL" then
+        OnQuestDetail()
+    elseif event == "QUEST_COMPLETE" then
+        OnQuestComplete()
+    elseif event == "GOSSIP_SHOW" then
+        OnGossipShow()
+    elseif event == "GOSSIP_CLOSED" then
+        OnGossipClosed()
+    elseif event == "LOOT_READY" then
+        OnLootReady()
+    elseif event == "CHALLENGE_MODE_START" then
+        UpdateMythicPlusAutoLogging()
+    elseif event == "CHALLENGE_MODE_COMPLETED" or event == "CHALLENGE_MODE_RESET" then
+        ScheduleMythicPlusUpdate(5)
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        ScheduleMythicPlusUpdate(2)
+        C_Timer.After(2, UpdateRaidAutoLogging)
+        C_Timer.After(2, RefreshPopupBlocker)
+    elseif event == "ZONE_CHANGED_NEW_AREA" then
+        UpdateMythicPlusAutoLogging()
+        UpdateRaidAutoLogging()
+    elseif event == "AUCTION_HOUSE_SHOW" then
+        SetupAuctionHouseFilter()
+        qolFrame:UnregisterEvent("AUCTION_HOUSE_SHOW")
+    elseif event == "ADDON_LOADED" then
+        local loadedAddon = ...
+        if loadedAddon == addonName then
+            C_Timer.After(0, RefreshPopupBlocker)
+            return
+        end
+        if loadedAddon == "Blizzard_ProfessionsCustomerOrders" then
+            C_Timer.After(0.1, SetupCraftingOrderFilter)
+        end
+        if type(loadedAddon) == "string" and string.find(loadedAddon, "Blizzard_", 1, true) == 1 then
+            C_Timer.After(0, RefreshPopupBlocker)
+        end
+    end
+end)
+
+if C_AddOns.IsAddOnLoaded("Blizzard_ProfessionsCustomerOrders") then
+    C_Timer.After(0.1, SetupCraftingOrderFilter)
+end
+
+
+do
+    local appearanceEffects = {
+        blacksmithing = { 388658 },
+        jewelcrafting = { 394015 },
+        tailoring = { 391312 },
+        engineering = { 394007 },
+        enchanting = { 394008 },
+        alchemy = { 394003 },
+        inscription = { 394016 },
+        leatherworking = { 394001 },
+        herbalism = { 394005 },
+        mining = { 394006 },
+        skinning = { 394011 },
+        cooking = { 391775 },
+        fishing = { 394009 },
+        lantern = { 44212 },
+        hallowed = {
+            172010, 218132, 191703, 24732, 191210, 172015, 24735, 24736,
+            191698, 191700, 172008, 24712, 24713, 191701, 191211, 24710,
+            24711, 191686, 191688, 24708, 24709, 173958, 173959, 191682,
+            191683, 24723, 191702, 172003, 172020, 191208, 24740,
+        },
+        noblebunny = { 61734, 61716 },
+        turkey = { 61781 },
+        aqir = { 318452 },
+        atomic = { 399502 },
+        atomgoblin = { 1215363 },
+        blight = { 290224 },
+        witch = { 279509 },
+        spraybots = { 301892, 301893, 301894 },
+        pickaxe = { 454405 },
+        noggenfogger = { 16591, 16595, 1223629, 1223631 },
+        prism = { 163267 },
+    }
+    local selected = {}
+    local selectedSettings
+    local frame = CreateFrame("Frame")
+    local pending = false
+
+    local function RemoveAppearances()
+        local general = GetSettings()
+        local settings = general and general.autoRemoveAppearanceChanges
+        if not settings or settings ~= selectedSettings or not settings.enabled or not next(selected) then return end
+        if InCombatLockdown() or UnitAffectingCombat("player") then return end
+        if C_Secrets.ShouldAurasBeSecret() then return end
+
+        local auras = C_UnitAuras.GetUnitAuras("player", "HELPFUL|CANCELABLE")
+        if issecretvalue(auras) then return end
+        for _, aura in ipairs(auras) do
+            if not issecretvalue(aura) then
+                local spellID, instanceID = aura.spellId, aura.auraInstanceID
+                if not issecretvalue(spellID) and not issecretvalue(instanceID)
+                    and type(spellID) == "number" and type(instanceID) == "number"
+                    and selected[spellID] then
+                    local canRemove = true
+                    if spellID == 394009 then
+                        local _, _, _, _, _, _, _, channelID = UnitChannelInfo("player")
+                        if issecretvalue(channelID) then
+                            canRemove = false
+                        else
+                            canRemove = channelID ~= 131476
+                        end
+                    end
+                    if canRemove then
+                        C_UnitAuras.CancelAuraByInstanceID("player", instanceID)
+                    end
+                end
+            end
+        end
+    end
+
+    frame:SetScript("OnEvent", function(_, event, _, state)
+        if event == "ADDON_RESTRICTION_STATE_CHANGED" then
+            if issecretvalue(state) or state ~= Enum.AddOnRestrictionState.Inactive then return end
+        end
+        if pending then return end
+        if InCombatLockdown() or UnitAffectingCombat("player") then return end
+        if C_Secrets.ShouldAurasBeSecret() then return end
+        pending = true
+        C_Timer.After(0, function()
+            pending = false
+            RemoveAppearances()
+        end)
+    end)
+
+    local function RefreshAppearanceChanges()
+        frame:UnregisterAllEvents()
+        wipe(selected)
+        local general = GetSettings()
+        local settings = general and general.autoRemoveAppearanceChanges
+        selectedSettings = settings
+        if not settings or not settings.enabled then return end
+        for key, spellIDs in pairs(appearanceEffects) do
+            if settings[key] then
+                for _, spellID in ipairs(spellIDs) do
+                    selected[spellID] = true
+                end
+            end
+        end
+        if not next(selected) then return end
+        frame:RegisterUnitEvent("UNIT_AURA", "player")
+        frame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
+        frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+        frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+        frame:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
+        RemoveAppearances()
+    end
+
+    ns.RefreshAppearanceChanges = RefreshAppearanceChanges
+    ns.WhenLoggedIn(RefreshAppearanceChanges)
+    ns.Registry:Register("appearanceChanges", {
+        refresh = RefreshAppearanceChanges,
+        priority = 30,
+        group = "qol",
+        importCategories = { "qol" },
+    })
+end

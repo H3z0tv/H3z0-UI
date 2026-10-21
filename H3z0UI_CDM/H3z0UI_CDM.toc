@@ -1,0 +1,22 @@
+## Interface: 120105, 120100, 120001, 120000, 16001
+## Title: |cFF30D1FFH3z0 UI|r Cooldown Manager
+## Notes: H3z0 UI module. Requires the H3z0 UI core addon.
+## Author: H3z0
+## Version: 0.25.0
+## Category: User Interface
+## Group: H3z0UI
+## Dependencies: H3z0UI
+## IconTexture: Interface\AddOns\H3z0UI\assets\icon
+
+bootstrap.lua
+cdm\h3z_bridge.lua
+cdm\hud_visibility.lua
+cdm\cdm_custom.lua
+cdm\cdm_viewer.lua
+cdm\cdm_manager.lua
+cdm\glows.lua
+cdm\effects.lua
+cdm\swipe.lua
+cdm\cdm_doctor.lua
+cdm\buffbar.lua
+cdm\customtrackers.lua

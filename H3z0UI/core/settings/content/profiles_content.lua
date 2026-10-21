@@ -1,0 +1,707 @@
+local GetSpecialization = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization
+local GetSpecializationInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo
+local ADDON_NAME, ns = ...
+local H3z0UI = H3z0UI
+local GUI = H3z0UI.GUI
+local C = GUI.Colors
+local Shared = ns.H3z0UI_Options
+local H3z0UICore = ns.Addon
+local Helpers = ns.Helpers
+local Settings = ns.Settings
+local Registry = Settings and Settings.Registry
+local Schema = Settings and Settings.Schema
+
+local PADDING = Shared.PADDING
+local CreateScrollableContent = Shared.CreateScrollableContent
+local GetCore = Helpers.GetCore
+
+local SECTION_GAP = 14
+
+local ProfileCopyOptions = ns.H3z0UI_ProfileCopyOptions or {}
+ns.H3z0UI_ProfileCopyOptions = ProfileCopyOptions
+
+local function CollectStaticCategoryOptions(categories, options, parentLabel)
+    for _, category in ipairs(categories or {}) do
+        if not category.dynamic then
+            local label = parentLabel and (parentLabel .. " / " .. category.label) or category.label
+            options[#options + 1] = { value = category.id, text = label }
+            CollectStaticCategoryOptions(category.children, options, label)
+        end
+    end
+end
+
+function ProfileCopyOptions.GetCategoryOptions()
+    local core = GetCore()
+    local options = {}
+    CollectStaticCategoryOptions(core and core.GetProfileExportCategories and core:GetProfileExportCategories(), options)
+    return options
+end
+
+function ProfileCopyOptions.HasSourceProfile()
+    local core = GetCore()
+    local dbRef = core and core.db
+    if not dbRef then return false end
+    local activeProfile = dbRef:GetCurrentProfile()
+    for _, name in ipairs(dbRef:GetProfiles()) do
+        if name ~= activeProfile then return true end
+    end
+    return false
+end
+
+function ProfileCopyOptions.CreateCard(parent, opts)
+    opts = opts or {}
+    local supportsPin = opts.fixedCategoryID == "groupFrames" or opts.fixedCategoryID == "auraDisplays"
+    if not supportsPin and not ProfileCopyOptions.HasSourceProfile() then return nil end
+    local card = Shared.CreateSettingsCardGroup(parent, opts.yOffset or 0)
+    local sourceState = { selected = "" }
+    local categoryOptions = ProfileCopyOptions.GetCategoryOptions()
+    local categoryState = { selected = opts.fixedCategoryID or (categoryOptions[1] and categoryOptions[1].value) or "" }
+    local categoryLabels = {}
+    for _, option in ipairs(categoryOptions) do categoryLabels[option.value] = option.text end
+    local pinButton
+    local profilePinToggle
+    local profilePinState = { ignored = false }
+    local copyButton
+
+    local sourceDropdown = GUI:CreateFormDropdown(card.frame, nil, {}, "selected", sourceState, nil, {
+        description = ns.L["Profile to copy settings from. The active profile is excluded."],
+    })
+
+    local function RefreshPinState()
+        if not pinButton then return end
+        local core = GetCore()
+        local dbRef = core and core.db
+        local currentProfile = dbRef and dbRef:GetCurrentProfile() or ""
+        local globalSource = core and core.GetGlobalProfileFeatureSource
+            and core:GetGlobalProfileFeatureSource(opts.fixedCategoryID) or nil
+        local pinnedSource = core and core.GetProfileFeatureSource
+            and core:GetProfileFeatureSource(opts.fixedCategoryID) or nil
+        local optedOut = globalSource and currentProfile ~= globalSource
+            and core.IsProfileFeaturePinOptedOut
+            and core:IsProfileFeaturePinOptedOut(opts.fixedCategoryID) or false
+        local label = pinnedSource and ns.L["Unpin"] or ns.L["Pin across all profiles"]
+        pinButton._buttonText = label
+        if pinButton.text then pinButton.text:SetText(label) end
+        if pinnedSource then
+            pinButton._h3z0uiTooltipTitle = ns.L["Pinned globally"]
+            pinButton._h3z0uiTooltipDescription = ns.L["Click to unpin. Edits affect all profiles."]
+        else
+            pinButton._h3z0uiTooltipTitle = ns.L["Pin across all profiles"]
+            pinButton._h3z0uiTooltipDescription = ns.L["Capture the current value and keep it across profile switches."]
+        end
+        if copyButton then
+            copyButton._enabled = (not pinnedSource or optedOut) and sourceState.selected ~= ""
+            if not copyButton._enabled and type(copyButton.Disable) == "function" then
+                copyButton:Disable()
+            elseif type(copyButton.Enable) == "function" then
+                copyButton:Enable()
+            end
+        end
+        if profilePinToggle then
+            profilePinState.ignored = optedOut and true or false
+            profilePinToggle:SetValue(profilePinState.ignored, true)
+            profilePinToggle._enabled = globalSource ~= nil and currentProfile ~= globalSource
+            profilePinToggle:SetEnabled(profilePinToggle._enabled)
+            if optedOut then
+                profilePinToggle._h3z0uiTooltipTitle = ns.L["Pinned Settings"]
+                profilePinToggle._h3z0uiTooltipDescription = ns.L["This replaces the selected settings in the current profile and cannot be undone."]
+            elseif globalSource then
+                profilePinToggle._h3z0uiTooltipTitle = ns.L["Pinned globally"]
+                profilePinToggle._h3z0uiTooltipDescription = currentProfile == globalSource and nil
+                    or ns.L["Pinned settings override the active profile across switches, imports, and resets."]
+            else
+                profilePinToggle._h3z0uiTooltipTitle = ns.L["Pin across all profiles"]
+                profilePinToggle._h3z0uiTooltipDescription = ns.L["Capture the current value and keep it across profile switches."]
+            end
+        end
+    end
+
+    local sourceCell
+    local function RefreshSources()
+        local core = GetCore()
+        local dbRef = core and core.db
+        local activeProfile = dbRef and dbRef:GetCurrentProfile() or ""
+        local options = {}
+        local selectedAvailable = false
+        if dbRef then
+            for _, name in ipairs(dbRef:GetProfiles()) do
+                if name ~= activeProfile then
+                    options[#options + 1] = { value = name, text = name }
+                    if name == sourceState.selected then selectedAvailable = true end
+                end
+            end
+        end
+        sourceDropdown.SetOptions(options)
+        sourceCell:SetEnabled(#options > 0)
+        local selected = (selectedAvailable and sourceState.selected)
+            or (options[1] and options[1].value) or ""
+        sourceState.selected = selected
+        sourceDropdown:SetValue(selected, true)
+        RefreshPinState()
+    end
+
+    sourceCell = Shared.BuildSettingRow(card.frame, ns.L["Source Profile"], sourceDropdown)
+    if not supportsPin then card.AddRow(sourceCell) end
+
+    local categoryDropdown
+    if not opts.fixedCategoryID then
+        categoryDropdown = GUI:CreateFormDropdown(card.frame, nil, categoryOptions, "selected", categoryState, nil, {
+            description = ns.L["Feature settings to replace in the current profile."],
+        })
+        card.AddRow(Shared.BuildSettingRow(card.frame, ns.L["Feature Settings"], categoryDropdown))
+    end
+
+    copyButton = GUI:CreateButton(card.frame, ns.L["Copy Settings"], 120, 22, function()
+        local sourceName = sourceState.selected
+        local categoryID = opts.fixedCategoryID or categoryState.selected
+        if sourceName == "" or categoryID == "" then return end
+        local categoryLabel = opts.fixedCategoryLabel or categoryLabels[categoryID] or categoryID
+        GUI:ShowConfirmation({
+            title = ns.L["Copy Feature Settings?"],
+            message = string.format(ns.L["Copy %s settings from profile '%s'?"], categoryLabel, sourceName),
+            warningText = ns.L["This replaces the selected settings in the current profile and cannot be undone."],
+            acceptText = ns.L["Copy Settings"],
+            cancelText = ns.L["Cancel"],
+            isDestructive = true,
+            onAccept = function()
+                local core = GetCore()
+                if not core or type(core.CopyProfileSelection) ~= "function" then return end
+                local ok = core:CopyProfileSelection(sourceName, { categoryID })
+                if ok then
+                    print("|cff60A5FAH3z0UI:|r " .. ns.L["Settings copied."])
+                    if opts.onCopied then opts.onCopied(sourceName, categoryID) end
+                else
+                    print("|cffff0000H3z0UI:|r " .. ns.L["Failed to copy settings."])
+                end
+            end,
+        })
+    end)
+    local pinCell
+    local profilePinCell
+    if supportsPin then
+        pinButton = GUI:CreateButton(card.frame, ns.L["Pin across all profiles"], 160, 22, function()
+            local core = GetCore()
+            if not core then return end
+            local pinnedSource = core.GetProfileFeatureSource
+                and core:GetProfileFeatureSource(opts.fixedCategoryID) or nil
+            if pinnedSource then
+                if core.UnpinProfileSelection then
+                    core:UnpinProfileSelection(opts.fixedCategoryID)
+                    RefreshSources()
+                end
+                return
+            end
+
+            if not core.PinCurrentProfileSelection then return end
+            local ok = core:PinCurrentProfileSelection(opts.fixedCategoryID)
+            if ok then
+                if opts.onCopied then opts.onCopied(nil, opts.fixedCategoryID) end
+                RefreshSources()
+            end
+        end)
+        GUI:SetTooltipInfo(
+            pinButton,
+            ns.L["Capture the current value and keep it across profile switches."],
+            ns.L["Pin across all profiles"]
+        )
+        pinCell = Shared.BuildSettingRow(
+            card.frame,
+            ns.L["Pinned Settings"],
+            pinButton
+        )
+
+        profilePinToggle = GUI:CreateFormToggle(card.frame, nil, "ignored", profilePinState, function(ignored)
+            local core = GetCore()
+            if not core or not core.GetGlobalProfileFeatureSource
+                or not core.IsProfileFeaturePinOptedOut or not core.SetProfileFeaturePinOptOut then
+                RefreshSources()
+                return
+            end
+            local globalSource = core:GetGlobalProfileFeatureSource(opts.fixedCategoryID)
+            local dbRef = core.db
+            local currentProfile = dbRef and dbRef:GetCurrentProfile() or ""
+            if not globalSource or currentProfile == globalSource then
+                RefreshSources()
+                return
+            end
+
+            if ignored then
+                core:SetProfileFeaturePinOptOut(opts.fixedCategoryID, true)
+                RefreshSources()
+                return
+            end
+
+            profilePinToggle:SetValue(true, true)
+            local categoryLabel = opts.fixedCategoryLabel or opts.fixedCategoryID
+            GUI:ShowConfirmation({
+                title = ns.L["Copy Feature Settings?"],
+                message = string.format(ns.L["Copy %s settings from profile '%s'?"], categoryLabel, globalSource),
+                warningText = ns.L["This replaces the selected settings in the current profile and cannot be undone."],
+                acceptText = ns.L["Apply"],
+                cancelText = ns.L["Cancel"],
+                isDestructive = true,
+                onAccept = function()
+                    local ok = core:SetProfileFeaturePinOptOut(opts.fixedCategoryID, false)
+                    if ok and opts.onCopied then opts.onCopied(nil, opts.fixedCategoryID) end
+                    RefreshSources()
+                end,
+            })
+        end, {
+            description = ns.L["Pinned settings override the active profile across switches, imports, and resets."],
+            pinnable = false,
+        })
+        profilePinCell = Shared.BuildSettingRow(
+            card.frame,
+            ns.L["Ignore"],
+            profilePinToggle
+        )
+    end
+
+    local copyCell = Shared.BuildSettingRow(card.frame, ns.L["Current Profile"], copyButton)
+    if supportsPin then
+        card.AddRow(sourceCell, copyCell)
+        card.AddRow(pinCell, profilePinCell)
+    else
+        card.AddRow(copyCell)
+    end
+    card.Finalize()
+    card.frame:SetScript("OnShow", RefreshSources)
+    RefreshSources()
+
+    return {
+        frame = card.frame,
+        sourceDropdown = sourceDropdown,
+        categoryDropdown = categoryDropdown,
+        pinButton = pinButton,
+        profilePinToggle = profilePinToggle,
+        RefreshSources = RefreshSources,
+    }
+end
+
+local function ValidateProfileName(name, db)
+    local length = type(name) == "string" and _G.strlenutf8(name) or 0
+    local existing = db and db.sv and db.sv.profiles and type(db.sv.profiles[name]) == "table"
+    if length > 0 and (length <= 50 or existing) and not name:find("^ +$") then return true end
+    print("|cffff0000H3z0UI:|r " .. ns.L["Profile names must be between 1 and 50 characters and cannot contain only spaces."])
+    return false
+end
+
+local function BuildSpecProfilesContent(content)
+    local PAD = PADDING
+    local y = -10
+
+    local info = GUI:CreateLabel(content, ns.L["Manage profiles and auto-switch based on specialization"], 11, C.textMuted)
+    info:SetJustifyH("LEFT")
+    info:SetPoint("TOPLEFT", PAD, y)
+    info:SetPoint("RIGHT", content, "RIGHT", -PAD, 0)
+    y = y - 24
+
+    local profileDropdown
+    local profileDropdowns_all = {}
+    local profileDropdowns_withPresets = {}
+    local profileDropdowns_filtered = {}
+    local currentProfileName
+    local featureCopyCard
+
+    local presetsByName = {}
+    for _, preset in ipairs(H3z0UI._presetProfiles or {}) do
+        presetsByName[preset.profileName] = preset
+    end
+
+    local function GetProfileList(includePresets)
+        local profiles = {}
+        local core = GetCore()
+        local dbRef = core and core.db
+        local seen = {}
+        if dbRef then
+            for _, name in ipairs(dbRef:GetProfiles()) do
+                table.insert(profiles, {value = name, text = name})
+                seen[name] = true
+            end
+        end
+        if includePresets then
+            for _, preset in ipairs(H3z0UI._presetProfiles or {}) do
+                if not seen[preset.profileName] then
+                    table.insert(profiles, {
+                        value = preset.profileName,
+                        text = preset.profileName .. ns.L["  |cff34D399(Preset)|r"],
+                    })
+                end
+            end
+        end
+        return profiles
+    end
+
+    local function RefreshProfileDropdowns()
+        local allProfiles = GetProfileList(false)
+        local allWithPresets = GetProfileList(true)
+        local core = GetCore()
+        local dbRef = core and core.db
+        local currentProfile = dbRef and dbRef:GetCurrentProfile() or ""
+        local filtered = {}
+        for _, opt in ipairs(allProfiles) do
+            if opt.value ~= currentProfile then table.insert(filtered, opt) end
+        end
+        for _, dd in ipairs(profileDropdowns_all) do
+            if dd.SetOptions then dd.SetOptions(allProfiles) end
+        end
+        for _, dd in ipairs(profileDropdowns_withPresets) do
+            if dd.SetOptions then dd.SetOptions(allWithPresets) end
+        end
+        for _, dd in ipairs(profileDropdowns_filtered) do
+            if dd.SetOptions then dd.SetOptions(filtered) end
+        end
+        if featureCopyCard then featureCopyCard.RefreshSources() end
+    end
+
+    local function RefreshProfileDisplay()
+        local core = GetCore()
+        local freshDB = core and core.db
+        if freshDB then
+            local currentName = freshDB:GetCurrentProfile()
+            if currentProfileName then currentProfileName:SetText(currentName or ns.L["Unknown"]) end
+            if profileDropdown and profileDropdown.SetValue then
+                profileDropdown:SetValue(currentName or "Default", true)
+            end
+        end
+        RefreshProfileDropdowns()
+    end
+
+    Shared.CreateAccentDotLabel(content, ns.L["Current Profile"], y); y = y - 22
+
+    local currentCard = Shared.CreateSettingsCardGroup(content, y)
+
+    local activeCell = CreateFrame("Frame", nil, currentCard.frame)
+    activeCell:SetHeight(28)
+    local activeLabel = activeCell:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    activeLabel:SetPoint("LEFT", activeCell, "LEFT", 0, 0)
+    activeLabel:SetText(ns.L["Active Profile"])
+    activeLabel:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
+    currentProfileName = activeCell:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    currentProfileName:SetPoint("RIGHT", activeCell, "RIGHT", 0, 0)
+    currentProfileName:SetText(ns.L["Loading..."])
+    currentProfileName:SetTextColor(C.accent[1], C.accent[2], C.accent[3], 1)
+
+    local function ResetButtonCell(label, onClick)
+        local cell = CreateFrame("Frame", nil, currentCard.frame)
+        cell:SetHeight(28)
+        local lbl = cell:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        lbl:SetPoint("LEFT", cell, "LEFT", 0, 0)
+        lbl:SetText(label)
+        lbl:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
+        local btn = GUI:CreateButton(cell, ns.L["Reset"], 100, 22, onClick)
+        btn:SetPoint("RIGHT", cell, "RIGHT", 0, 0)
+        return cell
+    end
+
+    local resetProfileCell = ResetButtonCell(ns.L["Reset Profile"], function()
+        GUI:ShowConfirmation({
+            title = ns.L["Reset Profile?"], message = ns.L["Reset current profile to defaults?"],
+            warningText = ns.L["This cannot be undone."], acceptText = ns.L["Reset"], cancelText = ns.L["Cancel"], isDestructive = true,
+            onAccept = function()
+                local core = GetCore(); local dbRef = core and core.db
+                if dbRef then
+                    if core.SyncProfileFeatureSources then core:SyncProfileFeatureSources() end
+                    dbRef:ResetProfile()
+                    print("|cff60A5FAH3z0UI:|r " .. ns.L["Profile reset. Please /reload."])
+                end
+            end,
+        })
+    end)
+
+    local resetMoversCell = ResetButtonCell(ns.L["Reset All Positions"], function()
+        GUI:ShowConfirmation({
+            title = ns.L["Reset All Movers?"], message = ns.L["Reset all frame positions to defaults?"],
+            warningText = ns.L["This resets CDM, unit frames, minimap, action bars, data panels, trackers, Blizzard UI Mover panel positions, and all other movable elements. Requires /reload."], acceptText = ns.L["Reset All"], cancelText = ns.L["Cancel"], isDestructive = true,
+            onAccept = function()
+                local core = GetCore(); local dbRef = core and core.db
+                if not dbRef then return end
+                local p = dbRef.profile
+                if p.ncdm then for _, k in ipairs({"essential","utility","buff"}) do if p.ncdm[k] then p.ncdm[k].pos = nil end end end
+                if p.h3z0uiUnitFrames then
+                    for _, u in ipairs({"player","target","targettarget","pet","focus","boss"}) do if p.h3z0uiUnitFrames[u] then p.h3z0uiUnitFrames[u].offsetX = nil; p.h3z0uiUnitFrames[u].offsetY = nil end end
+                    for _, u in ipairs({"player","target","focus"}) do if p.h3z0uiUnitFrames[u] and p.h3z0uiUnitFrames[u].castbar then p.h3z0uiUnitFrames[u].castbar.offsetX = nil; p.h3z0uiUnitFrames[u].castbar.offsetY = nil end end
+                end
+                if p.minimap then p.minimap.position = nil end
+                if p.actionBars and p.actionBars.bars then
+                    if p.actionBars.bars.extraActionButton then p.actionBars.bars.extraActionButton.position = nil end
+                    if p.actionBars.bars.zoneAbility then p.actionBars.bars.zoneAbility.position = nil end
+                end
+                if p.h3z0uiDatatexts and type(p.h3z0uiDatatexts.panels) == "table" then for _, panel in ipairs(p.h3z0uiDatatexts.panels) do if panel then panel.position = nil end end end
+                if p.mplusTimer then p.mplusTimer.position = nil end
+                if p.raidBuffs then p.raidBuffs.position = nil end
+                if p.customTrackers and type(p.customTrackers.bars) == "table" then for _, bar in ipairs(p.customTrackers.bars) do if bar then bar.offsetX = nil; bar.offsetY = nil end end end
+                if p.totemBar then p.totemBar.offsetX = nil; p.totemBar.offsetY = nil end
+                if p.loot then p.loot.position = nil end
+                if p.lootRoll then p.lootRoll.position = nil end
+                if p.alerts then p.alerts.alertPosition = nil; p.alerts.toastPosition = nil; p.alerts.bnetToastPosition = nil end
+                if type(p.frameAnchoring) == "table" then local hw = p.frameAnchoring.hudMinWidth; wipe(p.frameAnchoring); p.frameAnchoring.hudMinWidth = hw end
+                if p.blizzardMover and type(p.blizzardMover.frames) == "table" then for _, row in pairs(p.blizzardMover.frames) do if type(row) == "table" then row.point = nil; row.x = nil; row.y = nil; row.scale = nil end end end
+                local bmm = ns.H3z0UI_BlizzardMover; if bmm and bmm.functions and bmm.functions.ClearSessionPositions then bmm.functions.ClearSessionPositions() end
+                print("|cff60A5FAH3z0UI:|r " .. ns.L["All positions reset. Please /reload."])
+            end,
+        })
+    end)
+
+    local factoryCell = CreateFrame("Frame", nil, currentCard.frame)
+    factoryCell:SetHeight(28)
+    local factoryLabel = factoryCell:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    factoryLabel:SetPoint("LEFT", factoryCell, "LEFT", 0, 0)
+    factoryLabel:SetText(ns.L["Factory Reset"])
+    local errText = GUI and GUI.ERROR_TEXT or {0.9, 0.3, 0.3, 1}
+    factoryLabel:SetTextColor(errText[1], errText[2], errText[3], errText[4])
+    local factoryBtn = GUI:CreateButton(factoryCell, ns.L["Erase All"], 100, 22, function()
+        GUI:ShowConfirmation({
+            reload = true,
+            title = ns.L["Reset All Data?"], message = ns.L["Erase ALL H3z0UI data and restore fresh-install defaults?"],
+            warningText = ns.L["Deletes every profile, all global data, and character data. Cannot be undone."],
+            acceptText = ns.L["Erase Everything"], cancelText = ns.L["Cancel"], isDestructive = true,
+            onAccept = function()
+                local core = GetCore(); local dbRef = core and core.db
+                if dbRef then dbRef:ResetDB(true); print("|cff60A5FAH3z0UI:|r " .. ns.L["All data erased."]); H3z0UI:SafeReload() end
+            end,
+        })
+    end)
+    factoryBtn:SetPoint("RIGHT", factoryCell, "RIGHT", 0, 0)
+    if factoryBtn.text then factoryBtn.text:SetTextColor(errText[1], errText[2], errText[3], errText[4]) end
+
+    currentCard.AddRow(activeCell, resetProfileCell)
+    currentCard.AddRow(resetMoversCell, factoryCell)
+    currentCard.Finalize()
+    y = y - currentCard.frame:GetHeight() - SECTION_GAP
+
+    Shared.CreateAccentDotLabel(content, ns.L["Manage Profiles"], y); y = y - 22
+
+    local manageCard = Shared.CreateSettingsCardGroup(content, y)
+
+    local profileWrapper = { selected = "" }
+    profileDropdown = GUI:CreateFormDropdown(manageCard.frame, nil, GetProfileList(true), "selected", profileWrapper, function(value)
+        local core = GetCore(); local freshDB = core and core.db
+        if freshDB and value and value ~= "" then
+            local current = freshDB:GetCurrentProfile()
+            if value == current then return end
+            if not ValidateProfileName(value, freshDB) then
+                RefreshProfileDisplay()
+                return
+            end
+
+            local preset = presetsByName[value]
+            if preset then
+                local exists = false
+                for _, name in ipairs(freshDB:GetProfiles()) do
+                    if name == value then exists = true; break end
+                end
+                if not exists then
+                    local importData = H3z0UI.imports[preset.key]
+                    if not importData or not importData.data then
+                        print("|cffff0000H3z0UI:|r " .. ns.L["Preset data not found for: "] .. value)
+                        return
+                    end
+                    local ok, msg = core:ImportProfileFromString(importData.data, preset.profileName)
+                    if ok then
+                        print("|cff60A5FAH3z0UI:|r " .. ns.L["Installed and switched to preset profile: "] .. value)
+                    else
+                        print("|cffff0000H3z0UI:|r " .. ns.L["Failed to install preset: "] .. (msg or ns.L["unknown error"]))
+                        if freshDB:GetCurrentProfile() ~= current then
+                            pcall(freshDB.SetProfile, freshDB, current)
+                        end
+                    end
+                    if currentProfileName then currentProfileName:SetText(freshDB:GetCurrentProfile()) end
+                    RefreshProfileDropdowns()
+                    return
+                end
+            end
+
+            freshDB:SetProfile(value)
+            if currentProfileName then currentProfileName:SetText(value) end
+            print("|cff60A5FAH3z0UI:|r " .. ns.L["Switched to profile: "] .. value)
+            RefreshProfileDropdowns()
+        end
+    end, { description = ns.L["Switch to a different profile. Entries tagged (Preset) are installed from H3z0UI's bundled presets on first pick."] })
+    table.insert(profileDropdowns_withPresets, profileDropdown)
+
+    local copyWrapper = { selected = "" }
+    local copyDropdown = GUI:CreateFormDropdown(manageCard.frame, nil, GetProfileList(), "selected", copyWrapper, function(value)
+        local core = GetCore(); local dbRef = core and core.db
+        if dbRef and value and value ~= "" then
+            if core.SyncProfileFeatureSources then core:SyncProfileFeatureSources() end
+            dbRef:CopyProfile(value)
+            print("|cff60A5FAH3z0UI:|r " .. ns.L["Copied settings from: "] .. value)
+            copyWrapper.selected = ""
+            RefreshProfileDropdowns()
+        end
+    end, { description = ns.L["Copy every setting from the selected profile into the current profile. Replaces all matching keys in this profile."] })
+    table.insert(profileDropdowns_filtered, copyDropdown)
+
+    local deleteWrapper = { selected = "" }
+    local deleteDropdown = GUI:CreateFormDropdown(manageCard.frame, nil, GetProfileList(), "selected", deleteWrapper, function(value)
+        local core = GetCore(); local dbRef = core and core.db
+        if dbRef and value and value ~= "" then
+            if value == dbRef:GetCurrentProfile() then
+                print("|cffff0000H3z0UI:|r " .. ns.L["Cannot delete the active profile!"])
+                deleteWrapper.selected = ""
+            else
+                local profileToDelete = value
+                GUI:ShowConfirmation({
+                    title = ns.L["Delete Profile?"], message = string.format(ns.L["Delete profile '%1$s'?"], profileToDelete),
+                    warningText = ns.L["This cannot be undone."], acceptText = ns.L["Delete"], cancelText = ns.L["Cancel"], isDestructive = true,
+                    onAccept = function()
+                        local core2 = GetCore(); local dbRef2 = core2 and core2.db
+                        if dbRef2 then dbRef2:DeleteProfile(profileToDelete, true); print("|cff60A5FAH3z0UI:|r " .. ns.L["Deleted: "] .. profileToDelete) end
+                        deleteWrapper.selected = ""
+                        RefreshProfileDropdowns()
+                    end,
+                })
+            end
+        end
+    end, { description = ns.L["Select a profile to delete. The currently active profile can't be deleted — switch to another profile first."] })
+    table.insert(profileDropdowns_filtered, deleteDropdown)
+
+    local newProfileInput = GUI:CreateFormEditBox(manageCard.frame, nil, nil, nil, nil, {
+        commitOnEnter = false, commitOnFocusLost = false,
+        onEscapePressed = function(self) self:ClearFocus() end,
+    }, { description = ns.L["Name for a new profile. Click Create to add it and switch to it immediately."] })
+    local createControls = CreateFrame("Frame", nil, manageCard.frame)
+    createControls:SetSize(260, 22)
+    newProfileInput:SetParent(createControls)
+    createControls.editBox = newProfileInput.editBox
+    local createCell = Shared.BuildSettingRow(manageCard.frame, ns.L["New Profile"], createControls)
+    local createBtn = GUI:CreateButton(createControls, ns.L["Create"], 70, 22, function()
+        local core = GetCore(); local dbRef = core and core.db
+        local newName = newProfileInput.editBox and newProfileInput.editBox:GetText()
+        if newName and newName ~= "" and dbRef then
+            if not ValidateProfileName(newName) then return end
+            dbRef:SetProfile(newName)
+            if currentProfileName then currentProfileName:SetText(newName) end
+            if profileDropdown and profileDropdown.SetValue then profileDropdown:SetValue(newName, true) end
+            newProfileInput.editBox:SetText("")
+            print("|cff60A5FAH3z0UI:|r " .. ns.L["Created new profile: "] .. newName)
+            RefreshProfileDropdowns()
+        end
+    end)
+    createBtn:SetPoint("RIGHT", createControls, "RIGHT", 0, 0)
+    newProfileInput:ClearAllPoints()
+    newProfileInput:SetPoint("LEFT", createControls, "LEFT", 0, 0)
+    newProfileInput:SetPoint("RIGHT", createBtn, "LEFT", -8, 0)
+
+    manageCard.AddRow(
+        Shared.BuildSettingRow(manageCard.frame, ns.L["Switch Profile"], profileDropdown),
+        Shared.BuildSettingRow(manageCard.frame, ns.L["Copy From"], copyDropdown)
+    )
+    manageCard.AddRow(
+        Shared.BuildSettingRow(manageCard.frame, ns.L["Delete Profile"], deleteDropdown),
+        createCell
+    )
+    manageCard.Finalize()
+
+    local initCore = GetCore(); local initDB = initCore and initCore.db
+    local initProfile = initDB and initDB:GetCurrentProfile() or "Default"
+    profileWrapper.selected = initProfile
+    if profileDropdown.SetValue then profileDropdown:SetValue(initProfile, true) end
+
+    y = y - manageCard.frame:GetHeight() - SECTION_GAP
+
+    if ProfileCopyOptions.HasSourceProfile() then
+        Shared.CreateAccentDotLabel(content, ns.L["Copy Feature Settings"], y); y = y - 22
+        featureCopyCard = ProfileCopyOptions.CreateCard(content, { yOffset = y })
+        y = y - featureCopyCard.frame:GetHeight() - SECTION_GAP
+    end
+
+    Shared.CreateAccentDotLabel(content, ns.L["Spec Auto-Switch"], y); y = y - 22
+
+    local specCore = GetCore()
+    local specDB = specCore and specCore.db
+    local isForever = ns.Client and ns.Client.isForever
+    local numSpecs = isForever and 2 or GetNumSpecializations()
+
+    if specDB and specDB.IsDualSpecEnabled and specDB.SetDualSpecEnabled and specDB.GetDualSpecProfile and specDB.SetDualSpecProfile then
+        local specCard = Shared.CreateSettingsCardGroup(content, y)
+
+        local enableWrapper = { enabled = specDB:IsDualSpecEnabled() }
+        local enableW = GUI:CreateFormCheckbox(specCard.frame, nil, "enabled", enableWrapper, function()
+            local core = GetCore(); local dbRef = core and core.db
+            if dbRef and dbRef.SetDualSpecEnabled then
+                dbRef:SetDualSpecEnabled(enableWrapper.enabled)
+                print("|cff60A5FAH3z0UI:|r " .. ns.L["Spec auto-switch "] .. (enableWrapper.enabled and ns.L["enabled"] or ns.L["disabled"]))
+            end
+        end, { description = ns.L["Automatically switch to a mapped profile whenever you change specialization. Map each spec to a profile below."] })
+        specCard.AddRow(Shared.BuildSettingRow(specCard.frame, ns.L["Enable Spec Profiles"], enableW))
+
+        local specCells = {}
+        local currentSpec = isForever and C_SpecializationInfo.GetActiveSpecGroup() or GetSpecialization()
+        for i = 1, numSpecs do
+            local specName
+            if isForever then
+                specName = i == 1 and _G.TALENT_SPEC_PRIMARY or _G.TALENT_SPEC_SECONDARY
+            else
+                specName = select(2, GetSpecializationInfo(i))
+            end
+            if specName then
+                local displayName = specName .. (i == currentSpec and ns.L[" (Active)"] or "")
+                local currentSpecProfile = specDB:GetDualSpecProfile(i) or ""
+                local specWrapper = { selected = currentSpecProfile }
+                local specDropdown
+                specDropdown = GUI:CreateFormDropdown(specCard.frame, nil, GetProfileList(), "selected", specWrapper, function(value)
+                    local core = GetCore(); local dbRef = core and core.db
+                    if dbRef and dbRef.SetDualSpecProfile and value and value ~= "" then
+                        if not ValidateProfileName(value, dbRef) then
+                            specDropdown:SetValue(dbRef:GetDualSpecProfile(i) or "", true)
+                            return
+                        end
+                        dbRef:SetDualSpecProfile(value, i)
+                        print("|cff60A5FAH3z0UI:|r " .. specName .. ns.L[" will use profile: "] .. value)
+                    end
+                end, { description = ns.L["Profile to activate whenever you swap into the "] .. specName .. ns.L[" specialization."] })
+                table.insert(profileDropdowns_all, specDropdown)
+                specCells[#specCells + 1] = Shared.BuildSettingRow(specCard.frame, displayName, specDropdown)
+            end
+        end
+        for i = 1, #specCells, 2 do
+            specCard.AddRow(specCells[i], specCells[i + 1])
+        end
+
+        specCard.Finalize()
+        y = y - specCard.frame:GetHeight() - SECTION_GAP
+    else
+        local noSpec = GUI:CreateLabel(content, ns.L["LibDualSpec not available."], 11, C.textMuted)
+        noSpec:SetPoint("TOPLEFT", PAD, y)
+        y = y - 24
+    end
+
+    content:SetScript("OnShow", RefreshProfileDisplay)
+    C_Timer.After(0.2, RefreshProfileDisplay)
+    C_Timer.After(0.5, RefreshProfileDisplay)
+    _G.H3z0UI_RefreshSpecProfilesTab = RefreshProfileDisplay
+
+    content:SetHeight(math.abs(y) + 20)
+end
+
+local function CreateSpecProfilesPage(parent)
+    local _, content = CreateScrollableContent(parent)
+    BuildSpecProfilesContent(content)
+end
+
+ns.H3z0UI_ProfilesOptions = {
+    BuildSpecProfilesContent = BuildSpecProfilesContent,
+    CreateSpecProfilesPage = CreateSpecProfilesPage
+}
+
+if Registry and Schema
+    and type(Registry.RegisterFeature) == "function"
+    and type(Schema.Feature) == "function"
+    and type(Schema.Section) == "function" then
+    Registry:RegisterFeature(Schema.Feature({
+        id = "profilesPage",
+        moverKey = "profiles",
+        category = "global",
+        nav = { tileId = "global", subPageIndex = 1 },
+        sections = {
+            Schema.Section({
+                id = "settings",
+                kind = "page",
+                minHeight = 80,
+                build = BuildSpecProfilesContent,
+            }),
+        },
+    }))
+end

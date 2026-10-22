@@ -95,6 +95,32 @@ local function CountPlace(p)
     end
 end
 
+-- Per-bar text / look values from older defaults (keybind and count text 8 px at
+-- -20 / -20, no backdrop, no gloss) beat the global settings on every bar: drop them
+local function PerBarLookReset(p)
+    if p._h3zPerBarLookReset then return end
+    p._h3zPerBarLookReset = true
+    local bars = p.actionBars and p.actionBars.bars
+    if type(bars) ~= "table" then return end
+    local OLD = {
+        keybindFontSize = 8, keybindOffsetX = -20, keybindOffsetY = -20,
+        macroNameFontSize = 8, macroNameOffsetX = -20, macroNameOffsetY = -20,
+        countFontSize = 8, countOffsetX = -20, countOffsetY = -20,
+        backdropAlpha = 0, glossAlpha = 0, iconZoom = 0.05,
+    }
+    for _, key in ipairs({ "bar1", "bar2", "bar3", "bar4", "bar5", "bar6", "bar7", "bar8", "pet", "stance" }) do
+        local b = bars[key]
+        if type(b) == "table" and not b.overrideEnabled then
+            for k, v in pairs(OLD) do
+                if rawget(b, k) == v then b[k] = nil end
+            end
+        end
+    end
+    C_Timer.After(2, function()
+        if _G.H3z0UI_RefreshActionBars then pcall(_G.H3z0UI_RefreshActionBars) end
+    end)
+end
+
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("PLAYER_LOGIN")
 ev:SetScript("OnEvent", function(self)
@@ -107,4 +133,5 @@ ev:SetScript("OnEvent", function(self)
     pcall(ForeverHideEmpty, p)
     pcall(KeybindPlace, p)
     pcall(CountPlace, p)
+    pcall(PerBarLookReset, p)
 end)

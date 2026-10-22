@@ -113,15 +113,18 @@ local function Fill(f, data)
         y = y + (fs:GetStringHeight() or 14) + (gap or 6)
     end
     local r, g, b = Accent()
-    local hex = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    if data.new and #data.new > 0 then
-        Add("|cff" .. hex .. "New|r", GameFontNormalLarge, 0, 8)
-        for _, t in ipairs(data.new) do Add("|cff" .. hex .. "-|r  " .. t, GameFontHighlight, 6, 6) end
-        y = y + 8
-    end
-    if data.fixed and #data.fixed > 0 then
-        Add("|cff" .. hex .. "Fixed|r", GameFontNormalLarge, 0, 8)
-        for _, t in ipairs(data.fixed) do Add("|cff" .. hex .. "-|r  " .. t, GameFontHighlight, 6, 6) end
+    local hex = string.format("%02x%02x%02x", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+    -- sections in the same order as PATCH_NOTES.md (New, Changed, Install)
+    local sections = data.sections or {
+        { title = "New", items = data.new },
+        { title = "Fixed", items = data.fixed },
+    }
+    for _, sec in ipairs(sections) do
+        if sec.items and #sec.items > 0 then
+            Add("|cff" .. hex .. tostring(sec.title) .. "|r", GameFontNormalLarge, 0, 8)
+            for _, t in ipairs(sec.items) do Add("|cff" .. hex .. "-|r  " .. t, GameFontHighlight, 6, 6) end
+            y = y + 8
+        end
     end
     content:SetHeight(y + 10)
 end
@@ -136,8 +139,7 @@ function WN.Show()
     local data = ns.WhatsNew
     if not data then return end
     local f = Build()
-    f.title:SetText("|cff34D399" .. ((ns.Client and ns.Client.displayName) or "H3z0 UI") .. "|r  What's New in " .. tostring(data.version)
-        .. (data.build and ("  |cff888888(update " .. tostring(data.build) .. ")|r") or ""))
+    f.title:SetText("|cff34D399" .. ((ns.Client and ns.Client.displayName) or "H3z0 UI") .. " " .. tostring(data.version) .. "|r")
     Fill(f, data)
     f:Show()
     local G = Global()

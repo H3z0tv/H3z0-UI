@@ -719,6 +719,9 @@ local function StyleEditBox(chatFrame)
             local child = _G[frameName .. "EditBox" .. suffix]
             if child and child.Hide then
                 child:Hide()
+                -- Blizzard shows these again when you press Enter (Forever client):
+                -- invisible stays invisible
+                if child.SetAlpha then child:SetAlpha(0) end
             end
         end
 

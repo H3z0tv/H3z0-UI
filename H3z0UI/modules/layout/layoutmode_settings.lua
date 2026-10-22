@@ -202,9 +202,34 @@ local function CreatePanel()
         H3z0UI_LayoutMode_Settings:Hide(true)
     end)
 
+    -- On / Off switch for the element (shown when the element can be turned off)
+    local toggle = CreateFrame("Button", nil, panel)
+    toggle:SetSize(48, 18)
+    toggle:SetPoint("RIGHT", closeBtn, "LEFT", -8, 0)
+    toggle:SetFrameLevel(panel:GetFrameLevel() + 5)
+    toggle:RegisterForClicks("LeftButtonUp")
+    local tbg = toggle:CreateTexture(nil, "BACKGROUND")
+    tbg:SetAllPoints()
+    toggle._bg = tbg
+    local tText = EnsureCJKFont(toggle:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"))
+    tText:SetPoint("CENTER")
+    toggle._text = tText
+    toggle:Hide()
+    panel._enableToggle = toggle
+    toggle:SetScript("OnClick", function(self)
+        H3z0UI_LayoutMode_Settings:ToggleCurrentElement()
+    end)
+    toggle:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(ns.L["Turn this on or off"], 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    toggle:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    titleText:SetPoint("RIGHT", titleBg, "RIGHT", -90, 0)
+
     local dragHandle = CreateFrame("Frame", nil, panel)
     dragHandle:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
-    dragHandle:SetPoint("TOPRIGHT", closeBtn, "TOPLEFT", -4, 0)
+    dragHandle:SetPoint("TOPRIGHT", toggle, "TOPLEFT", -4, 0)
     dragHandle:SetHeight(TITLE_HEIGHT)
     dragHandle:EnableMouse(true)
     dragHandle:RegisterForDrag("LeftButton")
@@ -780,6 +805,48 @@ local function BuildContent(panel, key)
     end
 end
 
+function H3z0UI_LayoutMode_Settings:UpdateEnableToggle()
+    local panel = self._panel
+    local toggle = panel and panel._enableToggle
+    if not toggle then return end
+    local um = ns.H3z0UI_LayoutMode
+    local key = self._currentKey
+    local def = um and key and um._elements and um._elements[key]
+    if not (def and def.setEnabled) then
+        toggle:Hide()
+        return
+    end
+    local on = um:IsElementEnabled(key)
+    if on then
+        toggle._bg:SetColorTexture(ACCENT_R, ACCENT_G, ACCENT_B, 0.85)
+        toggle._text:SetText(ns.L["ON"])
+        toggle._text:SetTextColor(0.05, 0.05, 0.05, 1)
+    else
+        toggle._bg:SetColorTexture(0.25, 0.27, 0.30, 0.9)
+        toggle._text:SetText(ns.L["OFF"])
+        toggle._text:SetTextColor(0.85, 0.85, 0.85, 1)
+    end
+    toggle:Show()
+end
+
+function H3z0UI_LayoutMode_Settings:ToggleCurrentElement()
+    local um = ns.H3z0UI_LayoutMode
+    local key = self._currentKey
+    if not (um and key and um.SetElementEnabled) then return end
+    if InCombatLockdown() then return end
+    local newState = not um:IsElementEnabled(key)
+    if newState and um.ClearHiddenState then um:ClearHiddenState(key) end
+    um:SetElementEnabled(key, newState)
+    local Registry = ns.Settings and ns.Settings.Registry
+    local feature = Registry and Registry.GetFeatureByMoverKey and Registry:GetFeatureByMoverKey(key)
+    if feature and feature.id and ns.H3z0UI_Modules and ns.H3z0UI_Modules.NotifyChanged then
+        pcall(ns.H3z0UI_Modules.NotifyChanged, ns.H3z0UI_Modules, feature.id)
+    end
+    local ui = ns.H3z0UI_LayoutMode_UI
+    if ui and ui._RebuildDrawer then pcall(ui._RebuildDrawer, ui) end
+    self:UpdateEnableToggle()
+end
+
 function H3z0UI_LayoutMode_Settings:Show(key)
     if not key then
         self:Hide()
@@ -812,6 +879,7 @@ function H3z0UI_LayoutMode_Settings:Show(key)
     end
 
     FitPanelToContent(panel)
+    self:UpdateEnableToggle()
 
     local compat = ns.Settings and ns.Settings.RenderAdapters
     if compat and compat.RegisterProviderSurface then

@@ -2,7 +2,7 @@
 ## Title: |cFF30D1FFH3z0 UI|r Action Bars
 ## Notes: H3z0 UI module. Requires the H3z0 UI core addon.
 ## Author: H3z0
-## Version: 0.25.0
+## Version: 0.25.1
 ## Category: User Interface
 ## Group: H3z0UI
 ## Dependencies: H3z0UI

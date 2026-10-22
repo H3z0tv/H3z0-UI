@@ -6,7 +6,7 @@
 ## AddonCompartmentFuncOnLeave: H3z0UI_CompartmentOnLeave
 ## Notes: Comprehensive UI customization addon
 ## Author: H3z0
-## Version: 0.25.0
+## Version: 0.25.1
 ## Category: User Interface
 ## SavedVariables: H3z0UIDB, H3z0UI_StorageDB
 ## LoadSavedVariablesFirst: 1

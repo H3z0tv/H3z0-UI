@@ -2600,7 +2600,8 @@ local function ComputeLockedBarGeometry(v)
     end
 
     local needsUpdate = false
-    if newWidth and cfg.width ~= newWidth then
+    -- "Match Cooldown Width" off: the width you set is kept
+    if newWidth and cfg.matchCooldownWidth ~= false and cfg.width ~= newWidth then
         cfg.width = newWidth
         needsUpdate = true
     end

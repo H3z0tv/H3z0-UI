@@ -119,13 +119,73 @@ local function PlaceSize(f, sz)
     applying = false
 end
 
+local function BlizzEditModeOpen()
+    local m = _G.EditModeManagerFrame
+    return m and m.IsEditModeActive and m:IsEditModeActive() or false
+end
+
+local function LayoutModeOpen()
+    return _G.H3z0UI_IsLayoutModeActive and _G.H3z0UI_IsLayoutModeActive() or false
+end
+
+-- Utility viewer locked under Essential (Cooldown Manager option): it follows
+-- Essential, so no saved place of its own is put on it
+local function FollowsOtherFrame(f)
+    return f and f.__cdmAnchoredToEssential == true
+end
+
+-- centre offset from the screen centre (UIParent units)
+local function CurrentOffset(f)
+    if not (f and f.GetCenter) then return nil end
+    local cx, cy = f:GetCenter()
+    if not (cx and cy) then return nil end
+    local k = (f:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
+    local ux, uy = UIParent:GetCenter()
+    if not (ux and uy) then return nil end
+    return cx * k - ux, cy * k - uy
+end
+
+-- Cooldown Manager viewers: anything that moves them (a spec change, the
+-- viewer re-laying out its icons, another addon, ...) is undone right away
+local function IsWatched(f)
+    local S = Enum and Enum.EditModeSystem
+    return S and S.CooldownViewer ~= nil and f.system == S.CooldownViewer
+end
+
+local recheckQueued = {}
+local function Recheck(f)
+    if recheckQueued[f] then return end
+    recheckQueued[f] = true
+    C_Timer.After(0, function()
+        recheckQueued[f] = nil
+        if applying or LayoutModeOpen() or BlizzEditModeOpen() or FollowsOtherFrame(f) then return end
+        local s = Store(Mode())
+        local pos = s and s[BP.Key(f.system, f.systemIndex)]
+        if not pos then return end
+        local x, y = CurrentOffset(f)
+        if x and math.abs(x - pos.x) <= 1 and math.abs(y - pos.y) <= 1 then return end
+        Place(f, pos)
+    end)
+end
+
 local hooked = {}
 local function HookFrame(f)
     if hooked[f] or not f.ApplySystemAnchor or not BP.IsManaged(f) then return end
     hooked[f] = true
+    if IsWatched(f) then
+        local plain, base = f.SetPoint, f.SetPointBase
+        local function moved(self)
+            if applying or LayoutModeOpen() or BlizzEditModeOpen() then return end
+            Recheck(self)
+        end
+        hooksecurefunc(f, "SetPoint", moved)
+        if base and base ~= plain then hooksecurefunc(f, "SetPointBase", moved) end
+    end
     -- Edit Mode re-anchors its frames now and then: put ours back right after
+    -- (not while Blizzard's Edit Mode is open: a frame dragged there is
+    -- taken over as the new place when it is dropped)
     hooksecurefunc(f, "ApplySystemAnchor", function(self)
-        if applying then return end
+        if applying or BlizzEditModeOpen() or FollowsOtherFrame(self) then return end
         local key = BP.Key(self.system, self.systemIndex)
         local sz = SizeStore(Mode())
         if sz and sz[key] then PlaceSize(self, sz[key]) end
@@ -160,7 +220,7 @@ function BP.ApplyAll()
         local f = frames[key]
         if f then
             HookFrame(f)
-            Place(f, pos)
+            if not FollowsOtherFrame(f) then Place(f, pos) end
         end
     end
 end
@@ -262,6 +322,19 @@ local function HookManager()
         if type(mgr[method]) == "function" then
             hooksecurefunc(mgr, method, QueueApply)
         end
+    end
+    -- A frame moved in Blizzard's Edit Mode (dragged or nudged): that is its
+    -- new place in H3z0 UI too, so leaving Edit Mode does not put it back
+    if type(mgr.OnSystemPositionChange) == "function" then
+        hooksecurefunc(mgr, "OnSystemPositionChange", function(_, f)
+            if not (f and BP.IsManaged(f)) or FollowsOtherFrame(f) then return end
+            local x, y = CurrentOffset(f)
+            if not x then return end
+            local st = Store(Mode())
+            if not st then return end
+            st[BP.Key(f.system, f.systemIndex)] = { x = math.floor(x + 0.5), y = math.floor(y + 0.5) }
+            HookFrame(f)
+        end)
     end
 end
 

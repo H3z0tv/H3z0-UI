@@ -538,6 +538,15 @@ ProviderPanels:RegisterAfterLoad(function(ctx)
 
         L.headerAt(ns.L["Behavior"])
         local s1 = L.sectionAt()
+        -- on / off (same switch as the eye in Edit Mode and its right-click panel)
+        local enabledW = GUI:CreateFormCheckbox(s1.frame, nil, "enabled", at, function()
+            Refresh()
+            local lm = ns.H3z0UI_LayoutMode
+            if lm and lm.isActive and lm.SetElementEnabled then
+                pcall(lm.SetElementEnabled, lm, "actionTracker", at.enabled == true)
+            end
+        end, { description = ns.L["Turn the Action Tracker (the row of spells you just cast) on or off."] })
+        s1.AddRow(row(s1.frame, ns.L["Enabled"], enabledW))
         local onlyCombatW = GUI:CreateFormCheckbox(s1.frame, nil, "onlyInCombat", at, Refresh,
             { description = ns.L["Hide the action tracker while you are out of combat. Useful if you only want it active during pulls."] })
         local clearCombatW = GUI:CreateFormCheckbox(s1.frame, nil, "clearOnCombatEnd", at, Refresh,

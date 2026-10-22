@@ -3,7 +3,7 @@
 ## IconTexture: Interface\AddOns\H3z0UI\assets\icon
 ## Notes: Options window for H3z0 UI
 ## Author: H3z0
-## Version: 0.25.0
+## Version: 0.25.1
 ## Category: User Interface
 ## Group: H3z0UI
 ## RequiredDeps: H3z0UI
@@ -161,6 +161,8 @@ aura_elements_editor.lua
 init.lua
 tiles\related.lua
 h3z_windows_options.lua
+h3z_cdm_layout_options.lua
+h3z_minimap_layout_options.lua
 tiles\h3z0.lua
 tiles\minimap.lua
 tiles\infobar.lua

@@ -2919,14 +2919,28 @@ do
         cab.fade = cab.fade or {}
         for k, v in pairs(hab.fade or {}) do cab.fade[k] = DeepCopy(v) end
         cab.bars = cab.bars or {}
-        for barKey, hb in pairs(hab.bars or {}) do
-            if type(hb) == "table" then
-                local cb = cab.bars[barKey]
-                if type(cb) ~= "table" then
-                    cab.bars[barKey] = DeepCopy(hb)
-                else
+        -- per bar: only the H3z0 switches (shown, fade, always show, page arrow).
+        -- The look (keybind / count / macro text, backdrop, gloss, zoom) comes from
+        -- the global settings above: on these bars any per-bar value wins over the
+        -- global one, so the per-bar look keys stay empty unless you set them.
+        local BAR_SWITCHES = { enabled = true, fadeEnabled = true, fadeOutAlpha = true, alwaysShow = true, hidePageArrow = true }
+        local STYLE_KEYS = {
+            "iconZoom", "showBackdrop", "backdropAlpha", "showGloss", "glossAlpha",
+            "showKeybinds", "hideEmptyKeybinds", "keybindFontSize", "keybindColor", "keybindAnchor", "keybindOffsetX", "keybindOffsetY",
+            "showMacroNames", "macroNameFontSize", "macroNameColor", "macroNameAnchor", "macroNameOffsetX", "macroNameOffsetY",
+            "showCounts", "countFontSize", "countColor", "countAnchor", "countOffsetX", "countOffsetY",
+        }
+        local BUTTON_BARS = { bar1 = true, bar2 = true, bar3 = true, bar4 = true, bar5 = true,
+            bar6 = true, bar7 = true, bar8 = true, pet = true, stance = true }
+        for barKey, cb in pairs(cab.bars) do
+            if type(cb) == "table" then
+                if BUTTON_BARS[barKey] then
+                    for _, k in ipairs(STYLE_KEYS) do cb[k] = nil end
+                end
+                local hb = hab.bars and hab.bars[barKey]
+                if type(hb) == "table" then
                     for k, v in pairs(hb) do
-                        if k ~= "ownedLayout" and k ~= "ownedPosition" then cb[k] = DeepCopy(v) end
+                        if BAR_SWITCHES[k] then cb[k] = DeepCopy(v) end
                     end
                 end
             end

@@ -310,14 +310,38 @@ local function BuildBarSettings(content, cfg, o)
     L.headerAt(ns.L["Dimensions"])
     local s2 = L.sectionAt()
 
-    local wW = GUI:CreateFormSlider(s2.frame, nil, 50, 600, 1, "width", cfg, RefreshPowerBars,
-        { description = o.widthDesc })
+    -- Width: the bar follows the Essential / Utility cooldowns' width unless
+    -- "Match Cooldown Width" is off. Setting a width turns matching off, so
+    -- the width stays after a reload.
+    local anchorKey = o.secondary and "secondaryPower" or "primaryPower"
+    local function SyncAnchorWidth()
+        local core = H3z0UICore
+        local fa = core and core.db and core.db.profile and core.db.profile.frameAnchoring
+        local a = fa and rawget(fa, anchorKey)
+        if type(a) == "table" then a.autoWidth = cfg.matchCooldownWidth ~= false end
+        if _G.H3z0UI_ApplyAllFrameAnchors then pcall(_G.H3z0UI_ApplyAllFrameAnchors) end
+    end
+    local matchW
+    local wW = GUI:CreateFormSlider(s2.frame, nil, 50, 600, 1, "width", cfg, function()
+        if cfg.matchCooldownWidth ~= false then
+            cfg.matchCooldownWidth = false
+            SyncAnchorWidth()
+            if matchW and matchW.SetValue then pcall(matchW.SetValue, matchW, false, true) end
+        end
+        RefreshPowerBars()
+    end, { description = o.widthDesc })
     local hW = GUI:CreateFormSlider(s2.frame, nil, 2, 40, 1, "height", cfg, RefreshPowerBars,
         { description = ns.L["Height of the bar in pixels."] })
     s2.AddRow(
         row(s2.frame, ns.L["Width"], wW),
         row(s2.frame, ns.L["Height"], hW)
     )
+    if cfg.matchCooldownWidth == nil then cfg.matchCooldownWidth = true end
+    matchW = GUI:CreateFormCheckbox(s2.frame, nil, "matchCooldownWidth", cfg, function()
+        SyncAnchorWidth()
+        RefreshPowerBars()
+    end, { description = ns.L["The bar takes the width of the Essential (or Utility) cooldowns it is locked to. Setting a Width turns this off."] })
+    s2.AddRow(row(s2.frame, ns.L["Match Cooldown Width"], matchW))
 
     local xW = GUI:CreateFormSlider(s2.frame, nil, -500, 500, 1, "offsetX", cfg, RefreshPowerBars,
         { description = o.offsetXDesc })

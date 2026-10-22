@@ -1806,7 +1806,15 @@ local function ApplyAutoSizing(frame, settings, parentFrame, key)
         end
     end
 
-    if settings.autoWidth and parentFrame and parentFrame ~= UIParent
+    -- resource bars with "Match Cooldown Width" off keep the width set for them
+    local keepOwnWidth = false
+    if key == "primaryPower" or key == "secondaryPower" then
+        local prof = H3z0UICore and H3z0UICore.db and H3z0UICore.db.profile
+        local rb = prof and prof[key == "primaryPower" and "powerBar" or "secondaryPowerBar"]
+        keepOwnWidth = rb and rb.matchCooldownWidth == false or false
+    end
+
+    if settings.autoWidth and not keepOwnWidth and parentFrame and parentFrame ~= UIParent
         and not parentFrame._h3z0uiHostMover
     then
         local ok, parentWidth = pcall(function() return parentFrame:GetWidth() end)

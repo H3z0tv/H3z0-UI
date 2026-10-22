@@ -2,7 +2,7 @@
 
 H3z0 UI is a World of Warcraft UI addon for Midnight and WoW: Forever: unit, party and raid frames, nameplates, chat, Bottom Bar, Steam Deck support, cooldown manager, action bars, resource bars, minimap, skinning, Layout Mode and more.
 
-Version: 0.25.0
+Version: 0.25.1
 
 ## Installation
 

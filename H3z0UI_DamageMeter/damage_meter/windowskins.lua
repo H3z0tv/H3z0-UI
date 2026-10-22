@@ -172,6 +172,94 @@ local function SkinChatTab(cf, on, selected)
     line:SetShown(false)
 end
 
+---------------------------------------------------------------------------
+-- Typing box: no box at all, just "Say:" and what you type.
+-- The textures of the box, a NineSlice / backdrop on it (the Forever client
+-- draws a dark box with a light border there) are made invisible, and again
+-- each time Blizzard shows the box or switches it on (pressing Enter).
+---------------------------------------------------------------------------
+local function EditBoxArt(eb, hide)
+    local function one(r)
+        if not (r and r.SetAlpha) then return end
+        if hide then
+            if r.h3zWSA == nil then r.h3zWSA = r:GetAlpha() end
+            r:SetAlpha(0)
+        elseif r.h3zWSA ~= nil then
+            r:SetAlpha(r.h3zWSA); r.h3zWSA = nil
+        end
+    end
+    for _, r in ipairs({ eb:GetRegions() }) do
+        if r.IsObjectType and r:IsObjectType("Texture") then one(r) end
+    end
+    if eb.NineSlice then one(eb.NineSlice) end
+    for _, k in ipairs({ "focusLeft", "focusMid", "focusRight", "Left", "Mid", "Right" }) do
+        local r = eb[k]
+        if r and r.IsObjectType and r:IsObjectType("Texture") then one(r) end
+    end
+    local name = eb:GetName()
+    if name then
+        for _, suf in ipairs({ "Left", "Mid", "Right", "FocusLeft", "FocusMid", "FocusRight" }) do
+            local r = _G[name .. suf]
+            if r and r.IsObjectType and r:IsObjectType("Texture") then one(r) end
+        end
+    end
+    -- child frames that only draw a box (NineSlice / backdrop), not the header or autocomplete
+    for _, c in ipairs({ eb:GetChildren() }) do
+        if c and (c.layoutType or c.SetBackdropColor) and not (c.IsObjectType and c:IsObjectType("EditBox")) then
+            one(c)
+        end
+    end
+    -- a backdrop on the box itself
+    if eb.SetBackdropColor and eb.GetBackdrop and eb:GetBackdrop() then
+        if hide then
+            if not eb.h3zWSBD then
+                local r, g, b, a = eb:GetBackdropColor()
+                local br, bg, bb, ba = eb:GetBackdropBorderColor()
+                eb.h3zWSBD = { r, g, b, a, br, bg, bb, ba }
+            end
+            eb:SetBackdropColor(0, 0, 0, 0)
+            eb:SetBackdropBorderColor(0, 0, 0, 0)
+        elseif eb.h3zWSBD then
+            local t = eb.h3zWSBD
+            eb:SetBackdropColor(t[1], t[2], t[3], t[4])
+            eb:SetBackdropBorderColor(t[5], t[6], t[7], t[8])
+            eb.h3zWSBD = nil
+        end
+    end
+    if eb.__h3z0uiChatBackdrop then eb.__h3z0uiChatBackdrop:SetAlpha(hide and 0 or 1) end
+end
+
+local function EditBoxSkinOn()
+    local s = DB()
+    return s and s.enabled and s.chat and true or false
+end
+
+local ebHooked = {}
+local function HookEditBox(eb)
+    if ebHooked[eb] then return end
+    ebHooked[eb] = true
+    local function again(self)
+        if EditBoxSkinOn() then pcall(EditBoxArt, self, true) end
+    end
+    eb:HookScript("OnShow", again)
+    eb:HookScript("OnEditFocusGained", again)
+end
+
+local globalEBHooked = false
+local function HookChatEditGlobals()
+    if globalEBHooked then return end
+    globalEBHooked = true
+    for _, fn in ipairs({ "ChatEdit_ActivateChat", "ChatEdit_DeactivateChat", "ChatEdit_UpdateHeader", "ChatEdit_SetLastActiveWindow" }) do
+        if type(_G[fn]) == "function" then
+            hooksecurefunc(fn, function(eb)
+                if eb and type(eb) == "table" and eb.GetRegions and EditBoxSkinOn() then
+                    pcall(EditBoxArt, eb, true)
+                end
+            end)
+        end
+    end
+end
+
 local function SkinChat(cf, s)
     local on = s.enabled and s.chat
     local panel = cf.h3zWSPanel
@@ -179,13 +267,8 @@ local function SkinChat(cf, s)
         if panel then panel:Hide() end
         if cf.__h3z0uiChatBackdrop then cf.__h3z0uiChatBackdrop:SetAlpha(1) end
         if cf.__h3z0uiEditBoxBackdrop then cf.__h3z0uiEditBoxBackdrop:SetAlpha(1) end
-        local eb = _G[(cf:GetName() or "") .. "EditBox"]
-        if eb then
-            for _, r in ipairs({ eb:GetRegions() }) do
-                if r.h3zWSA ~= nil then r:SetAlpha(r.h3zWSA); r.h3zWSA = nil end
-            end
-            if eb.__h3z0uiChatBackdrop then eb.__h3z0uiChatBackdrop:SetAlpha(1) end
-        end
+        local eb = cf.editBox or _G[(cf:GetName() or "") .. "EditBox"]
+        if eb then pcall(EditBoxArt, eb, false) end
         SkinChatTab(cf, false, false)
         return
     end
@@ -218,16 +301,18 @@ local function SkinChat(cf, s)
     -- the glass backdrop from chat.lua would double the background
     if cf.__h3z0uiChatBackdrop then cf.__h3z0uiChatBackdrop:SetAlpha(0) end
     -- typing box: no box at all, just "Say:" and what you type
-    local eb = _G[(cf:GetName() or "") .. "EditBox"]
+    local eb = cf.editBox or _G[(cf:GetName() or "") .. "EditBox"]
     if eb then
-        for _, r in ipairs({ eb:GetRegions() }) do
-            if r.IsObjectType and r:IsObjectType("Texture") then
-                if r.h3zWSA == nil then r.h3zWSA = r:GetAlpha() end
-                r:SetAlpha(0)
-            end
-        end
-        if eb.__h3z0uiChatBackdrop then eb.__h3z0uiChatBackdrop:SetAlpha(0) end
+        pcall(EditBoxArt, eb, true)
+        HookEditBox(eb)
     end
+    -- older clients: one shared typing box for all chat windows
+    local shared = _G.ChatFrameEditBox
+    if shared and shared ~= eb and shared.GetRegions then
+        pcall(EditBoxArt, shared, true)
+        HookEditBox(shared)
+    end
+    HookChatEditGlobals()
     if cf.__h3z0uiEditBoxBackdrop then cf.__h3z0uiEditBoxBackdrop:SetAlpha(0) end
     local selected = (not IsDocked(cf)) or SelectedChat() == cf
     SkinChatTab(cf, true, selected)

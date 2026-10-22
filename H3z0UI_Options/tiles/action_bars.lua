@@ -37,6 +37,17 @@ function V2.Register(frame)
                 },
             },
             {
+                id = "mouseoverHide",
+                name = "Mouseover Hide",
+                featureId = "barHidingPage",
+                searchContext = {
+                    tabIndex = 8,
+                    tabName = ns.L["Action Bars"],
+                    subTabIndex = 2,
+                    subTabName = "Mouseover Hide",
+                },
+            },
+            {
                 id = "perBar",
                 name = ns.L["Per-Bar"],
                 featureId = "actionBarsPerBar",

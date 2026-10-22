@@ -153,6 +153,13 @@ local function RegisterGroupFrames(lm)
                 local s = Settings()
                 return s and s.enabled ~= false or false
             end,
+            setEnabled = function(val)
+                local s = Settings()
+                if not s then return end
+                local old = s.enabled ~= false
+                s.enabled = val
+                if (val ~= false) ~= old then ReloadPrompt() end
+            end,
             loadPosition = function()
                 local s = Settings()
                 local pos = s and s.pos
@@ -191,6 +198,108 @@ local function RegisterGroupFrames(lm)
     end
 end
 
+---------------------------------------------------------------------------
+-- Cast bars (player / target / focus): the place stays in
+-- h3z0uiUnitFrames.<unit>.castbar.offsetX / offsetY, whatever the bar is
+-- anchored to (free on the screen, under the unit frame, under the Essential
+-- or Utility cooldowns). Layout Mode moves it by the distance you drag it.
+---------------------------------------------------------------------------
+local CASTBAR_ELEMENTS = {
+    { key = "h3zPlayerCastbar", label = "Player Cast Bar", unit = "player", order = 20 },
+    { key = "h3zTargetCastbar", label = "Target Cast Bar", unit = "target", order = 21 },
+    { key = "h3zFocusCastbar",  label = "Focus Cast Bar",  unit = "focus",  order = 22 },
+}
+
+local function CastbarSettings(unit)
+    local s = UFSettings(unit)
+    return s and s.castbar
+end
+
+local function CastbarFrame(unit)
+    local cb = _G.H3z0UI_Castbars
+    if type(cb) ~= "table" then
+        local uf = UF()
+        cb = uf and uf.castbars
+    end
+    return type(cb) == "table" and cb[unit] or nil
+end
+
+-- centre offset from the screen centre, in UIParent units
+local function CenterUI(frame)
+    if not (frame and frame.GetCenter) then return nil end
+    local cx, cy = frame:GetCenter()
+    if not (cx and cy) then return nil end
+    local k = (frame:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
+    local ux, uy = UIParent:GetCenter()
+    return cx * k - ux, cy * k - uy
+end
+
+local function RegisterCastbars(lm)
+    for _, info in ipairs(CASTBAR_ELEMENTS) do
+        local openCenter
+        lm:RegisterElement({
+            key = info.key,
+            label = info.label,
+            group = "H3z0 Unit Frames",
+            order = info.order,
+            isOwned = false,
+            usesCustomPositionPersistence = true,
+            getFrame = function() return CastbarFrame(info.unit) end,
+            isEnabled = function()
+                local cs = CastbarSettings(info.unit)
+                local us = UFSettings(info.unit)
+                return cs and cs.enabled ~= false and (not us or us.enabled ~= false) and CastbarFrame(info.unit) ~= nil or false
+            end,
+            setEnabled = function(val)
+                local cs = CastbarSettings(info.unit)
+                if not cs then return end
+                local old = cs.enabled ~= false
+                cs.enabled = val
+                if (val ~= false) ~= old then
+                    Refresh("H3z0UI_RefreshCastbars")
+                    if val and not CastbarFrame(info.unit) then ReloadPrompt() end
+                end
+            end,
+            loadPosition = function()
+                local x, y = CenterUI(CastbarFrame(info.unit))
+                if not x then return nil end
+                return "CENTER", "CENTER", Round(x), Round(y)
+            end,
+            savePosition = function(_, point, relPoint, x, y)
+                local cs = CastbarSettings(info.unit)
+                if not (cs and openCenter) then return end
+                -- Layout Mode hands back the new centre (CENTER / CENTER offsets)
+                local nx, ny = x, y
+                if not (point == "CENTER" and (relPoint == nil or relPoint == "CENTER")) then
+                    nx, ny = CenterUI(CastbarFrame(info.unit))
+                end
+                if not nx then return end
+                local dx, dy = nx - openCenter[1], ny - openCenter[2]
+                cs.offsetX = Round((cs.offsetX or 0) + dx)
+                cs.offsetY = Round((cs.offsetY or 0) + dy)
+                if (cs.anchor or "none") == "none" then
+                    cs.freeOffsetX, cs.freeOffsetY = cs.offsetX, cs.offsetY
+                end
+                openCenter = { nx, ny }
+                Refresh("H3z0UI_RefreshCastbars")
+            end,
+            onOpen = function()
+                local x, y = CenterUI(CastbarFrame(info.unit))
+                openCenter = x and { x, y } or nil
+                if _G.H3z0UI_ShowCastbarPreview then pcall(_G.H3z0UI_ShowCastbarPreview, info.unit) end
+                -- the preview may have just placed the bar: take its centre again
+                local x2, y2 = CenterUI(CastbarFrame(info.unit))
+                if x2 then openCenter = { x2, y2 } end
+            end,
+            onClose = function()
+                if _G.H3z0UI_HideCastbarPreview then pcall(_G.H3z0UI_HideCastbarPreview, info.unit) end
+                openCenter = nil
+                C_Timer.After(0, function() Refresh("H3z0UI_RefreshCastbars") end)
+            end,
+        })
+    end
+end
+
 local registered = false
 local function Register()
     if registered then return end
@@ -201,6 +310,8 @@ local function Register()
     if not ok and geterrorhandler then geterrorhandler()(err) end
     ok, err = pcall(RegisterGroupFrames, lm)
     if not ok and geterrorhandler then geterrorhandler()(err) end
+    ok, err = pcall(RegisterCastbars, lm)
+    if not ok and geterrorhandler then geterrorhandler()(err) end
     -- Layout Mode puts frames back on close without their own scale: put the
     -- H3z0 frames on their saved positions again right after
     if lm.RegisterExitCallback then
@@ -209,6 +320,7 @@ local function Register()
                 Refresh("H3z0UI_RefreshUnitFrames")
                 Refresh("H3z0UI_RefreshPartyFrames")
                 Refresh("H3z0UI_RefreshRaidFrames")
+                Refresh("H3z0UI_RefreshCastbars")
             end)
         end)
     end

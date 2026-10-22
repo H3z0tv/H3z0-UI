@@ -25,6 +25,65 @@ local CDM_LABELS = {
 
 local function BP() return ns.BlizzPositions end
 
+---------------------------------------------------------------------------
+-- Cooldown Manager viewers can be turned off from Edit Mode (eye in the list
+-- or the On / Off switch of the right-click panel). Off = the viewer is kept
+-- invisible (alpha 0); Blizzard's own viewer is not hidden or changed, so
+-- nothing of Blizzard's code runs tainted.
+---------------------------------------------------------------------------
+local CDM_OFF_KEYS = {
+    EssentialCooldownViewer = "essential", UtilityCooldownViewer = "utility",
+    BuffIconCooldownViewer = "buffIcon", BuffBarCooldownViewer = "buffBar",
+}
+
+local function OffStore()
+    local core = ns.Addon
+    local p = core and core.db and core.db.profile
+    if not p then return nil end
+    if type(p.h3zCDMOff) ~= "table" then p.h3zCDMOff = {} end
+    return p.h3zCDMOff
+end
+
+local function IsCDMOff(f)
+    local k = f and CDM_OFF_KEYS[f:GetName() or ""]
+    local st = k and OffStore()
+    return st and st[k] == true or false
+end
+BL.IsCDMOff = IsCDMOff
+
+local rawSetAlpha = CreateFrame("Frame").SetAlpha
+local safecall = securecallfunction or function(fn, ...) return fn(...) end
+local offHooked = {}
+
+local function EnforceCDMOff(f)
+    if not f then return end
+    if not offHooked[f] then
+        offHooked[f] = true
+        hooksecurefunc(f, "SetAlpha", function(self)
+            if IsCDMOff(self) then safecall(rawSetAlpha, self, 0) end
+        end)
+    end
+    if IsCDMOff(f) then
+        safecall(rawSetAlpha, f, 0)
+        C_Timer.After(0, function() if IsCDMOff(f) then safecall(rawSetAlpha, f, 0) end end)
+    elseif f:GetAlpha() == 0 then
+        safecall(rawSetAlpha, f, 1)
+        -- let the Cooldown Manager fade / visibility rules set the real alpha again
+        local core = ns.Addon
+        if _G.H3z0UI_RefreshCDMVisibility then pcall(_G.H3z0UI_RefreshCDMVisibility) end
+        if core and core.RefreshCDMVisibility then pcall(core.RefreshCDMVisibility, core) end
+    end
+end
+BL.EnforceCDMOff = EnforceCDMOff
+
+function BL.SetCDMOff(f, off)
+    local k = f and CDM_OFF_KEYS[f:GetName() or ""]
+    local st = k and OffStore()
+    if not st then return end
+    st[k] = off and true or nil
+    EnforceCDMOff(f)
+end
+
 local function Round(v)
     v = tonumber(v) or 0
     if v >= 0 then return math.floor(v + 0.5) end
@@ -220,6 +279,7 @@ local function Register(lm, key, f, label, group, order, resizable, opts)
         isOwned = false,
         usesCustomPositionPersistence = true,
         getFrame = function() return f end,
+        setEnabled = opts.setEnabled,
         isEnabled = opts.isEnabled or function() return f:IsShown() or f == _G.ChatFrame1 or (f.system ~= nil and Enum and Enum.EditModeSystem and f.system == Enum.EditModeSystem.CooldownViewer) end,
         onOpen = opts.onOpen,
         onClose = opts.onClose,
@@ -283,7 +343,11 @@ function BL.RegisterAll()
         elseif S.CooldownViewer and f.system == S.CooldownViewer then
             local info = CDM_LABELS[name]
             if info then
-                Register(lm, "h3zCDM_" .. key, f, info[1], GROUP_CDM, info[2], false)
+                Register(lm, "h3zCDM_" .. key, f, info[1], GROUP_CDM, info[2], false, {
+                    isEnabled = function() return not IsCDMOff(f) end,
+                    setEnabled = function(val) BL.SetCDMOff(f, not val) end,
+                })
+                pcall(EnforceCDMOff, f)
             end
         elseif f.system == S.DamageMeter then
             -- the meter is hidden out of combat (Blizzard's visibility setting): always list it

@@ -1,17 +1,28 @@
 # H3z0 UI
 
-H3z0 UI is a World of Warcraft: Midnight UI customization addon (unit frames, cooldown manager, action bars, castbars, minimap, chat, skinning and more).
+H3z0 UI is a World of Warcraft UI addon for Midnight and WoW: Forever: unit, party and raid frames, nameplates, chat, Bottom Bar, Steam Deck support, cooldown manager, action bars, resource bars, minimap, skinning, Layout Mode and more.
 
-**Version:** 0.22.18
+Version: 0.25.1
 
-### Installation
+## Installation
 
-1. Extract to `Interface\AddOns\H3z0UI`
-2. Enable in-game and reload UI (`/rl` or `/reload`)
-3. Open the options with `/h3z0ui`
+1. Delete the old H3z0UI folder from Interface\AddOns.
+2. Copy every folder from the zip (H3z0UI and all H3z0UI_ folders) into Interface\AddOns.
+3. Start the game and open the options with /h3z0ui.
 
-New installs start with H3z0 UI's default profile automatically (existing settings are never overwritten). On a Steam Deck or any screen up to 800p the Steam Deck layout turns on by itself; toggle it any time with `/h3z0ui deck`.
+Your settings (H3z0UIDB) are kept. Every module can be switched off in Options > General > Feature Toggles.
+
+## Folders
+
+- H3z0UI - core, options shell, minimap, datatexts, Layout Mode, skinning, quality of life
+- H3z0UI_Options - options window (loads when you open it)
+- H3z0UI_Features - H3z0 Features: UI Look, Bottom Bar, Steam Deck + PC Controller, Combat Mode, Setup Wizard
+- H3z0UI_UnitFrames - H3z0 unit, party and raid frames, cast bars
+- H3z0UI_Nameplates - H3z0 nameplates
+- H3z0UI_Chat - H3z0 chat
+- H3z0UI_DamageMeter - dark rounded windows for the damage meter and chat
+- H3z0UI_ActionBars, H3z0UI_CDM, H3z0UI_ResourceBars, H3z0UI_Bags, H3z0UI_Reminders, H3z0UI_UnderlightAnglerHelper
 
 ## License
 
-Licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+GNU General Public License v3.0, see LICENSE.

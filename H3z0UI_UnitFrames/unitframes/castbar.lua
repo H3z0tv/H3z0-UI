@@ -544,6 +544,45 @@ local function UpdateCastbarElements(anchorFrame, unitKey, castSettings)
         showTimeText
     )
 
+    -- A long spell name must not run over the timer: the name stops where the
+    -- timer starts (shortened with ...), whatever the font is.
+    do
+        local sp, tm, bar = anchorFrame.spellText, anchorFrame.timeText, anchorFrame.statusBar
+        if sp and bar and currentCastSettings.showSpellText then
+            local spA = currentCastSettings.spellTextAnchor or "LEFT"
+            local tmA = currentCastSettings.timeTextAnchor or "RIGHT"
+            local offX = H3z0UICore:PixelRound(currentCastSettings.spellTextOffsetX or 4, sp)
+            local offY = H3z0UICore:PixelRound(currentCastSettings.spellTextOffsetY or 0, sp)
+            sp:SetWordWrap(false)
+            if sp.SetMaxLines then sp:SetMaxLines(1) end
+            local timeShown = tm and showTimeText
+            sp:ClearAllPoints()
+            if spA == "LEFT" then
+                sp:SetPoint("LEFT", bar, "LEFT", offX, offY)
+                if timeShown and tmA == "RIGHT" then
+                    sp:SetPoint("RIGHT", tm, "LEFT", -4, 0)
+                else
+                    sp:SetPoint("RIGHT", bar, "RIGHT", -4, offY)
+                end
+                sp:SetJustifyH("LEFT")
+            elseif spA == "RIGHT" then
+                sp:SetPoint("RIGHT", bar, "RIGHT", offX, offY)
+                if timeShown and tmA == "LEFT" then
+                    sp:SetPoint("LEFT", tm, "RIGHT", 4, 0)
+                else
+                    sp:SetPoint("LEFT", bar, "LEFT", 4, offY)
+                end
+                sp:SetJustifyH("RIGHT")
+            else
+                -- centered: leave room for the timer on both sides
+                local room = (tm and timeShown) and ((tm:GetStringWidth() or 30) + 10) or 4
+                sp:SetPoint("LEFT", bar, "LEFT", room, offY)
+                sp:SetPoint("RIGHT", bar, "RIGHT", -room, offY)
+                sp:SetJustifyH("CENTER")
+            end
+        end
+    end
+
     -- Empowered level text (player only)
     if unitKey == "player" and anchorFrame.empoweredLevelText then
         UpdateTextPosition(
@@ -1564,6 +1603,10 @@ function H3z0UI_Castbar:SetupCastbar(castbar, unit, unitKey, castSettings)
         -- Cast start events
         UNIT_SPELLCAST_START = function(self, spellID) self:Cast(spellID, false) end,
         UNIT_SPELLCAST_CHANNEL_START = function(self, spellID) self:Cast(spellID, false) end,
+        -- pushback: a hit while casting moves the end of the cast (or shortens a channel); the
+        -- game sends these, and the bar reads the new times again
+        UNIT_SPELLCAST_DELAYED = function(self, spellID) self:Cast(spellID, false) end,
+        UNIT_SPELLCAST_CHANNEL_UPDATE = function(self, spellID) self:Cast(spellID, false) end,
         
         -- Cast end events - hide immediately without re-querying APIs
         UNIT_SPELLCAST_STOP = function(self, spellID)
@@ -1642,6 +1685,8 @@ function H3z0UI_Castbar:SetupCastbar(castbar, unit, unitKey, castSettings)
     castbar:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", unit)
     castbar:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTIBLE", unit)
     castbar:RegisterUnitEvent("UNIT_SPELLCAST_NOT_INTERRUPTIBLE", unit)
+    pcall(castbar.RegisterUnitEvent, castbar, "UNIT_SPELLCAST_DELAYED", unit)
+    pcall(castbar.RegisterUnitEvent, castbar, "UNIT_SPELLCAST_CHANNEL_UPDATE", unit)
     
     -- Player-specific events (empowered casts)
     if isPlayer then
@@ -1885,12 +1930,15 @@ function H3z0UI_Castbar:SetupBossCastbar(castbar, unit, bossIndex, castSettings)
     castbar:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", unit)
     castbar:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTIBLE", unit)
     castbar:RegisterUnitEvent("UNIT_SPELLCAST_NOT_INTERRUPTIBLE", unit)
+    pcall(castbar.RegisterUnitEvent, castbar, "UNIT_SPELLCAST_DELAYED", unit)
+    pcall(castbar.RegisterUnitEvent, castbar, "UNIT_SPELLCAST_CHANNEL_UPDATE", unit)
     castbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_START", unit)
     castbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_UPDATE", unit)
     castbar:RegisterUnitEvent("UNIT_SPELLCAST_EMPOWER_STOP", unit)
     
     castbar:SetScript("OnEvent", function(self, event, eventUnit, castGUID, spellID)
-        if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START" then
+        if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START"
+            or event == "UNIT_SPELLCAST_DELAYED" or event == "UNIT_SPELLCAST_CHANNEL_UPDATE" then
             self:Cast(spellID, false)
         elseif event == "UNIT_SPELLCAST_EMPOWER_START" then
             self:Cast(spellID, true)

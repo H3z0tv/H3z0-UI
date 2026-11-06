@@ -13,6 +13,7 @@ local buttonState = Helpers.CreateStateTable()
 local installed = false
 local staticDone = false
 local menuBg = nil
+local TITLE_ROOM = 14      -- room above the buttons for the menu's own "Game Menu" title
 local dimFrame = nil
 local h3z0uiButton = nil
 local editModeButton = nil
@@ -40,10 +41,36 @@ local function StripChromeOnce()
     end
 end
 
+-- every non-button child of the menu (border, nine-slice, the "Game Menu" header):
+-- textures off, text kept and coloured, so the header is just the title
+local function StripFrameArt(frame, depth)
+    if not frame or depth > 3 then return end
+    for i = 1, select("#", frame:GetRegions()) do
+        local r = select(i, frame:GetRegions())
+        if r and r.IsObjectType then
+            if r:IsObjectType("Texture") then
+                r:SetAlpha(0)
+            elseif r:IsObjectType("FontString") then
+                local ar, ag, ab = SkinBase.GetSkinColors()
+                if ar then r:SetTextColor(ar, ag, ab, 1) end
+            end
+        end
+    end
+    for i = 1, select("#", frame:GetChildren()) do
+        StripFrameArt(select(i, frame:GetChildren()), depth + 1)
+    end
+end
+
 local function ReassertChrome()
     if GameMenuFrame.NineSlice then GameMenuFrame.NineSlice:SetAlpha(0) end
     if GameMenuFrame.Border then GameMenuFrame.Border:SetAlpha(0) end
-    if GameMenuFrame.Header then GameMenuFrame.Header:SetAlpha(0) end
+    for i = 1, select("#", GameMenuFrame:GetChildren()) do
+        local child = select(i, GameMenuFrame:GetChildren())
+        if child and child ~= menuBg and child ~= dimFrame and not buttonState[child]
+           and not (child.IsObjectType and child:IsObjectType("Button")) then
+            StripFrameArt(child, 1)
+        end
+    end
 end
 
 local function ReassertLevels(refLevel)
@@ -66,18 +93,48 @@ end
 
 local function AssertDim(settings)
     local dim = EnsureDim()
-    if settings and settings.gameMenuDim then dim:Show() else dim:Hide() end
+    -- the Character & Pet Scene brings its own dark bands instead
+    if settings and settings.gameMenuDim and settings.gameMenuScene == false then dim:Show() else dim:Hide() end
 end
 
 local function EnsureMenuBg()
     if menuBg then return menuBg end
     menuBg = CreateFrame("Frame", "H3z0UIGameMenuBg", GameMenuFrame)
-    menuBg:SetAllPoints(GameMenuFrame)
+    menuBg:SetPoint("TOPLEFT", GameMenuFrame, "TOPLEFT", 0, TITLE_ROOM)
+    menuBg:SetPoint("BOTTOMRIGHT", GameMenuFrame, "BOTTOMRIGHT", 0, 0)
     menuBg:EnableMouse(false)
     return menuBg
 end
 
+local hiddenTex = {}
+
+local function KeepHidden(tex)
+    if not tex or not tex.SetAlpha then return end
+    tex:SetAlpha(0)
+    if not hiddenTex[tex] then
+        hiddenTex[tex] = true
+        hooksecurefunc(tex, "SetAlpha", function(self, a)
+            if a and a > 0 then self:SetAlpha(0) end
+        end)
+    end
+end
+
 local function StripButtonArt(button, isPool, info)
+    -- the button's state art (normal / pushed / disabled) and art on child frames
+    for _, getter in ipairs({ "GetNormalTexture", "GetPushedTexture", "GetDisabledTexture" }) do
+        if button[getter] then KeepHidden(button[getter](button)) end
+    end
+    local hl = button.GetHighlightTexture and button:GetHighlightTexture()
+    if hl and hl ~= info.highlight then KeepHidden(hl) end
+    for i = 1, select("#", button:GetChildren()) do
+        local child = select(i, button:GetChildren())
+        if child and child ~= info.inset and child ~= button.NewFeature and child ~= button.NewFeatureFrame then
+            for k = 1, select("#", child:GetRegions()) do
+                local r = select(k, child:GetRegions())
+                if r and r.IsObjectType and r:IsObjectType("Texture") then KeepHidden(r) end
+            end
+        end
+    end
     local fs = button.GetFontString and button:GetFontString()
     for i = 1, select("#", button:GetRegions()) do
         local r = select(i, button:GetRegions())
@@ -124,6 +181,7 @@ local function SkinButton(button, isPool, sr, sg, sb, sa, bgr, bgg, bgb, fontSiz
 
     info.inset:SetFrameLevel(math.max(0, (button:GetFrameLevel() or 1) - 1))
 
+    bgr, bgg, bgb = SkinBase.GetControlBg()  -- buttons keep the H3z0 slate
     local btnBgR = math.min(bgr + SkinBase.CHROME.BUTTON_BOOST, 1)
     local btnBgG = math.min(bgg + SkinBase.CHROME.BUTTON_BOOST, 1)
     local btnBgB = math.min(bgb + SkinBase.CHROME.BUTTON_BOOST, 1)
@@ -213,35 +271,34 @@ local function PositionCustomButtons(settings, skin, refButton, sr, sg, sb, sa, 
     end
 end
 
+local function LowestButton()
+    local low, lowest
+    for _, b in ipairs({ _G.H3z0UIGameMenuButton, _G.H3z0UIGameMenuEditModeButton }) do
+        if b and b:IsShown() then
+            local v = b:GetBottom()
+            if v and (not lowest or v < lowest) then low, lowest = b, v end
+        end
+    end
+    if not low and GameMenuFrame.buttonPool then
+        for b in GameMenuFrame.buttonPool:EnumerateActive() do
+            local v = b:GetBottom()
+            if v and (not lowest or v < lowest) then low, lowest = b, v end
+        end
+    end
+    return low, lowest
+end
+
 local function ExtendMenuBg()
     if not menuBg then return end
     C_Timer.After(0, function()
         if not menuBg or not GameMenuFrame then return end
-        local lowest
-        if h3z0uiButton and h3z0uiButton:IsShown() then
-            local v = h3z0uiButton:GetBottom()
-            if v then lowest = v end
-        end
-        if editModeButton and editModeButton:IsShown() then
-            local v = editModeButton:GetBottom()
-            if v and (not lowest or v < lowest) then lowest = v end
-        end
-
+        local _, lowest = LowestButton()
         menuBg:ClearAllPoints()
-        if not lowest then
-            menuBg:SetAllPoints(GameMenuFrame)
-            return
-        end
+        menuBg:SetPoint("TOPLEFT", GameMenuFrame, "TOPLEFT", 0, TITLE_ROOM)
         local gmBottom = GameMenuFrame:GetBottom()
-        if gmBottom and lowest < gmBottom then
-            local extend = gmBottom - lowest + 12
-            menuBg:SetPoint("TOPLEFT", GameMenuFrame, "TOPLEFT")
-            menuBg:SetPoint("TOPRIGHT", GameMenuFrame, "TOPRIGHT")
-            menuBg:SetPoint("BOTTOMLEFT", GameMenuFrame, "BOTTOMLEFT", 0, -extend)
-            menuBg:SetPoint("BOTTOMRIGHT", GameMenuFrame, "BOTTOMRIGHT", 0, -extend)
-        else
-            menuBg:SetAllPoints(GameMenuFrame)
-        end
+        local extend = 0
+        if lowest and gmBottom and lowest - 12 < gmBottom then extend = gmBottom - (lowest - 12) end
+        menuBg:SetPoint("BOTTOMRIGHT", GameMenuFrame, "BOTTOMRIGHT", 0, -extend)
     end)
 end
 
@@ -260,11 +317,11 @@ local function OnInitButtons(menu)
     if not settings then return end
     if not menu or not menu.buttonPool then return end
 
-    -- H3z0 UI: the Esc menu keeps Blizzard's own look; the H3z0 UI buttons are
-    -- added under "Return to Game" by core/h3z/gamemenu_buttons.lua
-    local skin = false
-    local wantButtons = false
-    if not skin and not wantButtons then return end
+    -- H3z0 UI: Skin Game Menu (Appearance > Skinning) gives the Esc menu the
+    -- H3z0 UI window look. The H3z0 UI / Edit Mode buttons under "Return to Game"
+    -- come from core/h3z/gamemenu_buttons.lua and get the same skin here.
+    local skin = settings.skinGameMenu ~= false
+    if not skin then return end
 
     if skin then
         ApplyStaticSkin()
@@ -285,11 +342,17 @@ local function OnInitButtons(menu)
     end
 
     if skin then ReassertLevels(minLevel) end
-    PositionCustomButtons(settings, skin, refButton, sr, sg, sb, sa, bgr, bgg, bgb, fontSize)
-    if skin then
-        AssertDim(settings)
+    -- the H3z0 UI buttons are made right after this (same hook): skin them a frame later
+    C_Timer.After(0, function()
+        for _, b in ipairs({ _G.H3z0UIGameMenuButton, _G.H3z0UIGameMenuEditModeButton }) do
+            if b and b:IsShown() then
+                SkinButton(b, false, sr, sg, sb, sa, bgr, bgg, bgb, fontSize)
+            end
+        end
         ExtendMenuBg()
-    end
+    end)
+    AssertDim(settings)
+    ExtendMenuBg()
 end
 
 local function RefreshGameMenuColors()
@@ -298,9 +361,10 @@ local function RefreshGameMenuColors()
     if menuBg then
         SkinBase.ApplyChromeBackdrop(menuBg, { radius = 8, withBackground = true, borderColor = { sr, sg, sb, sa }, bgColor = { bgr, bgg, bgb, bga } })
     end
-    local btnBgR = math.min(bgr + SkinBase.CHROME.BUTTON_BOOST, 1)
-    local btnBgG = math.min(bgg + SkinBase.CHROME.BUTTON_BOOST, 1)
-    local btnBgB = math.min(bgb + SkinBase.CHROME.BUTTON_BOOST, 1)
+    local cr, cg, cb = SkinBase.GetControlBg()  -- buttons keep the H3z0 slate
+    local btnBgR = math.min(cr + SkinBase.CHROME.BUTTON_BOOST, 1)
+    local btnBgG = math.min(cg + SkinBase.CHROME.BUTTON_BOOST, 1)
+    local btnBgB = math.min(cb + SkinBase.CHROME.BUTTON_BOOST, 1)
     for _, info in pairs(buttonState) do
         if info.inset then
             SkinBase.ApplyChromeBackdrop(info.inset, { radius = 5, withBackground = true, borderColor = { sr, sg, sb, sa }, bgColor = { btnBgR, btnBgG, btnBgB, 1 } })
@@ -324,7 +388,7 @@ _G.H3z0UI_RefreshGameMenuFontSize = RefreshGameMenuFontSize
 _G.H3z0UI_RefreshGameMenuDim = function()
     local settings = GetGeneralSettings()
     if not dimFrame then return end
-    if settings and settings.gameMenuDim and GameMenuFrame and GameMenuFrame:IsShown() then
+    if settings and settings.gameMenuDim and settings.gameMenuScene == false and GameMenuFrame and GameMenuFrame:IsShown() then
         dimFrame:Show()
     else
         dimFrame:Hide()

@@ -281,8 +281,44 @@ local function StyleAcquiredTrackerBlock(tracker, blockID, template)
     end
 end
 
+-- Restyle the fonts of every block a tracker shows right now. Blocks get their
+-- font when the game hands them out, but the Campaign list (and blocks the game
+-- re-fills later) can keep the game's font, so this runs again after each layout.
+local function RestyleTrackerFonts(tracker)
+    if not tracker or IsWidgetPoolTracker(tracker) or not tracker.usedBlocks then return end
+    local settings = GetSettings()
+    if not settings or not settings.skinObjectiveTracker then return end
+    local changed = false
+    for _, blocks in pairs(tracker.usedBlocks) do
+        for _, block in pairs(blocks) do
+            if StyleBlock(block, GetFontPath(), settings.objectiveTrackerTitleFontSize or 10,
+                settings.objectiveTrackerTextFontSize or 10, settings.objectiveTrackerTitleColor,
+                settings.objectiveTrackerTextColor) then
+                changed = true
+            end
+        end
+    end
+    -- no tracker:MarkDirty() here: asking the tracker to lay itself out again from
+    -- H3z0 UI's code made its next update run as H3z0 UI, and that update reads
+    -- auras (Maw buffs) that are secret -> "Auras cannot be accessed when secret
+    -- while tainted by H3z0UI". The new fonts show at the tracker's next own update.
+    return changed
+end
+
 local function EnsureTrackerTextHooks(tracker)
     if IsWidgetPoolTracker(tracker) or not tracker.GetBlock or SkinBase.GetFrameData(tracker, "textLayoutHooked") then return end
+    if tracker.EndLayout and not SkinBase.GetFrameData(tracker, "endLayoutHooked") then
+        local pending = false
+        hooksecurefunc(tracker, "EndLayout", function(self)
+            if pending then return end
+            pending = true
+            C_Timer.After(0, function()
+                pending = false
+                ns.SafeCall("best-effort-style", RestyleTrackerFonts, self)
+            end)
+        end)
+        SkinBase.SetFrameData(tracker, "endLayoutHooked", true)
+    end
     hooksecurefunc(tracker, "GetBlock", function(self, blockID, template)
         ns.SafeCall("best-effort-style", StyleAcquiredTrackerBlock, self, blockID, template)
     end)
@@ -1025,6 +1061,7 @@ local function ApplyFontStyles(moduleFontSize, moduleColor)
                     end
                 end
             end
+            if not WIDGET_POOL_TRACKER_NAMES[trackerName] then RestyleTrackerFonts(tracker) end
         end
     end
 
@@ -1255,7 +1292,7 @@ if ns.WhenLoggedIn then
         RunAfterFirstFrame(function()
             SkinObjectiveTracker()
             for _, trackEvent in ipairs(trackingEvents) do
-                frame:RegisterEvent(trackEvent)
+                H3z0UI_SafeRegisterEvent(frame, trackEvent)
             end
         end, 0.2)
     end)

@@ -49,6 +49,15 @@ function GUI:InitializeOptions()
 
     if ns.H3z0UI_Options and type(ns.H3z0UI_Options.RegisterFeatureTile) == "function" then
         ns.H3z0UI_Options.RegisterFeatureTile(frame, {
+            id = "home",
+            icon = "*",
+            iconTexture = "Interface\\AddOns\\H3z0UI\\assets\\sidebar\\welcome",
+            name = ns.L["Home"],
+            subtitle = ns.L["Overview · Quick actions · Recent pages"],
+            featureId = "homePage",
+            noScroll = false,
+        })
+        ns.H3z0UI_Options.RegisterFeatureTile(frame, {
             id = "welcome",
             icon = "*",
             name = ns.L["Welcome"],

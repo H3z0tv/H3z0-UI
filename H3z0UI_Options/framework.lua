@@ -751,7 +751,7 @@ function GUI:ApplyGeneratedSearchCache(cache, schema)
             local key = entry.widgetDescriptor and entry.widgetDescriptor.dbKey
             local isForever = ns.Client and ns.Client.isForever
             if key == "skinLegacySystem" or key == "skinStable" then return isForever end
-            if key == "skinKeystoneFrame" then return not isForever end
+            if key == "skinKeystoneFrame" then return not (ns.Client and ns.Client.isLegacy) end
         end
         return ns.SwingTimers or not (type(entry.featureId) == "string" and entry.featureId:match("^swingTimer"))
     end
@@ -1494,7 +1494,7 @@ function GUI:NavigateTo(tabIndex, subTabIndex, sectionName)
 
     local route = self:ResolveV2SectionNavigation(tabIndex, sectionName)
         or (GUI.ResolveV2Navigation and GUI:ResolveV2Navigation(tabIndex, subTabIndex))
-    if not route then route = { tileId = "welcome", subPageIndex = nil } end
+    if not route then route = { tileId = "home", subPageIndex = nil } end
     local _, idx = GUI:FindV2TileByID(frame, route.tileId)
     if not idx then idx = 1 end
     if frame._searchBox and frame._searchBox.editBox then
@@ -1847,6 +1847,40 @@ end
 
 local confirmDialog = nil
 
+-- windows opened from the settings window (copy box, confirm, import, What's New,
+-- colour picker) go one layer above it, so they never open behind it
+function GUI:BringAboveOptions(f)
+    if not f then return end
+    pcall(f.SetFrameStrata, f, "TOOLTIP")
+    pcall(f.SetFrameLevel, f, 60)
+    if f.Raise then pcall(f.Raise, f) end
+end
+
+do
+    local hooked = false
+    local function HookPicker()
+        local cp = _G.ColorPickerFrame
+        if hooked or not cp then return end
+        hooked = true
+        local orig = cp:GetFrameStrata()
+        cp:HookScript("OnShow", function(self)
+            local opts = _G.H3z0UI_Options
+            if opts and opts:IsShown() then
+                self:SetFrameStrata("TOOLTIP")
+                self:SetFrameLevel(70)
+            else
+                self:SetFrameStrata(orig or "DIALOG")
+            end
+        end)
+    end
+    HookPicker()
+    if not hooked then
+        local w = CreateFrame("Frame")
+        w:RegisterEvent("PLAYER_LOGIN")
+        w:SetScript("OnEvent", function(self) self:UnregisterAllEvents(); HookPicker() end)
+    end
+end
+
 function GUI:ShowConfirmation(options)
 
     if not confirmDialog then
@@ -1994,7 +2028,7 @@ function GUI:ShowConfirmation(options)
     end
 
     confirmDialog:Show()
-    confirmDialog:Raise()
+    GUI:BringAboveOptions(confirmDialog)
     confirmDialog:EnableKeyboard(true)
 end
 
@@ -5695,12 +5729,15 @@ function GUI:CreateMainFrame()
         accentSwatch:SetAlpha(preset == "Custom" and 1 or 0.5)
     end
 
-    -- H3z0 UI ships in English for now (more languages later)
+    -- H3z0 UI languages: English and Bulgarian (Bulgarian needs a font with Cyrillic
+    -- letters, like the H3z0UI font)
     local LOCALE_NAMES = {
         enUS = "English",
+        bgBG = "Български",
     }
     local LOCALE_ORDER = {
         "enUS",
+        "bgBG",
     }
 
     local function GetSelectedLocale()
@@ -5945,6 +5982,80 @@ function GUI:CreateMainFrame()
 
     frame.sidebar = sidebar
 
+    -- Brand banner at the top of the sidebar (logo + name + which game it is for),
+    -- then three quick rows, then a divider. The list starts below GUI.SIDEBAR_TOP_RESERVE.
+    do
+        local isForever = ns.Client and ns.Client.isForever
+        local logo = sidebar:CreateTexture(nil, "ARTWORK")
+        logo:SetTexture("Interface\\AddOns\\H3z0UI\\assets\\h3z0ui_logo_bg.png")
+        logo:SetSize(56, 28)
+        logo:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 14, -12)
+        frame._brandLogo = logo
+
+        title:ClearAllPoints()
+        title:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 78, -11)
+        SetFont(title, 17, "OUTLINE", C.accentLight)
+        title:SetText("H3z0 UI")
+
+        local variant = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        SetFont(variant, 9, "", C.textMuted)
+        variant:SetText(string.upper(isForever and "Forever" or "Midnight"))
+        variant:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 1, -3)
+        frame._brandVariant = variant
+
+        local function Divider(y)
+            local d = sidebar:CreateTexture(nil, "ARTWORK")
+            d:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 10, -y)
+            d:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -10, -y)
+            d:SetHeight(1)
+            d:SetColorTexture(C_border_r, C_border_g, C_border_b, 0.9)
+            return d
+        end
+        Divider(52)
+
+        local function QuickRow(label, y, onClick)
+            local b = CreateFrame("Button", nil, sidebar)
+            b:SetHeight(24)
+            b:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 6, -y)
+            b:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -6, -y)
+            local hv = b:CreateTexture(nil, "BACKGROUND")
+            hv:SetAllPoints()
+            hv:SetColorTexture(1, 1, 1, 0.05)
+            hv:Hide()
+            local dot = b:CreateTexture(nil, "OVERLAY")
+            dot:SetSize(6, 6)
+            dot:SetPoint("LEFT", b, "LEFT", 12, 0)
+            dot:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 1)
+            local t = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            SetFont(t, 11, "", C.text)
+            t:SetPoint("LEFT", b, "LEFT", 28, 0)
+            t:SetText(label)
+            local arrow = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            SetFont(arrow, 12, "", C.textMuted)
+            arrow:SetPoint("RIGHT", b, "RIGHT", -10, 0)
+            arrow:SetText(">")
+            b:SetScript("OnEnter", function() hv:Show() end)
+            b:SetScript("OnLeave", function() hv:Hide() end)
+            b:SetScript("OnClick", onClick)
+            return b
+        end
+        QuickRow("Profiles & Presets", 58, function()
+            -- Profiles is the first page of the General tile
+            local _, idx = GUI:FindV2TileByID(frame, "global")
+            if not idx then return end
+            if frame._searchBox and frame._searchBox.editBox then
+                frame._searchBox.editBox:SetText("")
+            end
+            if frame._searchResultsArea then frame._searchResultsArea:Hide() end
+            if frame._tileContent then frame._tileContent:Show() end
+            GUI:SelectFeatureTile(frame, idx, { subPageIndex = 1 })
+        end)
+        QuickRow("Patch Notes", 82, function()
+            if _G.H3z0UI_ShowWhatsNew then _G.H3z0UI_ShowWhatsNew() end
+        end)
+        Divider(110)
+    end
+
     local footer = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     footer:SetPoint("BOTTOMLEFT", frame.sidebar, "BOTTOMRIGHT", 1, 0)
     footer:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 10)
@@ -5962,6 +6073,50 @@ function GUI:CreateMainFrame()
     reloadBtn:SetPoint("LEFT", footer, "LEFT", 18, 0)
     if H3z0UI and H3z0UI.BindReloadButton then H3z0UI:BindReloadButton(reloadBtn) end
     frame._footerReloadBtn = reloadBtn
+
+    local closeBtn = GUI:CreateButton(footer, ns.L["Close"], 90, 22, function() frame:Hide() end, "ghost")
+    closeBtn:SetPoint("RIGHT", footer, "RIGHT", -18, 0)
+    frame._footerCloseBtn = closeBtn
+
+    -- Link buttons in the middle of the footer (they open a box with the link to copy)
+    do
+        local links = {
+            { "Discord", "https://discord.gg/PU6g3WW", {0.345, 0.396, 0.949} },
+            { "YouTube", "https://www.youtube.com/h3z0music", {1, 0.2, 0.2} },
+            { "Twitch",  "https://twitch.tv/h3z0", {0.569, 0.275, 1} },
+        }
+        local prev
+        for _, l in ipairs(links) do
+            local b = CreateFrame("Button", nil, footer)
+            b:SetSize(64, 22)
+            if prev then b:SetPoint("LEFT", prev, "RIGHT", 6, 0) else b:SetPoint("CENTER", footer, "CENTER", -70, 0) end
+            local bg = b:CreateTexture(nil, "BACKGROUND")
+            bg:SetAllPoints()
+            bg:SetColorTexture(l[3][1], l[3][2], l[3][3], 0.12)
+            local bar = b:CreateTexture(nil, "ARTWORK")
+            bar:SetPoint("BOTTOMLEFT"); bar:SetPoint("BOTTOMRIGHT"); bar:SetHeight(2)
+            bar:SetColorTexture(l[3][1], l[3][2], l[3][3], 0.9)
+            local t = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            SetFont(t, 10, "", C.text)
+            t:SetPoint("CENTER", 0, 1)
+            t:SetText(l[1])
+            b:SetScript("OnEnter", function() bg:SetColorTexture(l[3][1], l[3][2], l[3][3], 0.3) end)
+            b:SetScript("OnLeave", function() bg:SetColorTexture(l[3][1], l[3][2], l[3][3], 0.12) end)
+            b:SetScript("OnClick", function()
+                if GUI.ShowExportPopup then GUI:ShowExportPopup("Copy Link", l[2]) end
+            end)
+            prev = b
+        end
+    end
+
+    -- Version in the bottom corner of the sidebar
+    do
+        local ver = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        SetFont(ver, 9, "", C.textMuted)
+        ver:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMLEFT", 14, 7)
+        ver:SetText("v" .. versionText .. (_G.H3z0UI_BuildNumber and (" build " .. _G.H3z0UI_BuildNumber) or ""))
+        frame._sidebarVersion = ver
+    end
 
     local subTabBar = CreateFrame("Frame", nil, frame)
     subTabBar:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 5, 0)
@@ -6002,6 +6157,25 @@ function GUI:CreateMainFrame()
         borderColor = {0, 0, 0, 0},
     }).background
     contentArea._accentGlow = glow
+
+    -- H3z0 UI logo, faint, behind the settings pages (colours stay as they are)
+    do
+        local logoLayer = CreateFrame("Frame", nil, contentArea)
+        logoLayer:SetAllPoints(contentArea)
+        logoLayer:SetFrameLevel(contentArea:GetFrameLevel())
+        logoLayer:EnableMouse(false)
+        local H = ns.Helpers
+        if H and H.AttachLogoBackground then
+            pcall(H.AttachLogoBackground, logoLayer, 0.07)
+        else
+            local logo = logoLayer:CreateTexture(nil, "BACKGROUND", nil, 1)
+            logo:SetTexture("Interface\\AddOns\\H3z0UI\\assets\\h3z0ui_logo_bg.png")
+            logo:SetPoint("CENTER")
+            logo:SetSize(420, 210)
+            logo:SetAlpha(0.07)
+        end
+        frame._h3zLogoLayer = logoLayer
+    end
 
     frame.contentArea = contentArea
 
@@ -6272,7 +6446,7 @@ function GUI:ShowExportPopup(title, exportString)
     ExportPopup.title:SetText(title or ns.L["Export"])
     ExportPopup.editBox:SetText(exportString or "")
     ExportPopup:Show()
-    ExportPopup:Raise()
+    GUI:BringAboveOptions(ExportPopup)
     ExportPopup.editBox:SetFocus()
     ExportPopup.editBox:HighlightText()
 end
@@ -6291,10 +6465,11 @@ local Helpers = ns.Helpers
 ns.H3z0UI_Framework = ns.H3z0UI_Framework or {}
 local FW2 = ns.H3z0UI_Framework
 
-local SIDEBAR_SEARCH_RESERVE = 44
+local SIDEBAR_SEARCH_RESERVE = 116   -- brand banner and quick rows sit above the list
+GUI.SIDEBAR_TOP_RESERVE = SIDEBAR_SEARCH_RESERVE
 local SIDEBAR_TILE_HEIGHT = 26
 local SIDEBAR_TILE_GAP = 2
-local SIDEBAR_TOOLS_RESERVE = 108
+local SIDEBAR_TOOLS_RESERVE = 130
 local SIDEBAR_BOTTOM_GAP = 6
 local SIDEBAR_SCROLLBAR_WIDTH = 4
 local SIDEBAR_SCROLL_STEP = 45
@@ -6670,6 +6845,15 @@ function GUI:BuildTilePage(frame, tile, initialSubPageIndex)
     end
     local content = frame._tileContent
 
+    -- a page that is built again (after RebuildOptions) must not leave the old
+    -- one behind: it would stay on screen under the new page (doubled titles)
+    local oldPage = tile._pageFrame
+    if oldPage then
+        oldPage:Hide()
+        oldPage:SetParent(nil)
+        tile._pageFrame = nil
+    end
+
     tile._pageFrame = CreateFrame("Frame", nil, content)
     tile._pageFrame:SetAllPoints(content)
     tile._pageFrame._h3z0uiOptionsTile = tile
@@ -6678,14 +6862,22 @@ function GUI:BuildTilePage(frame, tile, initialSubPageIndex)
     local header = CreateFrame("Frame", nil, tile._pageFrame)
     header:SetPoint("TOPLEFT", tile._pageFrame, "TOPLEFT", 18, -14)
     header:SetPoint("TOPRIGHT", tile._pageFrame, "TOPRIGHT", -18, -14)
-    header:SetHeight(30)
+    header:SetHeight(40)
     tile._compactHeader = true
     tile._header = header
 
+    -- darker band behind the page title (full width of the page)
+    local band = header:CreateTexture(nil, "BACKGROUND")
+    band:SetPoint("TOPLEFT", header, "TOPLEFT", -18, 14)
+    band:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 18, -8)
+    band:SetColorTexture(0, 0, 0, 0.22)
+    tile._headerBand = band
+
     local fpath = ns.UIKit and ns.UIKit.ResolveFontPath and ns.UIKit.ResolveFontPath(GUI:GetFontPath())
 
+    local titleY = 2
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    ns.Helpers.ApplyFontWithFallback(title, fpath or select(1, title:GetFont()), 18, "")
+    ns.Helpers.ApplyFontWithFallback(title, fpath or select(1, title:GetFont()), 26, "")
     title:SetTextColor(C.text[1], C.text[2], C.text[3], 1)
     title:SetPoint("LEFT", header, "LEFT", 0, 2)
     title:SetJustifyH("LEFT")
@@ -6695,14 +6887,17 @@ function GUI:BuildTilePage(frame, tile, initialSubPageIndex)
 
     if tile.config.subtitle and tile.config.subtitle ~= "" then
         local subtitle = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        ns.Helpers.ApplyFontWithFallback(subtitle, fpath or select(1, subtitle:GetFont()), 11, "")
+        ns.Helpers.ApplyFontWithFallback(subtitle, fpath or select(1, subtitle:GetFont()), 12, "")
         subtitle:SetTextColor(C.textMuted[1], C.textMuted[2], C.textMuted[3], 1)
         subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -3)
         subtitle:SetPoint("RIGHT", header, "RIGHT", 0, 0)
         subtitle:SetJustifyH("LEFT")
         subtitle:SetText(tile.config.subtitle)
         tile._subtitle = subtitle
-        header:SetHeight(48)
+        header:SetHeight(62)
+        title:ClearAllPoints()
+        titleY = 9
+        title:SetPoint("LEFT", header, "LEFT", 0, titleY)
     end
 
     local pins = ns.Settings and ns.Settings.Pins
@@ -6710,9 +6905,9 @@ function GUI:BuildTilePage(frame, tile, initialSubPageIndex)
         pins:AttachCountChip(header)
     end
     if header._h3z0uiPinChip then
-        title:SetPoint("RIGHT", header._h3z0uiPinChip, "LEFT", -8, 0)
+        title:SetPoint("RIGHT", header._h3z0uiPinChip, "LEFT", -8, titleY)
     else
-        title:SetPoint("RIGHT", header, "RIGHT", 0, 2)
+        title:SetPoint("RIGHT", header, "RIGHT", 0, titleY)
     end
 
     local anchorFrame = header
@@ -6805,7 +7000,11 @@ function GUI:BuildTilePage(frame, tile, initialSubPageIndex)
             "primary"
         )
         tile._primaryBtn:ClearAllPoints()
-        tile._primaryBtn:SetPoint("RIGHT", frame.footerBar, "RIGHT", -18, 0)
+        if frame._footerCloseBtn then
+            tile._primaryBtn:SetPoint("RIGHT", frame._footerCloseBtn, "LEFT", -8, 0)
+        else
+            tile._primaryBtn:SetPoint("RIGHT", frame.footerBar, "RIGHT", -18, 0)
+        end
         tile._primaryBtn:Hide()
     end
 
@@ -7656,9 +7855,9 @@ function GUI:AddToolsStripButton(frame, config)
 
     if not frame._toolsStrip then
         local strip = CreateFrame("Frame", nil, frame.sidebar)
-        strip:SetPoint("BOTTOMLEFT", frame.sidebar, "BOTTOMLEFT", 6, 12)
-        strip:SetPoint("BOTTOMRIGHT", frame.sidebar, "BOTTOMRIGHT", -6, 12)
-        strip:SetHeight(72)
+        strip:SetPoint("BOTTOMLEFT", frame.sidebar, "BOTTOMLEFT", 6, 24)
+        strip:SetPoint("BOTTOMRIGHT", frame.sidebar, "BOTTOMRIGHT", -6, 24)
+        strip:SetHeight(100)
 
         local sep = strip:CreateTexture(nil, "OVERLAY")
         sep:SetPoint("TOPLEFT", 2, 0)

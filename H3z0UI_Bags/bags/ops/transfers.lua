@@ -87,7 +87,7 @@ function Transfers.DepositAllToWarband(onDone)
     end
 
     local pairs_list = {}
-    for bagID = 0, 5 do
+    for bagID = 0, ((ns.Client and ns.Client.LAST_BAG) or 5) do
         local size = C_Container.GetContainerNumSlots(bagID) or 0
         for slot = 1, size do
             local info = C_Container.GetContainerItemInfo(bagID, slot)
@@ -158,7 +158,7 @@ function Transfers.DepositReagents(bankType, onDone)
         return
     end
     local pairs_list = {}
-    for bagID = 0, 5 do
+    for bagID = 0, ((ns.Client and ns.Client.LAST_BAG) or 5) do
         local size = C_Container.GetContainerNumSlots(bagID) or 0
         for slot = 1, size do
             local info = C_Container.GetContainerItemInfo(bagID, slot)

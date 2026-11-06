@@ -7,7 +7,7 @@ if not Datatexts then return end
 
 local format = string.format
 local floor = math.floor
-local isForever = ns.Client and ns.Client.isForever or false
+local isForever = ns.Client and ns.Client.isLegacy or false
 
 local function GetSwitchIndex()
     if isForever then return C_SpecializationInfo.GetActiveSpecGroup() end

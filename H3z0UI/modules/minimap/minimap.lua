@@ -21,7 +21,6 @@ local UIParent = UIParent
 -- Frames created by this module
 local backdropFrame, backdrop, mask
 local clockFrame, clockText
-local coordsFrame, coordsText
 local zoneTextFrame, zoneTextFont
 local minimapTooltip
 
@@ -31,7 +30,6 @@ local datatextFrame
 -- Performance: Cached settings and tickers (avoid per-frame GetSettings calls)
 local cachedSettings = nil
 local clockTicker = nil
-local coordsTicker = nil
 
 ---=================================================================================
 --- BLIZZARD BUG WORKAROUND: Indicator frames need parent with Layout method
@@ -110,10 +108,10 @@ local function SetMinimapShape(shape)
         end
         
         -- Remove the waffle texture in quest areas
-        Minimap:SetArchBlobRingScalar(0)
-        Minimap:SetArchBlobRingAlpha(0)
-        Minimap:SetQuestBlobRingScalar(0)
-        Minimap:SetQuestBlobRingAlpha(0)
+        -- (not every game has these: the Classic games don't)
+        for _, m in ipairs({ "SetArchBlobRingScalar", "SetArchBlobRingAlpha", "SetQuestBlobRingScalar", "SetQuestBlobRingAlpha" }) do
+            if Minimap[m] then Minimap[m](Minimap, 0) end
+        end
     else
         -- Round shape - use default circle mask
         Minimap:SetMaskTexture("Interface\\MINIMAP\\UI-Minimap-Background")
@@ -566,98 +564,6 @@ local function UpdateClockTime()
 end
 
 ---=================================================================================
---- COORDINATES
----=================================================================================
-
-local function CreateCoords()
-    if coordsFrame then return end
-    
-    coordsFrame = CreateFrame("Frame", nil, Minimap)
-    coordsText = coordsFrame:CreateFontString(nil, "OVERLAY")
-    coordsText:SetAllPoints(coordsFrame)
-    _G.H3z0UI_MinimapCoordsFrame = coordsFrame  -- Layout Mode
-end
-
-local function UpdateCoords()
-    local settings = GetSettings()
-    if not settings or not settings.enabled then return end
-    if not coordsFrame then CreateCoords() end
-    
-    local coordsConfig = settings.coordsConfig
-    
-    if not settings.showCoords then
-        coordsFrame:Hide()
-        return
-    end
-    
-    coordsFrame:Show()
-    coordsFrame:ClearAllPoints()
-    coordsFrame:SetPoint("TOPRIGHT", Minimap, "TOPRIGHT", coordsConfig.offsetX, coordsConfig.offsetY)
-    coordsFrame:SetHeight(coordsConfig.fontSize + 1)
-    
-    -- Build font flags
-    local flags = nil
-    if coordsConfig.monochrome and coordsConfig.outline ~= "NONE" then
-        flags = "MONOCHROME," .. coordsConfig.outline
-    elseif coordsConfig.monochrome then
-        flags = "MONOCHROME"
-    elseif coordsConfig.outline ~= "NONE" then
-        flags = coordsConfig.outline
-    end
-    
-    local fontPath = LSM:Fetch("font", coordsConfig.font) or "Fonts\\FRIZQT__.TTF"
-    H3z0UICore:SafeSetFont(coordsText, fontPath, coordsConfig.fontSize, flags)
-    coordsText:SetJustifyH(coordsConfig.align)
-    
-    -- Set color
-    local r, g, b, a = unpack(coordsConfig.color)
-    if coordsConfig.useClassColor then
-        local color = GetClassColor()
-        if color then
-            r, g, b = color.r, color.g, color.b
-        end
-    end
-    coordsText:SetTextColor(r, g, b, a)
-    
-    -- Calculate width
-    coordsText:SetFormattedText(settings.coordPrecision, 100.77, 100.77)
-    local width = coordsText:GetUnboundedStringWidth()
-    coordsFrame:SetWidth(width + 5)
-end
-
-local function UpdateCoordsPosition()
-    if not coordsFrame or not coordsText then return end
-    local settings = GetSettings()
-    if not settings or not settings.showCoords then return end
-    
-    -- Ensure font is set before formatting text
-    local coordsConfig = settings.coordsConfig
-    local currentFont = coordsText:GetFont()
-    if not currentFont then
-        local fontPath = LSM:Fetch("font", coordsConfig.font) or "Fonts\\FRIZQT__.TTF"
-        local flags = nil
-        if coordsConfig.monochrome and coordsConfig.outline ~= "NONE" then
-            flags = "MONOCHROME," .. coordsConfig.outline
-        elseif coordsConfig.monochrome then
-            flags = "MONOCHROME"
-        elseif coordsConfig.outline ~= "NONE" then
-            flags = coordsConfig.outline
-        end
-        H3z0UICore:SafeSetFont(coordsText, fontPath, coordsConfig.fontSize, flags)
-    end
-    
-    local uiMapID = C_Map.GetBestMapForUnit("player")
-    if uiMapID then
-        local pos = C_Map.GetPlayerMapPosition(uiMapID, "player")
-        if pos then
-            coordsText:SetFormattedText(settings.coordPrecision, pos.x * 100, pos.y * 100)
-            return
-        end
-    end
-    coordsText:SetText("0,0")
-end
-
----=================================================================================
 --- ZONE TEXT
 ---=================================================================================
 
@@ -998,6 +904,12 @@ local function UpdateButtonVisibility()
         end
     end
     
+    -- the tracking menu (what shows on the minimap: herbs, ore, rares, ...) is shown
+    -- once for everyone; it can be hidden again in the Minimap settings
+    if settings.h3zTrackingShown == nil then
+        settings.h3zTrackingShown = true
+        settings.showTracking = true
+    end
     -- Tracking button - position at top left (next to difficulty if shown)
     if MinimapCluster and MinimapCluster.Tracking then
         local trackingFrame = MinimapCluster.Tracking
@@ -1273,6 +1185,73 @@ local function SetupMouseWheelZoom()
 end
 
 ---=================================================================================
+--- REMEMBER ZOOM
+--- The game puts the minimap zoom back after a login, reload or loading screen.
+--- H3z0 UI keeps your zoom (one for outdoors, one for indoors) and puts it back.
+---=================================================================================
+
+do
+    local restoring = false
+    local lastIndoors = nil
+    -- zoom changes while loading (the game's reset, the minimap setup) are not yours
+    local blockUntil = math.huge
+    local function Store()
+        local settings = GetSettings()
+        if not settings then return nil end
+        settings.savedZoom = settings.savedZoom or {}
+        return settings.savedZoom
+    end
+    local function Key() return (IsIndoors and IsIndoors()) and "indoors" or "outdoors" end
+    local function Restore()
+        local settings = GetSettings()
+        if not settings or not settings.enabled or settings.autoZoom then return end
+        local store = Store()
+        local want = store and store[Key()]
+        lastIndoors = IsIndoors and IsIndoors() or false
+        if type(want) ~= "number" then return end
+        local levels = Minimap.GetZoomLevels and Minimap:GetZoomLevels() or 6
+        want = math.max(0, math.min(levels - 1, want))
+        if Minimap:GetZoom() ~= want then
+            restoring = true
+            Minimap:SetZoom(want)
+            restoring = false
+            if Minimap.ZoomIn then Minimap.ZoomIn:SetEnabled(want < levels - 1) end
+            if Minimap.ZoomOut then Minimap.ZoomOut:SetEnabled(want > 0) end
+        end
+    end
+    local zf = CreateFrame("Frame")
+    zf:RegisterEvent("PLAYER_ENTERING_WORLD")
+    zf:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    zf:RegisterEvent("MINIMAP_UPDATE_ZOOM")
+    zf:RegisterEvent("LOADING_SCREEN_ENABLED")
+    zf:SetScript("OnEvent", function(_, event)
+        if event == "LOADING_SCREEN_ENABLED" then
+            blockUntil = math.huge
+            return
+        end
+        if event == "MINIMAP_UPDATE_ZOOM" then
+            if restoring or GetTime() < blockUntil then return end
+            local indoors = IsIndoors and IsIndoors() or false
+            if lastIndoors ~= nil and indoors ~= lastIndoors then
+                -- walked in or out: the game switched zoom, use yours for there
+                lastIndoors = indoors
+                C_Timer.After(0, Restore)
+                return
+            end
+            lastIndoors = indoors
+            local store = Store()
+            if store then store[Key()] = Minimap:GetZoom() end
+        else
+            blockUntil = math.huge
+            C_Timer.After(0.5, function()
+                Restore()
+                blockUntil = GetTime() + 0.3
+            end)
+        end
+    end)
+end
+
+---=================================================================================
 --- AUTO ZOOM OUT
 ---=================================================================================
 
@@ -1321,7 +1300,6 @@ local function StartUpdateTickers()
 
     -- Cancel existing tickers if any
     if clockTicker then clockTicker:Cancel() end
-    if coordsTicker then coordsTicker:Cancel() end
 
     -- Clock ticker: Updates every 1 second
     clockTicker = C_Timer.NewTicker(1, function()
@@ -1331,21 +1309,11 @@ local function StartUpdateTickers()
         end
     end)
 
-    -- Coords ticker: Updates based on setting (default 1 second)
-    local coordInterval = settings.coordUpdateInterval or 1
-    coordsTicker = C_Timer.NewTicker(coordInterval, function()
-        local s = GetSettings()
-        if s and s.enabled then
-            UpdateCoordsPosition()
-        end
-    end)
-
     -- Datatext updates are handled by individual datatext tickers via the registry
 end
 
 local function StopUpdateTickers()
     if clockTicker then clockTicker:Cancel(); clockTicker = nil end
-    if coordsTicker then coordsTicker:Cancel(); coordsTicker = nil end
 end
 
 ---=================================================================================
@@ -1374,10 +1342,6 @@ function Minimap_Module:Initialize()
     CreateClock()
     UpdateClock()
     UpdateClockTime()
-    
-    CreateCoords()
-    UpdateCoords()
-    UpdateCoordsPosition()
     
     CreateZoneText()
     UpdateZoneText()
@@ -1493,7 +1457,6 @@ function Minimap_Module:Refresh()
     UpdateBackdrop()
     UpdateMinimapSize()
     UpdateClock()
-    UpdateCoords()
     UpdateZoneText()
     UpdateDatatextPanel()
     UpdateButtonVisibility()
@@ -1564,7 +1527,7 @@ calendarFrame:SetScript("OnEvent", function()
     if not settings or not settings.enabled then return end
     
     if settings.showCalendar and GameTimeFrame then
-        if C_Calendar.GetNumPendingInvites() < 1 then
+        if (C_Calendar and C_Calendar.GetNumPendingInvites and C_Calendar.GetNumPendingInvites() or 0) < 1 then
             GameTimeFrame:Hide()
         else
             GameTimeFrame:Show()
@@ -1653,86 +1616,8 @@ _G.H3z0UI_RefreshMinimap = function()
 end
 
 ---=================================================================================
---- COORDINATES TOGGLE (XY button on the minimap, keybind, /h3z0ui coords)
----=================================================================================
-local coordsButton
-
-local function UpdateCoordsButton()
-    if not coordsButton then return end
-    local settings = GetSettings()
-    local on = settings and settings.showCoords
-    local C = _G.H3z0UI and _G.H3z0UI.GUI and _G.H3z0UI.GUI.Colors
-    local a = C and C.accent or {0.204, 0.827, 0.6, 1}
-    if on then
-        coordsButton.text:SetTextColor(a[1], a[2], a[3], 1)
-        coordsButton:SetBackdropBorderColor(a[1], a[2], a[3], 0.9)
-    else
-        coordsButton.text:SetTextColor(0.65, 0.65, 0.65, 1)
-        coordsButton:SetBackdropBorderColor(0.35, 0.35, 0.35, 0.9)
-    end
-    coordsButton:SetShown(settings and settings.enabled ~= false and settings.showCoordsButton ~= false)
-end
-
-_G.H3z0UI_ToggleMapCoords = function()
-    local settings = GetSettings()
-    if not settings then return end
-    settings.showCoords = not settings.showCoords
-    UpdateCoords()
-    if settings.showCoords then UpdateCoordsPosition() end
-    UpdateCoordsButton()
-end
-
-local function CreateCoordsButton()
-    if coordsButton or not Minimap then return end
-    local b = CreateFrame("Button", "H3z0UI_MinimapCoordsToggle", Minimap, "BackdropTemplate")
-    b:SetSize(24, 14)
-    b:SetPoint("BOTTOMLEFT", Minimap, "BOTTOMLEFT", 3, 3)
-    b:SetFrameLevel(Minimap:GetFrameLevel() + 10)
-    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-    b:SetBackdropColor(0, 0, 0, 0.7)
-    b.text = b:CreateFontString(nil, "OVERLAY")
-    b.text:SetFont((_G.H3z0UI_GetFont and _G.H3z0UI_GetFont() or STANDARD_TEXT_FONT), 9, "OUTLINE")
-    b.text:SetPoint("CENTER", 0, 0)
-    b.text:SetText("XY")
-    b:SetAlpha(0)
-    b:SetScript("OnClick", function() _G.H3z0UI_ToggleMapCoords() end)
-    b:SetScript("OnEnter", function(self)
-        self:SetAlpha(1)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Map coordinates", 1, 1, 1)
-        GameTooltip:AddLine("Click to show or hide your coordinates.", 0.8, 0.8, 0.8, true)
-        GameTooltip:Show()
-    end)
-    b:SetScript("OnLeave", function(self)
-        if not Minimap:IsMouseOver() then self:SetAlpha(0) end
-        GameTooltip:Hide()
-    end)
-    -- only visible while the mouse is over the minimap
-    Minimap:HookScript("OnEnter", function() if coordsButton then coordsButton:SetAlpha(1) end end)
-    Minimap:HookScript("OnLeave", function()
-        if coordsButton and not coordsButton:IsMouseOver() then coordsButton:SetAlpha(0) end
-    end)
-    coordsButton = b
-    UpdateCoordsButton()
-end
-
-local coordsButtonLoader = CreateFrame("Frame")
-coordsButtonLoader:RegisterEvent("PLAYER_ENTERING_WORLD")
-coordsButtonLoader:SetScript("OnEvent", function()
-    C_Timer.After(1, function()
-        CreateCoordsButton()
-        UpdateCoordsButton()
-    end)
-end)
-if Minimap_Module and Minimap_Module.Refresh then
-    hooksecurefunc(Minimap_Module, "Refresh", function() UpdateCoordsButton() end)
-end
-
-
----=================================================================================
---- H3Z0 UI EDIT MODE (Layout Mode): the minimap and the map coordinates
---- The minimap keeps its place in minimap.position, the coordinates in
---- minimap.coordsConfig offsetX / offsetY (same values as the options).
+--- H3Z0 UI EDIT MODE (Layout Mode): the minimap
+--- The minimap keeps its place in minimap.position (same values as the options).
 ---=================================================================================
 do
     local FX = { LEFT = 0, TOPLEFT = 0, BOTTOMLEFT = 0, CENTER = 0.5, TOP = 0.5, BOTTOM = 0.5, RIGHT = 1, TOPRIGHT = 1, BOTTOMRIGHT = 1 }
@@ -1804,42 +1689,6 @@ do
             end,
         })
 
-        lm:RegisterElement({
-            key = "h3zMapCoords",
-            label = "Map Coordinates",
-            group = "Display",
-            order = 2,
-            isOwned = false,
-            usesCustomPositionPersistence = true,
-            getFrame = function() return coordsFrame end,
-            isEnabled = function()
-                local s = GetSettings()
-                return s and s.enabled ~= false and s.showCoords and true or false
-            end,
-            setEnabled = function(val)
-                local s = GetSettings()
-                if not s then return end
-                s.showCoords = val and true or false
-                Minimap_Module:Refresh()
-            end,
-            loadPosition = function()
-                local x, y = CenterOffset(coordsFrame)
-                if not x then return nil end
-                return "CENTER", "CENTER", Round(x), Round(y)
-            end,
-            savePosition = function(_, point, relPoint, x, y)
-                if InCombatLockdown() or not coordsFrame then return end
-                local s = GetSettings()
-                local cc = s and s.coordsConfig
-                if not cc then return end
-                local ox, oy = CenterOffset(coordsFrame)
-                if not ox then return end
-                local nx, ny = ToCenter(coordsFrame, point, relPoint, x, y)
-                cc.offsetX = Round((cc.offsetX or 0) + (nx - ox))
-                cc.offsetY = Round((cc.offsetY or 0) + (ny - oy))
-                Minimap_Module:Refresh()
-            end,
-        })
 
         if lm.RegisterExitCallback then
             lm:RegisterExitCallback(function() Minimap_Module:Refresh() end)

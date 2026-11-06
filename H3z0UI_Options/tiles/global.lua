@@ -43,21 +43,6 @@ function V2.Register(frame)
                 },
             },
             {
-                id = "modules",
-                name = ns.L["Feature Toggles"],
-                sectionNav = true,
-                featureId = "modulesPage",
-                searchAliases = {
-                    ns.L["modules"],
-                    ns.L["module list"],
-                    ns.L["disable feature"],
-                    ns.L["enable feature"],
-                    ns.L["feature toggle"],
-                    ns.L["turn off"],
-                    ns.L["turn on"],
-                },
-            },
-            {
                 id = "importExport",
                 name = ns.L["Import / Export"],
                 sectionNav = true,
@@ -79,6 +64,21 @@ function V2.Register(frame)
                 },
             },
             {
+                id = "modules",
+                name = ns.L["Feature Toggles"],
+                sectionNav = true,
+                featureId = "modulesPage",
+                searchAliases = {
+                    ns.L["modules"],
+                    ns.L["module list"],
+                    ns.L["disable feature"],
+                    ns.L["enable feature"],
+                    ns.L["feature toggle"],
+                    ns.L["turn off"],
+                    ns.L["turn on"],
+                },
+            },
+            {
                 id = "thirdParty",
                 name = ns.L["Third-party"],
                 featureId = "thirdPartyAnchoring",
@@ -93,6 +93,24 @@ function V2.Register(frame)
                     { tabIndex = 17, subTabIndex = 8 },
                     { tabIndex = 17, subTabIndex = 9 },
                 },
+            },
+            {
+                id = "overrides",
+                name = "Overrides",
+                featureId = "overridesPage",
+                searchAliases = { "overrides", "rules", "per role", "per spec", "per content", "dungeon", "raid" },
+            },
+            {
+                id = "profileTools",
+                name = "Profile Tools",
+                featureId = "profileToolsPage",
+                searchAliases = { "rename profile", "duplicate profile", "copy profile", "backup", "restore", "per character", "character profile" },
+            },
+            {
+                id = "looks",
+                name = "Looks",
+                featureId = "looksPage",
+                searchAliases = { "look", "preset", "theme", "font", "texture", "style", "appearance" },
             },
         },
     })

@@ -28,7 +28,8 @@ local DEFAULTS = {
     fontSize = 12,
     fontOutline = true,
     showStacks = true,
-    hideSwipe = false,
+    hideSwipe = true,
+    hidePermanentBuffs = true,
 }
 
 local function GetSettings()
@@ -156,9 +157,17 @@ local function ResolveStrips(store, defaultBucketFn, out, auraType)
         E.NormalizeSingleStripBucket(store, auraType)
     end
     local elements = E.ActiveElementsForSpec(store, nil)
+    -- buffs with no duration (forms like Cat Form, Skyriding, delve companion,
+    -- mount auras, ...) are left out unless "Hide Permanent Buffs" is off
+    local hidePerm = nil
+    if auraType == "HELPFUL" then
+        local settings = GetSettings()
+        hidePerm = not (settings and settings.hidePermanentBuffs == false)
+    end
     for i = 1, #elements do
         local e = elements[i]
         if e.mode == "filterStrip" then
+            if hidePerm ~= nil then e.hidePermanent = hidePerm end
             out[#out + 1] = e
         end
     end
@@ -296,8 +305,10 @@ end
 local function ManageBlizzardFrames()
     local settings = GetSettings()
     if not settings then return end
+    -- the Classic games can't build H3z0 buff icons: Blizzard's buffs stay
+    local own = not (ns.Client and ns.Client.hasAuraContainers == false)
 
-    if settings.enableBuffs then
+    if settings.enableBuffs and own then
         if BanishBlizzardFrame(BuffFrame) then
             blizzBuffBanished = true
         end
@@ -309,7 +320,7 @@ local function ManageBlizzardFrames()
         end
     end
 
-    if settings.enableDebuffs then
+    if settings.enableDebuffs and own then
         if BanishBlizzardFrame(DebuffFrame) then
             blizzDebuffBanished = true
         end
@@ -330,6 +341,7 @@ local function AnchorElementContainer(container, baseFrame, element)
 end
 
 local function ApplyMoverElements(moverFrame, strips, isBuff, allowCreate)
+    if ns.Client and ns.Client.hasAuraContainers == false then return false, false end
     local pool = moverFrame._h3z0uiAuraContainers
     if not pool then
         pool = {}

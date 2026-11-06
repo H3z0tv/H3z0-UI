@@ -101,6 +101,19 @@ function StripBlizzardArtwork(button)
         ReplaceTexture(button.Flash, TEXTURES.flash)
     end
 
+    -- Streamer Mode (H3z0 Features): the skin sets these back to full alpha
+    -- above, so keep the press / checked / flash visuals hidden right here
+    do
+        local core = ns.Addon
+        local g = core and core.db and core.db.profile and core.db.profile.actionBars
+            and core.db.profile.actionBars.global
+        if g and g.streamerMode then
+            for _, t in ipairs({ pushed, button.PushedTexture, checked, button.CheckedTexture, button.Flash }) do
+                if t and t.SetAlpha then t:SetAlpha(0) end
+            end
+        end
+    end
+
     if button.Border then button.Border:SetAlpha(0) end
     if button.BorderShadow then button.BorderShadow:SetAlpha(0) end
 

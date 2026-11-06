@@ -1788,7 +1788,12 @@ local function SetupTooltipHook()
             return
         end
 
-        if settings.anchorToCursor then
+        local wantCursor = settings.anchorToCursor
+        if ns.H3z0UI_TooltipAnchorOverride then
+            local okOv, ov = pcall(ns.H3z0UI_TooltipAnchorOverride, parent)
+            if okOv and ov ~= nil then wantCursor = ov end
+        end
+        if wantCursor then
             EnsureCursorFollowHooks(tooltip)
             if tooltip == GameTooltip then
                 gtCursorSafetyElapsed = CURSOR_SAFETY_CHECK_INTERVAL

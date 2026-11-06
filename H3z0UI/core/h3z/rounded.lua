@@ -33,6 +33,70 @@ R.TILE = ASSETS .. "h3z_tile"
 -- one slate colour for every skinned surface (chat, damage meter, action button slots)
 R.SLATE_FILL = { 0.075, 0.095, 0.12 }
 R.SLATE_BORDER = { 0.25, 0.29, 0.33 }
+-- buttons (action button slots, ...) always keep this one
+R.SLATE_FILL_FIXED = { 0.075, 0.095, 0.12 }
+
+-- H3z0 Colour (Appearance > Theme & Colors > H3z0 Colour): ONE background
+-- colour for everything. It is general.skinBgColor (the skinned Blizzard
+-- windows use it as it is); the slate of the H3z0 UI windows, panels, chat,
+-- damage meter and action button slots is a shade of it. Only backgrounds
+-- change: the borders always keep the H3z0 slate border. The table above is
+-- changed in place, so everything that reads it follows.
+local DEFAULT_BG = { 0.105, 0.125, 0.16 }
+local DEFAULT_BORDER = { 0.25, 0.29, 0.33 }
+local function Clamp(v) if v < 0 then return 0 elseif v > 1 then return 1 end return v end
+local function IsOld(c, v)
+    return math.abs((c[1] or 0) - v) < 0.002 and math.abs((c[2] or 0) - v) < 0.002 and math.abs((c[3] or 0) - v) < 0.002
+end
+-- the background colour always stays a DARK shade of what was picked: the
+-- hue is kept, the brightness is capped (a bright pick only made the
+-- windows glare and the text hard to read)
+R.BG_MAX_BRIGHTNESS = 0.2
+function R.DarkBg(r, g, b)
+    r, g, b = tonumber(r) or 0, tonumber(g) or 0, tonumber(b) or 0
+    local m = math.max(r, g, b)
+    if m > R.BG_MAX_BRIGHTNESS then
+        local k = R.BG_MAX_BRIGHTNESS / m
+        r, g, b = r * k, g * k, b * k
+    end
+    return r, g, b
+end
+_G.H3z0UI_DarkBg = R.DarkBg
+
+function R.ApplyUiColor()
+    local core = ns.Addon
+    local g = core and core.db and core.db.profile and core.db.profile.general
+    local c = g and type(g.skinBgColor) == "table" and g.skinBgColor or DEFAULT_BG
+    if IsOld(c, 0.05) or IsOld(c, 0.008) then c = DEFAULT_BG end
+    if c ~= DEFAULT_BG then
+        -- a bright colour saved before the cap: keep it dark for everything that reads it
+        c[1], c[2], c[3] = R.DarkBg(c[1], c[2], c[3])
+    end
+    if c ~= DEFAULT_BG and not g._h3zSolidBg02622 then
+        g._h3zSolidBg02622 = true
+        c[4] = 0.97
+    end
+    for i = 1, 3 do
+        local v = tonumber(c[i]) or DEFAULT_BG[i]
+        R.SLATE_FILL[i] = Clamp(v - 0.03)
+        R.SLATE_BORDER[i] = DEFAULT_BORDER[i]
+    end
+end
+_G.H3z0UI_ApplyUiColor = function()
+    R.ApplyUiColor()
+    if ns.Registry and ns.Registry.RefreshAll then pcall(ns.Registry.RefreshAll, ns.Registry) end
+    if _G.H3z0UI_RefreshWindowSkins then pcall(_G.H3z0UI_RefreshWindowSkins) end
+end
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("ADDON_LOADED")
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:SetScript("OnEvent", function(self, event, name)
+        if event == "ADDON_LOADED" and name ~= ADDON_NAME then return end
+        pcall(R.ApplyUiColor)
+        if event == "PLAYER_LOGIN" then self:UnregisterAllEvents() end
+    end)
+end
 function R.SlateAlpha()
     local core = ns.Addon
     local ws = core and core.db and core.db.profile and core.db.profile.windowSkins

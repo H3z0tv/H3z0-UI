@@ -63,7 +63,7 @@ do
             local general = GetGeneralDB()
 
             Helpers.EnsureDefaults(mpDB, {
-                layoutMode = "full",
+                layoutMode = "pro",
                 showTimer = true,
                 showBorder = true,
                 scale = 1.0,
@@ -80,12 +80,13 @@ do
             local sGen = L.sectionAt()
 
             local layoutOptions = {
+                { text = "H3z0 Pro", value = "pro" },
                 { text = ns.L["Compact"], value = "compact" },
                 { text = ns.L["Full"], value = "full" },
                 { text = ns.L["Sleek"], value = "sleek" },
             }
             local genLayoutW = GUI:CreateFormDropdown(sGen.frame, nil, layoutOptions, "layoutMode", mpDB, RefreshAll,
-                { description = ns.L["Overall timer layout: Compact is a single row; Full shows all key details; Sleek trims non-essentials."] })
+                { description = "Overall timer layout: H3z0 Pro is the big right-aligned H3z0 timer with the time above each bar (default); Compact is a single row; Full shows all key details; Sleek trims non-essentials." })
             local genScaleW = GUI:CreateFormSlider(sGen.frame, nil, 0.5, 2.0, 0.05, "scale", mpDB, function()
                 local MPlusTimer = _G.H3z0UI_MPlusTimer
                 if MPlusTimer and MPlusTimer.ApplyScale then MPlusTimer:ApplyScale() end
@@ -114,6 +115,12 @@ do
                 row(sGen.frame, ns.L["Show Deaths"], genDeathsW),
                 row(sGen.frame, ns.L["Show Affixes"], genAffixesW)
             )
+
+            if mpDB.hideObjectiveTracker == nil then mpDB.hideObjectiveTracker = true end
+            local genHideQTW = GUI:CreateFormCheckbox(sGen.frame, nil, "hideObjectiveTracker", mpDB, function()
+                if _G.H3z0UI_RefreshUIHider then _G.H3z0UI_RefreshUIHider() end
+            end, { description = "Hide the quest / objective tracker as soon as you enter a Mythic dungeon (before and during the key); this timer shows the dungeon progress instead. It comes back when you leave the dungeon." })
+            sGen.AddRow(row(sGen.frame, "Hide Quest Tracker in Mythic Dungeons", genHideQTW))
 
             local genObjW = GUI:CreateFormCheckbox(sGen.frame, nil, "showObjectives", mpDB, RefreshLayout,
                 { description = ns.L["Show the boss/objective rows under the timer."] })

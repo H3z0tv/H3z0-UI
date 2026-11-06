@@ -166,6 +166,8 @@ function FS.UpdatePortrait(unitKey)
         local r, g, b = RingColor(unit, true)
         frame.h3zTint:SetColorTexture(r + (1 - r) * 0.55, g + (1 - g) * 0.55, b + (1 - b) * 0.55, 1)
     end
+    local uf = UF()
+    if uf and uf.UpdateLevel then pcall(uf.UpdateLevel, frame) end
     local r = frame.h3zRound
     if not (r and r:IsShown()) then return end
     if UnitExists(unit) then

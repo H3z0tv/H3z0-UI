@@ -49,23 +49,12 @@ end
 local function Font() return Helpers.GetGeneralFont() or STANDARD_TEXT_FONT end
 
 ---------------------------------------------------------------------------
--- Categories
+-- Categories: the shared bag category engine (Bags.Categories), so the
+-- Categories settings page (order, hidden, your own categories, items placed
+-- by hand, grouping) applies here too
 ---------------------------------------------------------------------------
 local ICON = "Interface\\Icons\\"
-local BUILTIN = {
-    { key = "armory",      name = "The Armory",          icon = ICON .. "INV_Sword_04" },
-    { key = "weapons",     name = "Weapons / Trinkets",  icon = ICON .. "INV_Sword_04",         parent = "armory" },
-    { key = "armor",       name = "Armor",               icon = ICON .. "INV_Chest_Chain",      parent = "armory" },
-    { key = "itemset",     name = "Item Set Gear",       icon = ICON .. "INV_Shield_06",        parent = "armory" },
-    { key = "prep",        name = "Adventure Prep",      icon = ICON .. "INV_Potion_54" },
-    { key = "consumables", name = "Consumables",         icon = ICON .. "INV_Potion_54",        parent = "prep" },
-    { key = "professions", name = "Professions",         icon = ICON .. "Trade_BlackSmithing" },
-    { key = "reagentbag",  name = "Reagent Bag",         icon = ICON .. "INV_Misc_Bag_10" },
-    { key = "quest",       name = "Quest Items",         icon = ICON .. "INV_Misc_Note_01",     hideEmpty = true },
-    -- custom categories go here
-    { key = "junk",        name = "Junk",                icon = ICON .. "INV_Misc_Coin_01",     hideEmpty = true },
-    { key = "misc",        name = "Miscellaneous",       icon = ICON .. "INV_Misc_QuestionMark" },
-}
+local Cat = Bags.Categories
 
 local SPECIAL = {
     { key = "all",    name = "All Items",    icon = ICON .. "INV_Misc_Bag_08" },
@@ -73,94 +62,62 @@ local SPECIAL = {
     { key = "pinned", name = "Pinned Items", icon = ICON .. "INV_Misc_Note_01" },
     { key = "recent", name = "Recent Items", icon = ICON .. "Spell_Holy_BorrowedTime" },
 }
+local IS_SPECIAL = { all = true, onebag = true, pinned = true, recent = true }
 
-local TRINKET_SLOTS = { INVTYPE_TRINKET = true }
-local PROFESSION_CLASSES = { [3] = true, [5] = true, [7] = true, [8] = true, [9] = true, [19] = true }
+-- the older Inventory-only categories, moved to the shared engine once
+local OLD_TO_NEW = {
+    weapons = "weapon", armor = "armor", itemset = "sets", consumables = "consumable",
+    professions = "tradegoods", reagentbag = "reagentbag", quest = "quest",
+    junk = "junk", misc = "misc", armory = "weapon", prep = "consumable",
+}
+
+-- The view is used by the bag window ("inventory") and by the bank window ("bankInventory").
+-- CTX says which one is being worked on: where its settings live, what to refresh, and (for the
+-- bank) how far down the view starts. It is set at the start of every entry point.
+local BAG_CTX = { key = "inventory" }
+local CTX = BAG_CTX
 
 local function DB()
     local s = GetSettings()
     if not s then return nil end
-    s.inventory = s.inventory or {}
-    local d = s.inventory
+    local ckey = CTX.key or "inventory"
+    s[ckey] = s[ckey] or {}
+    local d = s[ckey]
     d.pinned = d.pinned or {}
-    d.assign = d.assign or {}
-    d.custom = d.custom or {}
     d.hidden = d.hidden or {}
     if d.sidebar == nil then d.sidebar = true end
     d.selected = d.selected or "all"
+    if ckey == "inventory" and not d.movedToCategories and Cat then
+        d.movedToCategories = true
+        local map = {}
+        for _, cc in ipairs(d.custom or {}) do
+            if cc.key and cc.name then map[cc.key] = Cat.AddCustom(cc.name, "") end
+        end
+        local cdb = Cat.DB()
+        for itemID, key in pairs(d.assign or {}) do
+            local nk = map[key] or OLD_TO_NEW[key]
+            if nk and cdb and cdb.assign[itemID] == nil then cdb.assign[itemID] = nk end
+        end
+        d.selected = map[d.selected] or OLD_TO_NEW[d.selected] or d.selected
+    end
     return d
 end
 
 local version = 0
 local function Changed()
     version = version + 1
+    if CTX.refresh then CTX.refresh() return end
     if Bags.BagWindow and Bags.BagWindow.Refresh then Bags.BagWindow.Refresh() end
 end
 
-function InventoryView.Signature()
+function InventoryView.Signature(ctx)
+    CTX = ctx or BAG_CTX
     local d = DB()
     return table.concat({ "inv", version, d and d.selected or "", d and tostring(d.sidebar) or "" }, ":")
 end
 
--- ordered list of every category (builtin + custom)
-local function AllCategories()
-    local d = DB()
-    local out = {}
-    for _, c in ipairs(BUILTIN) do
-        if c.key == "junk" and d then
-            for _, cc in ipairs(d.custom) do
-                out[#out + 1] = { key = cc.key, name = cc.name, icon = ICON .. "INV_Misc_Bag_EnchantedMageweave", custom = true }
-            end
-        end
-        out[#out + 1] = c
-    end
-    return out
-end
-
-local function CategoryByKey(key)
-    for _, c in ipairs(AllCategories()) do
-        if c.key == key then return c end
-    end
-end
-
-local function ChildrenOf(key)
-    local list = {}
-    for _, c in ipairs(AllCategories()) do
-        if c.parent == key then list[#list + 1] = c.key end
-    end
-    return list
-end
-
-local function InSet(cell, live)
-    if not live or not C_Container.GetContainerItemEquipmentSetInfo then return false end
-    local ok, inSet = pcall(C_Container.GetContainerItemEquipmentSetInfo, cell.bagID, cell.slot)
-    return ok and inSet and true or false
-end
-
--- the leaf category of an occupied cell
-function InventoryView.Categorize(cell, details, live)
-    local d = DB()
-    local itemID = cell.entry and cell.entry.itemID
-    local assigned = d and itemID and d.assign[itemID]
-    if assigned and CategoryByKey(assigned) then return assigned end
-    if cell.bagID == 5 then return "reagentbag" end
-    if not details then return "misc" end
-    if details.quality == 0 then return "junk" end
-    if InSet(cell, live) then return "itemset" end
-    local classID = details.classID
-    if classID == 2 or (classID == 4 and TRINKET_SLOTS[details.equipLoc or ""]) then return "weapons" end
-    if classID == 4 then return "armor" end
-    if classID == 0 then return "consumables" end
-    if classID and PROFESSION_CLASSES[classID] then return "professions" end
-    if classID == 12 or classID == 13 then return "quest" end
-    return "misc"
-end
-
--- does leaf category "leaf" belong to "key" (itself or a parent)?
-local function Belongs(leaf, key)
-    if leaf == key then return true end
-    local c = CategoryByKey(leaf)
-    return c and c.parent == key or false
+local function CategoryExists(key)
+    return Cat and Cat.Exists(key) or false
 end
 
 ---------------------------------------------------------------------------
@@ -190,88 +147,71 @@ local function MakeSmallButton(parent, text)
 end
 
 local function AddCategoryPopup()
-    local key = "H3Z0UI_BAGS_ADD_CATEGORY"
-    StaticPopupDialogs[key] = StaticPopupDialogs[key] or {
+    local ctx = CTX
+    H3z0UI_ShowPopup({
         text = "New category name:",
         button1 = ACCEPT,
         button2 = CANCEL,
         hasEditBox = true,
         maxLetters = 32,
-        OnAccept = function(self)
-            local box = self.editBox or self.EditBox
-            local name = box and strtrim(box:GetText() or "") or ""
-            if name == "" then return end
-            local d = DB()
-            if not d then return end
-            local n = (#d.custom + 1)
-            local newKey
-            repeat
-                newKey = "custom" .. n
-                n = n + 1
-            until not CategoryByKey(newKey)
-            d.custom[#d.custom + 1] = { key = newKey, name = name }
+        OnAccept = function(_, _, name)
+            if not name or name == "" or not Cat then return end
+            CTX = ctx
+            Cat.AddCustom(name, "")
             Changed()
         end,
-        EditBoxOnEnterPressed = function(box)
-            local dialog = box:GetParent()
-            if dialog and dialog.button1 then dialog.button1:Click() end
-        end,
-        EditBoxOnEscapePressed = function(box) box:GetParent():Hide() end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-    StaticPopup_Show(key)
+    })
 end
 
-local function RenamePopup(cat)
-    local key = "H3Z0UI_BAGS_RENAME_CATEGORY"
-    StaticPopupDialogs[key] = {
+local function RenamePopup(key)
+    local ctx = CTX
+    H3z0UI_ShowPopup({
         text = "Rename category:",
         button1 = ACCEPT,
         button2 = CANCEL,
         hasEditBox = true,
         maxLetters = 32,
-        OnShow = function(self)
-            local box = self.editBox or self.EditBox
-            if box then box:SetText(cat.name or "") end
-        end,
-        OnAccept = function(self)
-            local box = self.editBox or self.EditBox
-            local name = box and strtrim(box:GetText() or "") or ""
-            if name == "" then return end
-            local d = DB()
-            for _, cc in ipairs(d and d.custom or {}) do
-                if cc.key == cat.key then cc.name = name end
-            end
+        editText = Cat and Cat.Name(key) or "",
+        OnAccept = function(_, _, name)
+            CTX = ctx
+            if Cat then Cat.Rename(key, name) end
             Changed()
         end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-    StaticPopup_Show(key)
+    })
+end
+
+local function SearchPopup(key)
+    local ctx = CTX
+    local cdb = Cat and Cat.DB()
+    local def = cdb and cdb.custom[key]
+    if not def then return end
+    H3z0UI_ShowPopup({
+        text = "Search text for " .. (def.name or "") .. " (for example #potion|#flask):",
+        button1 = ACCEPT,
+        button2 = CANCEL,
+        hasEditBox = true,
+        maxLetters = 200,
+        editText = def.search or "",
+        OnAccept = function(_, _, value)
+            CTX = ctx
+            Cat.SetSearch(key, value)
+            Changed()
+        end,
+    })
 end
 
 local function DeleteCategory(key)
+    if Cat then Cat.DeleteCustom(key) end
     local d = DB()
-    if not d then return end
-    for i, cc in ipairs(d.custom) do
-        if cc.key == key then table.remove(d.custom, i) break end
-    end
-    for itemID, k in pairs(d.assign) do
-        if k == key then d.assign[itemID] = nil end
-    end
-    if d.selected == key then d.selected = "all" end
+    if d and d.selected == key then d.selected = "all" end
     Changed()
 end
 
-local function EnsureFrames(win)
+local function EnsureFrames(win, ctx)
     local v = win._inventory
     if v then return v end
     v = {}
+    v.ctx = ctx or BAG_CTX
     win._inventory = v
 
     -- sidebar
@@ -290,6 +230,7 @@ local function EnsureFrames(win)
     v.collapse = MakeSmallButton(win._body, "<")
     v.collapse:SetSize(16, 16)
     v.collapse:SetScript("OnClick", function()
+        CTX = v.ctx
         local d = DB()
         if d then d.sidebar = not d.sidebar end
         Changed()
@@ -322,6 +263,13 @@ local function EnsureFrames(win)
     v.mirrors = {}
     v.plus = {}
     return v
+end
+
+-- the scrolling area's content frame (built on first use); the bag window parents
+-- its item holders here before combat so a bag opened in combat still scrolls
+function InventoryView.GetAnchor(win, ctx)
+    local v = EnsureFrames(win, ctx)
+    return v and v.child
 end
 
 function InventoryView.UpdateScrollBar(v)
@@ -367,16 +315,12 @@ local function SidebarRow(v, i)
     return row
 end
 
-local function RenderSidebar(v, counts, total)
+local function RenderSidebar(v, counts, catList)
+    CTX = v.ctx
     local d = DB()
     local list = {}
-    for _, s in ipairs(SPECIAL) do list[#list + 1] = { key = s.key, name = s.name, icon = s.icon, count = counts[s.key] or 0 } end
-    for _, c in ipairs(AllCategories()) do
-        local n = counts[c.key] or 0
-        if not (c.hideEmpty and n == 0) then
-            list[#list + 1] = { key = c.key, name = c.name, icon = c.icon, count = n, indent = c.parent and 14 or 0, custom = c.custom, cat = c }
-        end
-    end
+    for _, sp in ipairs(SPECIAL) do list[#list + 1] = { key = sp.key, name = (sp.key == "onebag" and CTX.oneName) or sp.name, icon = sp.icon, count = counts[sp.key] or 0 } end
+    for _, c in ipairs(catList) do list[#list + 1] = c end
     list[#list + 1] = { key = "__add", name = "Add Category", icon = ICON .. "INV_Misc_QuestionMark", add = true }
 
     local sr, sg, sb = SkinColors()
@@ -387,14 +331,14 @@ local function RenderSidebar(v, counts, total)
         row:SetPoint("TOPLEFT", v.sidebar, "TOPLEFT", 4, y)
         row:SetPoint("RIGHT", v.sidebar, "RIGHT", -4, 0)
         row.icon:ClearAllPoints()
-        row.icon:SetPoint("LEFT", 6 + (e.indent or 0), 0)
+        row.icon:SetPoint("LEFT", 6, 0)
         row.icon:SetTexture(e.icon)
         row.icon:SetDesaturated(e.add and true or false)
         row.text:ClearAllPoints()
         row.text:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
         row.text:SetPoint("RIGHT", row.count, "LEFT", -4, 0)
         row.text:SetText(e.name)
-        row.count:SetText(e.add and "" or tostring(e.count))
+        row.count:SetText(e.add and "" or tostring(e.count or 0))
         row.isSelected = (d and d.selected == e.key) or false
         row.sel:SetVertexColor(sr, sg, sb, 1)
         row.sel:SetShown(row.isSelected)
@@ -408,12 +352,22 @@ local function RenderSidebar(v, counts, total)
         end
         row.count:SetTextColor(0.6, 0.6, 0.6)
         row:SetScript("OnClick", function(_, mouseButton)
+            CTX = v.ctx
             if e.add then AddCategoryPopup() return end
-            if mouseButton == "RightButton" and e.custom and MenuUtil and MenuUtil.CreateContextMenu then
+            if mouseButton == "RightButton" and not IS_SPECIAL[e.key] and Cat
+                and MenuUtil and MenuUtil.CreateContextMenu then
                 MenuUtil.CreateContextMenu(row, function(_, root)
                     root:CreateTitle(e.name)
-                    root:CreateButton("Rename", function() RenamePopup(e.cat) end)
-                    root:CreateButton("Delete", function() DeleteCategory(e.key) end)
+                    if not (Cat.PINNED_TOP and Cat.PINNED_TOP[e.key]) then
+                        root:CreateButton("Move Up", function() Cat.Move(e.key, -1); Changed() end)
+                        root:CreateButton("Move Down", function() Cat.Move(e.key, 1); Changed() end)
+                    end
+                    root:CreateButton("Hide Category", function() Cat.SetHidden(e.key, true); Changed() end)
+                    if e.custom then
+                        root:CreateButton("Rename", function() RenamePopup(e.key) end)
+                        root:CreateButton("Search Text", function() SearchPopup(e.key) end)
+                        root:CreateButton("Delete", function() DeleteCategory(e.key) end)
+                    end
                 end)
                 return
             end
@@ -433,64 +387,71 @@ end
 -- Layout
 ---------------------------------------------------------------------------
 -- returns { placed, mirrors, sections, contentW, contentH, viewW, viewH, anchor }
-function InventoryView.Compute(win, slots, gridOpts, live, sortOpts, buildDetails)
-    local v = EnsureFrames(win)
+function InventoryView.Compute(win, slots, gridOpts, live, sortOpts, buildDetails, ctx)
+    CTX = ctx or BAG_CTX
+    local v = EnsureFrames(win, CTX)
+    v.ctx = CTX
+    local top = CTX.top or 0
     local d = DB() or { pinned = {}, hidden = {}, selected = "all", sidebar = true }
     local selected = d.selected or "all"
-    if selected ~= "all" and selected ~= "onebag" and selected ~= "pinned" and selected ~= "recent"
-        and not CategoryByKey(selected) then
+    if not IS_SPECIAL[selected] and not CategoryExists(selected) then
         selected = "all"
         d.selected = "all"
     end
 
-    -- classify
-    local counts = { all = 0, onebag = 0, pinned = 0, recent = 0 }
-    local leafCells = {}
+    -- All Items: new items are real (usable) buttons in Recent and join their
+    -- own category once they are no longer new
+    local recentLive = (selected == "all") and not (d.hidden and d.hidden.recent)
     local used, total = 0, 0
-    local compare = Bags.SortPlanner.MakeComparator(sortOpts or {})
-    for seq, cell in ipairs(slots) do
+    for _, cell in ipairs(slots) do
         total = total + 1
+        if cell.entry then used = used + 1 end
+        cell.recent = recentLive and cell._newGuid ~= nil or false
+    end
+
+    local groups = Cat and Cat.Group(slots, buildDetails, sortOpts or {}, live) or {}
+    local byKey = {}
+    for _, g in ipairs(groups) do byKey[g.key] = g end
+
+    local compare = Bags.SortPlanner.MakeComparator(sortOpts or {})
+    local function sortDetails(cell)
+        local details = buildDetails(cell.entry)
+        return {
+            entry = {
+                quality = (details and details.quality) or cell.entry.quality,
+                sortClass = details and details.classID, sortSubClass = details and details.subClassID,
+                ilvl = details and details.ilvl, name = details and details.name,
+                expacID = details and details.expacID, itemID = cell.entry.itemID,
+            },
+            count = cell.entry.count or 1, seq = 0,
+        }
+    end
+    local function SortedCopy(list)
+        local out, keyOf = {}, {}
+        for _, c in ipairs(list) do out[#out + 1] = c; keyOf[c] = sortDetails(c) end
+        table.sort(out, function(x, y) return compare(keyOf[x], keyOf[y]) end)
+        return out
+    end
+
+    -- counts for the sidebar
+    local counts = { all = used, onebag = used, pinned = 0, recent = 0 }
+    for _, cell in ipairs(slots) do
         if cell.entry then
-            used = used + 1
-            local details = buildDetails(cell.entry)
-            cell._invDetails = details
-            cell._sortDetails = {
-                entry = {
-                    quality = (details and details.quality) or cell.entry.quality,
-                    sortClass = details and details.classID,
-                    sortSubClass = details and details.subClassID,
-                    ilvl = details and details.ilvl,
-                    name = details and details.name,
-                    expacID = details and details.expacID,
-                    itemID = cell.entry.itemID,
-                },
-                count = cell.entry.count or 1,
-                seq = seq,
-            }
-            local leaf = InventoryView.Categorize(cell, details, live)
-            cell._invLeaf = leaf
-            leafCells[leaf] = leafCells[leaf] or {}
-            table.insert(leafCells[leaf], cell)
-            counts[leaf] = (counts[leaf] or 0) + 1
-            local parent = CategoryByKey(leaf)
-            if parent and parent.parent then counts[parent.parent] = (counts[parent.parent] or 0) + 1 end
-            counts.all = counts.all + 1
-            counts.onebag = counts.onebag + 1
             if d.pinned[cell.entry.itemID] then counts.pinned = counts.pinned + 1 end
             if cell._newGuid ~= nil then counts.recent = counts.recent + 1 end
         end
     end
-    local function less(a, b) return compare(a._sortDetails, b._sortDetails) end
-
-    local function CellsFor(key)
-        local out = {}
-        for leaf, list in pairs(leafCells) do
-            if Belongs(leaf, key) then
-                for _, c in ipairs(list) do out[#out + 1] = c end
+    local catList = {}
+    for _, key in ipairs(Cat and Cat.Order() or {}) do
+        if key ~= "recent" and key ~= "empty" and not Cat.IsHidden(key) then
+            local g = byKey[key]
+            local n = 0
+            for _, c in ipairs(g and g.cells or {}) do n = n + 1 end
+            if n > 0 or Cat.IsCustom(key) then
+                catList[#catList + 1] = { key = key, name = Cat.Name(key), icon = Cat.Icon(key),
+                    count = n, custom = Cat.IsCustom(key) }
             end
         end
-        table.sort(out, less)
-        return out
     end
 
     -- sections to show
@@ -501,44 +462,43 @@ function InventoryView.Compute(win, slots, gridOpts, live, sortOpts, buildDetail
         for _, cell in ipairs(slots) do
             if cell.entry and d.pinned[cell.entry.itemID] then out[#out + 1] = cell end
         end
-        table.sort(out, less)
-        return out
+        return SortedCopy(out)
     end
     local function RecentCells()
         local out = {}
         for _, cell in ipairs(slots) do
             if cell.entry and cell._newGuid ~= nil then out[#out + 1] = cell end
         end
-        table.sort(out, less)
-        return out
+        return SortedCopy(out)
+    end
+    local function CategorySection(key)
+        local g = byKey[key]
+        AddSection({ key = key, title = Cat.Name(key), cells = g and g.cells or {}, live = true, plus = true, count = true })
     end
 
     if selected == "onebag" then
-        AddSection({ key = "onebag", title = "OneBag", cells = slots, live = true, includeEmpty = true })
+        AddSection({ key = "onebag", title = CTX.oneName or "OneBag", cells = slots, live = true, includeEmpty = true })
     elseif selected == "pinned" then
         AddSection({ key = "pinned", title = "Pinned Items", sub = "Middle Click to Add or Remove", cells = PinnedCells(), live = true, plus = true })
     elseif selected == "recent" then
         AddSection({ key = "recent", title = "Recent Items", cells = RecentCells(), live = true })
     elseif selected == "all" then
+        -- Hearthstone and Keystone always on top
+        for _, key in ipairs({ "hearth", "keystone" }) do
+            if byKey[key] and #byKey[key].cells > 0 then CategorySection(key) end
+        end
         AddSection({ key = "pinned", title = "Pinned Items", sub = "Middle Click to Add or Remove", cells = PinnedCells(), mirror = true, plus = true, hideable = true })
-        AddSection({ key = "recent", title = "Recent Items", sub = "Extra quickview display, your items are also in their category", cells = RecentCells(), mirror = true, hideable = true })
-        for _, c in ipairs(AllCategories()) do
-            if not c.parent then
-                local cells = CellsFor(c.key)
-                if #cells > 0 or c.custom then
-                    AddSection({ key = c.key, title = c.name, cells = cells, live = true, plus = true, count = true })
-                end
-            end
+        AddSection({ key = "recent", title = "Recent Items", sub = "New items - use them right here; they move to their category after a while", cells = (byKey.recent and byKey.recent.cells) or {}, live = true, hideable = true })
+        for _, c in ipairs(catList) do
+            if c.key ~= "hearth" and c.key ~= "keystone" then CategorySection(c.key) end
         end
         -- free slots at the end
-        local free = {}
-        for _, cell in ipairs(slots) do if not cell.entry then free[#free + 1] = cell end end
+        local free = byKey.empty and byKey.empty.cells or {}
         if #free > 0 then
-            AddSection({ key = "free", title = "Free Slots", cells = free, live = true, count = true, collapseFree = true })
+            AddSection({ key = "free", title = "Free Slots", cells = free, live = true, count = true })
         end
     else
-        local cat = CategoryByKey(selected)
-        AddSection({ key = selected, title = cat and cat.name or selected, cells = CellsFor(selected), live = true, plus = true, count = true })
+        CategorySection(selected)
     end
 
     -- positions (relative to the scroll child)
@@ -555,12 +515,7 @@ function InventoryView.Compute(win, slots, gridOpts, live, sortOpts, buildDetail
         sec.hidden = hidden
         if not hidden then
             local cells = sec.cells
-            if sec.collapseFree and #cells > 1 then
-                -- empty slots: show one with the free count
-                local first = cells[1]
-                first._freeCount = #cells
-                cells = { first }
-            end
+
             local n = #cells + (sec.plus and 1 or 0)
             for i, cell in ipairs(cells) do
                 local col = (i - 1) % cols
@@ -586,7 +541,7 @@ function InventoryView.Compute(win, slots, gridOpts, live, sortOpts, buildDetail
     local sidebarH = 0
     if sidebarOn then
         v.sidebar:Show()
-        sidebarH = RenderSidebar(v, counts, total)
+        sidebarH = RenderSidebar(v, counts, catList)
     else
         v.sidebar:Hide()
     end
@@ -594,18 +549,18 @@ function InventoryView.Compute(win, slots, gridOpts, live, sortOpts, buildDetail
     local leftW = sidebarOn and (SIDEBAR_W + SIDEBAR_GAP) or 0
     local viewH = math.min(MAX_VIEW_H, math.max(contentH, sidebarH, 200))
     v.scroll:ClearAllPoints()
-    v.scroll:SetPoint("TOPLEFT", win._body, "TOPLEFT", leftW, -20)
+    v.scroll:SetPoint("TOPLEFT", win._body, "TOPLEFT", leftW, -20 - top)
     v.scroll:SetSize(gridW + 8, viewH)
     v.child:SetSize(gridW + 8, contentH)
     v.sidebar:ClearAllPoints()
-    v.sidebar:SetPoint("TOPLEFT", win._body, "TOPLEFT", 0, 0)
+    v.sidebar:SetPoint("TOPLEFT", win._body, "TOPLEFT", 0, -top)
     v.sidebar:SetHeight(viewH + 20)
     v.collapse._label:SetText(sidebarOn and "<" or ">")
     v.collapse:ClearAllPoints()
     if sidebarOn then
         v.collapse:SetPoint("TOPRIGHT", v.sidebar, "TOPRIGHT", -4, -4)
     else
-        v.collapse:SetPoint("TOPLEFT", win._body, "TOPLEFT", 0, -2)
+        v.collapse:SetPoint("TOPLEFT", win._body, "TOPLEFT", 0, -2 - top)
     end
     v.collapse:Show()
     v.scroll:Show()
@@ -613,7 +568,7 @@ function InventoryView.Compute(win, slots, gridOpts, live, sortOpts, buildDetail
     if (v.scroll:GetVerticalScroll() or 0) > maxScroll then v.scroll:SetVerticalScroll(maxScroll) end
 
     -- window title: "Inventory  used / total Items"
-    if win._title then
+    if win._title and not CTX.keepTitle then
         win._title:SetText(string.format("Inventory  |cff9aa3ad%d / %d Items|r", used, total))
     end
 
@@ -657,11 +612,12 @@ local function AssignCursorItem(sectionKey)
     if not d then return false end
     if sectionKey == "pinned" then
         d.pinned[itemID] = true
-    elseif CategoryByKey(sectionKey) then
-        d.assign[itemID] = sectionKey
+    elseif CategoryExists(sectionKey) and Cat then
+        Cat.Assign(itemID, sectionKey)
     end
-    -- put the item down in a free bag slot if it is still on the cursor
-    for _, bag in ipairs({ 0, 1, 2, 3, 4 }) do
+    -- put the item down in a free bag slot if it is still on the cursor (the bag window only:
+    -- from the bank, clearing the cursor leaves the item where it was)
+    for _, bag in ipairs(CTX.key == "inventory" and { 0, 1, 2, 3, 4 } or {}) do
         local free = C_Container.GetContainerNumFreeSlots(bag)
         if free and free > 0 then
             local n = C_Container.GetContainerNumSlots(bag) or 0
@@ -691,8 +647,8 @@ local function PlusButton(v, i)
     b.text:SetText("+")
     b.text:SetTextColor(0.6, 0.6, 0.6)
     b:RegisterForClicks("LeftButtonUp")
-    b:SetScript("OnReceiveDrag", function(self) AssignCursorItem(self.sectionKey) end)
-    b:SetScript("OnClick", function(self) AssignCursorItem(self.sectionKey) end)
+    b:SetScript("OnReceiveDrag", function(self) CTX = v.ctx; AssignCursorItem(self.sectionKey) end)
+    b:SetScript("OnClick", function(self) CTX = v.ctx; AssignCursorItem(self.sectionKey) end)
     b:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(self.sectionKey == "pinned" and "Pin an item" or "Add an item to this category")
@@ -710,10 +666,13 @@ local function MirrorButton(v, i)
     b = Bags.ItemButtons.CreateCached(v.child)
     b:RegisterForClicks("LeftButtonUp", "MiddleButtonUp")
     b:SetScript("OnClick", function(self, mouseButton)
+        CTX = v.ctx
         local cell = self._cell
         if not (cell and cell.entry) then return end
         if mouseButton == "MiddleButton" then
             InventoryView.TogglePin(cell.entry.itemID)
+        elseif CTX.focus then
+            CTX.focus(cell.entry.itemID)
         elseif Bags.BagWindow and Bags.BagWindow.FocusItem then
             -- left click: flash the item in its category
             Bags.BagWindow.FocusItem(cell.entry.itemID)
@@ -731,13 +690,17 @@ function InventoryView.TogglePin(itemID)
 end
 
 -- middle-click on a live item button pins / unpins it
-function InventoryView.HookButton(btn)
+function InventoryView.HookButton(btn, ctx)
     if btn._h3zPinHooked then return end
     btn._h3zPinHooked = true
+    ctx = ctx or BAG_CTX
     btn:HookScript("OnMouseUp", function(self, mouseButton)
         if mouseButton ~= "MiddleButton" then return end
         local s = GetSettings()
         if not (s and s.appearance and s.appearance.layoutMode == "inventory") then return end
+        -- the bank pins only while it shows this layout (not in its plain grid)
+        if ctx.active and not ctx.active() then return end
+        CTX = ctx
         local bagID, slot = self:GetBagID(), self:GetID()
         local info = bagID and slot and C_Container.GetContainerItemInfo(bagID, slot)
         if info and info.itemID then InventoryView.TogglePin(info.itemID) end
@@ -747,6 +710,7 @@ end
 function InventoryView.Finish(win, result, live, matcherFn)
     local v = win._inventory
     if not v then return end
+    CTX = v.ctx
     local sr, sg, sb = SkinColors()
     local size = result.size
     local gridW = (v.child:GetWidth() or 100) - 8
@@ -757,14 +721,16 @@ function InventoryView.Finish(win, result, live, matcherFn)
         h:ClearAllPoints()
         h:SetPoint("TOPLEFT", v.child, "TOPLEFT", 0, sec.y)
         h:SetWidth(gridW)
-        local n = #sec.cells
-        if sec.collapseFree then n = #sec.cells end
+        local n = 0
+        for _, c in ipairs(sec.cells) do n = n + (c._freeCount or 1) end
         h.title:SetText(sec.count and string.format("%s (%d)", sec.title, n) or sec.title)
         h.title:SetTextColor(sr, sg, sb)
         h.sub:SetText(sec.sub and ("(" .. sec.sub .. ")") or "")
         if sec.hideable then
             h.toggle._label:SetText(sec.hidden and "Show" or "Hide")
             h.toggle:SetScript("OnClick", function()
+                CTX = v.ctx
+                d = DB()
                 if d then d.hidden[sec.key] = not d.hidden[sec.key] or nil end
                 Changed()
             end)

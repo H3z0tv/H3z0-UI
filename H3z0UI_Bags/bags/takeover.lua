@@ -96,9 +96,11 @@ local function InstallHooks()
         Takeover.OpenForFrame(frame, forceUpdate)
     end)
 
-    hooksecurefunc("OpenAllBagsMatchingContext", function(frame)
-        Takeover.OpenForFrame(frame)
-    end)
+    if type(_G.OpenAllBagsMatchingContext) == "function" then
+        hooksecurefunc("OpenAllBagsMatchingContext", function(frame)
+            Takeover.OpenForFrame(frame)
+        end)
+    end
 
     hooksecurefunc("OpenBag", function()
         if not active then return end
@@ -117,9 +119,38 @@ local function InstallHooks()
     end)
 end
 
+-- The Classic games show the bank bags in the same container frames as the
+-- player's bags, so the frames can't be hidden for good there: only a frame
+-- that opens one of the player's own bags is closed again (the H3z0 bag
+-- window shows those); bank bags keep Blizzard's bag frames.
+local IS_CLASSIC = ns.Client and ns.Client.isClassic
+local classicHooked = {}
+local function ClassicContainerShown(frame)
+    if not active then return end
+    local id = frame.GetID and frame:GetID()
+    if type(id) == "number" and id >= 0 and id <= (tonumber(NUM_BAG_SLOTS) or 4) then
+        frame:Hide()
+    end
+end
+
 function Takeover.Apply()
     if active then return end
     active = true
+
+    if IS_CLASSIC then
+        for i = 1, (tonumber(NUM_CONTAINER_FRAMES) or 13) do
+            local frame = _G["ContainerFrame" .. i]
+            if frame and not classicHooked[frame] then
+                classicHooked[frame] = true
+                frame:HookScript("OnShow", ClassicContainerShown)
+            end
+            if frame and frame:IsShown() then ClassicContainerShown(frame) end
+        end
+        originalToggleAllBags = _G.ToggleAllBags
+        _G.ToggleAllBags = OurToggleAllBags
+        InstallHooks()
+        return
+    end
 
     if not hiddenHolder then
         hiddenHolder = Bags.TakeoverShared.MakeHiddenHolder()

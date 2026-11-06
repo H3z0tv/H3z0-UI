@@ -462,13 +462,6 @@ local function BuildMinimapTab(tabContent)
             y = y - FORM_ROW
         end
 
-        -- Coordinates settings live in H3z0 Features > Map
-        y = y - 10
-        local coordsNote = GUI:CreateLabel(tabContent, "Map coordinates are in H3z0 Features > Map.", 11, C.textMuted)
-        coordsNote:SetPoint("TOPLEFT", PAD, y)
-        coordsNote:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-        coordsNote:SetJustifyH("LEFT")
-        y = y - 22
     end
 
     -- SECTION 5: Dungeon Eye (LFG Queue Button)
@@ -985,18 +978,7 @@ BuildDatatextTab = function(tabContent)
         end)
         addPanelBtn:SetPoint("TOPLEFT", PAD, y)
 
-        -- Bottom Bar preset: full-width bar along the bottom of the screen
-        local hasBottomBar = false
-        for _, p in ipairs(panels) do
-            if p.id == "bottombar" then hasBottomBar = true break end
-        end
-        local presetBtn = GUI:CreateButton(tabContent, hasBottomBar and "Bottom Bar Added" or "Add Bottom Bar Preset", 190, 28, function()
-            if hasBottomBar then return end
-            table.insert(db.h3z0uiDatatexts.panels, ns.BottomBarPreset())
-            RefreshDatapanels()
-            RebuildDatatextTab()
-        end)
-        presetBtn:SetPoint("LEFT", addPanelBtn, "RIGHT", 10, 0)
+        -- (the old datapanel Bottom Bar preset is gone: the Bottom Bar is its own page)
         y = y - 40
     end
 

@@ -55,6 +55,27 @@ function Datatexts.FormatGold(copper)
     return goldStr .. "g"
 end
 
+-- addon memory list for the System tooltip, refreshed at most every 15 s
+local memCache, memTotal, memTime = {}, 0, -100
+function Datatexts.GetAddonMemoryList()
+    local now = GetTime()
+    if now - memTime < 15 then return memCache, memTotal end
+    memTime = now
+    UpdateAddOnMemoryUsage()
+    local list, total = {}, 0
+    for i = 1, C_AddOns.GetNumAddOns() do
+        local ok, loaded = ns.SafeCall("best-effort-style", C_AddOns.IsAddOnLoaded, i)
+        if ok and loaded then
+            local mem = GetAddOnMemoryUsage(i)
+            total = total + mem
+            list[#list + 1] = { name = C_AddOns.GetAddOnInfo(i), mem = mem }
+        end
+    end
+    table.sort(list, function(a, b) return a.mem > b.mem end)
+    memCache, memTotal = list, total
+    return list, total
+end
+
 local sharedTickerFns = {}
 local sharedTicker = nil
 
@@ -254,6 +275,66 @@ function Datatexts:Get(id)
     return self.registry[id]
 end
 
+---------------------------------------------------------------------------
+-- Left clicks that open Blizzard windows go through Blizzard's own micro
+-- buttons (a secure macro button over the slot). Opening the Character
+-- window from addon code taints it ("attempt to compare a secret number
+-- value (execution tainted by H3z0UI)"). Right / middle clicks pass through
+-- to the datatext as before.
+---------------------------------------------------------------------------
+local SECURE_LEFT = {
+    durability = { need = "CharacterMicroButton", macro = "/click CharacterMicroButton" },
+    gold       = { need = "CharacterMicroButton", macro = "/click CharacterMicroButton\n/click CharacterFrameTab3" },
+    currencies = { need = "CharacterMicroButton", macro = "/click CharacterMicroButton\n/click CharacterFrameTab3" },
+    reputation = { need = "CharacterMicroButton", macro = "/click CharacterMicroButton\n/click CharacterFrameTab2" },
+    guild      = { need = "GuildMicroButton",     macro = "/click GuildMicroButton" },
+    mythickey  = { need = "LFDMicroButton",       macro = "/click LFDMicroButton" },
+}
+
+local function HideSecureLeft(slotFrame)
+    local o = slotFrame and slotFrame._h3zSecureLeft
+    if not o or not o:IsShown() then return end
+    if InCombatLockdown() then
+        local w = CreateFrame("Frame")
+        w:RegisterEvent("PLAYER_REGEN_ENABLED")
+        w:SetScript("OnEvent", function(self)
+            self:UnregisterAllEvents()
+            if not o._h3zWanted then o:Hide() end
+        end)
+        return
+    end
+    o:Hide()
+end
+
+local function ApplySecureLeft(slotFrame, datatextID)
+    local spec = SECURE_LEFT[datatextID]
+    local o = slotFrame._h3zSecureLeft
+    if o then o._h3zWanted = spec and true or nil end
+    if not spec or not _G[spec.need] or InCombatLockdown() then
+        if not spec then HideSecureLeft(slotFrame) end
+        return
+    end
+    if not o then
+        o = CreateFrame("Button", nil, slotFrame, "SecureActionButtonTemplate")
+        o:SetAllPoints(slotFrame)
+        o:RegisterForClicks("LeftButtonUp")
+        o:SetAttribute("useOnKeyDown", false)
+        if o.SetPassThroughButtons then pcall(o.SetPassThroughButtons, o, "RightButton", "MiddleButton", "Button4", "Button5") end
+        -- the slot keeps its tooltip / hover
+        o:SetScript("OnEnter", function() local f = slotFrame:GetScript("OnEnter"); if f then pcall(f, slotFrame) end end)
+        o:SetScript("OnLeave", function() local f = slotFrame:GetScript("OnLeave"); if f then pcall(f, slotFrame) end end)
+        o:HookScript("PreClick", function()
+            if GameTooltip:IsShown() and GameTooltip:GetOwner() == slotFrame then GameTooltip:Hide() end
+        end)
+        slotFrame._h3zSecureLeft = o
+    end
+    o._h3zWanted = true
+    o:SetFrameLevel(slotFrame:GetFrameLevel() + 3)
+    o:SetAttribute("type1", "macro")
+    o:SetAttribute("macrotext1", spec.macro)
+    o:Show()
+end
+
 function Datatexts:AttachToSlot(slotFrame, datatextID, settings)
     if not slotFrame then
         print("|cffff0000H3z0UI:|r Invalid slot frame provided")
@@ -305,6 +386,8 @@ function Datatexts:AttachToSlot(slotFrame, datatextID, settings)
         end
     end
 
+    ApplySecureLeft(slotFrame, datatextID)
+
     slotFrame.datatextInstance = {
         id = datatextID,
         frame = instance,
@@ -350,6 +433,8 @@ function Datatexts:DetachFromSlot(slotFrame)
         ns.SafeCall("bulkhead", instance.def.OnDisable, instance.frame)
     end
 
+    if slotFrame._h3zSecureLeft then slotFrame._h3zSecureLeft._h3zWanted = nil end
+    HideSecureLeft(slotFrame)
     slotFrame:SetScript("OnClick", nil)
     slotFrame:SetScript("OnDoubleClick", nil)
     slotFrame:SetScript("OnEnter", nil)
@@ -662,20 +747,9 @@ Datatexts:Register("system", {
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine(ns.L["AddOn Memory"], 1, 1, 1)
 
-            UpdateAddOnMemoryUsage()
-            local addons = {}
-            local totalMem = 0
-            for i = 1, C_AddOns.GetNumAddOns() do
-                local ok, loaded = ns.SafeCall("best-effort-style", C_AddOns.IsAddOnLoaded, i)
-                if ok and loaded then
-                    local mem = GetAddOnMemoryUsage(i)
-                    totalMem = totalMem + mem
-                    local name = C_AddOns.GetAddOnInfo(i)
-                    addons[#addons + 1] = { name = name, mem = mem }
-                end
-            end
-
-            table.sort(addons, function(a, b) return a.mem > b.mem end)
+            -- reading every addon's memory stalls the game for a moment
+            -- (worse with many addons): do it at most every 15 seconds
+            local addons, totalMem = Datatexts.GetAddonMemoryList()
 
             local maxDisplay = 20
             for i = 1, min(#addons, maxDisplay) do
@@ -2606,7 +2680,7 @@ Datatexts:Register("bags", {
 
         frame.Update = Update
 
-        frame:RegisterEvent("BAG_UPDATE")
+        frame:RegisterEvent("BAG_UPDATE_DELAYED")  -- once after a burst of bag changes
         frame:RegisterEvent("PLAYER_ENTERING_WORLD")
         frame:SetScript("OnEvent", Update)
 
@@ -2702,6 +2776,20 @@ Datatexts:Register("coords", {
         frame.Update = Update
         frame.ticker = C_Timer.NewTicker(0.5, Update)
 
+        -- a fixed width (room for "100, 100"): the text changes width as you
+        -- move, which made the bar shift and the coordinates run into the
+        -- next slot (FPS, ...) while it couldn't re-layout in combat
+        do
+            local label = GetLabel(ns.L["Coords: "], "", slotFrame.shortLabel, slotFrame.noLabel)
+            text:SetText(label .. "100, 100")
+            local w = text:GetStringWidth() or 0
+            if w > 0 then
+                slotFrame._h3z0uiFixedWidth = math.ceil(w) + 10
+                if slotFrame._h3z0uiOnWidthDirty then pcall(slotFrame._h3z0uiOnWidthDirty) end
+            end
+            text:SetJustifyH("CENTER")
+        end
+
         slotFrame:EnableMouse(true)
         slotFrame:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
@@ -2735,6 +2823,8 @@ Datatexts:Register("coords", {
             frame.ticker:Cancel()
             frame.ticker = nil
         end
+        local slot = frame.GetParent and frame:GetParent()
+        if slot then slot._h3z0uiFixedWidth = nil end
     end,
 })
 
@@ -2991,8 +3081,37 @@ Datatexts:Register("mythickey", {
 
         frame:RegisterEvent("PLAYER_ENTERING_WORLD")
         frame:RegisterEvent("CHALLENGE_MODE_MAPS_UPDATE")
-        frame:RegisterEvent("BAG_UPDATE")
-        frame:SetScript("OnEvent", Update)
+        frame:RegisterEvent("BAG_UPDATE_DELAYED")  -- once after a burst of bag changes
+        -- lowering / changing the key rewrites the keystone item in place (no bag
+        -- change), so listen for the item changing and re-read a moment later
+        frame:RegisterEvent("ITEM_CHANGED")
+        frame:RegisterEvent("ITEM_COUNT_CHANGED")
+        frame:RegisterEvent("CHALLENGE_MODE_START")
+        frame:RegisterEvent("CHALLENGE_MODE_RESET")
+        frame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+        frame:RegisterEvent("MYTHIC_PLUS_NEW_WEEKLY_RECORD")
+        frame:RegisterEvent("GROUP_ROSTER_UPDATE")
+        -- only while this slot still shows the key: a slot that was switched to
+        -- something else must not get the key text written into it again
+        local function StillMine()
+            local inst = slotFrame.datatextInstance
+            return inst and inst.frame == frame and frame:IsVisible()
+        end
+        frame:SetScript("OnEvent", function()
+            if not StillMine() then return end
+            Update()
+            C_Timer.After(1, function() if StillMine() then Update() end end)
+        end)
+        -- safety net: the game does not announce every keystone change
+        if frame.keyTicker then frame.keyTicker:Cancel() end
+        frame.keyTicker = C_Timer.NewTicker(5, function(ticker)
+            if StillMine() then
+                Update()
+            elseif not slotFrame.datatextInstance or slotFrame.datatextInstance.frame ~= frame then
+                ticker:Cancel()
+                if frame.keyTicker == ticker then frame.keyTicker = nil end
+            end
+        end)
 
         slotFrame:EnableMouse(true)
         slotFrame:SetScript("OnEnter", function(self)
@@ -3033,6 +3152,7 @@ Datatexts:Register("mythickey", {
 
     OnDisable = function(frame)
         frame:UnregisterAllEvents()
+        if frame.keyTicker then frame.keyTicker:Cancel(); frame.keyTicker = nil end
     end,
 })
 
@@ -3050,7 +3170,7 @@ Datatexts:Register("playerspec", {
         local iconString = "|T%s:14:14:0:0:64:64:4:60:4:60|t"
         frame.activeLoadoutID = nil
 
-        local isForever = ns.Client and ns.Client.isForever
+        local isForever = ns.Client and ns.Client.isLegacy
         local TLM = TalentLoadoutManagerAPI
         local hasTLM = not isForever and TLM and TLM.GlobalAPI and TLM.CharacterAPI and TLM.Event
 

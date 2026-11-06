@@ -79,7 +79,7 @@ local function Build(tabContent)
     if ib.h3zHideBlizzardMenus == nil then ib.h3zHideBlizzardMenus = true end
 
     Section("Bottom Bar")
-    Info("The Bottom Bar is the full-width Info Bar: menu icons and spec on the left, the clock in the middle, professions, gold, bags and location on the right.", 34)
+    Info("The Bottom Bar is the full-width bar at the bottom of the screen: menu icons and spec on the left, the clock in the middle, professions, gold, bags and location on the right.", 34)
     Place(GUI:CreateFormCheckbox(tabContent, "Show Bottom Bar", "enabled", ib, Refresh))
     Place(GUI:CreateFormDropdown(tabContent, "Position", {
         { value = "BOTTOM", text = "Bottom of the screen" },

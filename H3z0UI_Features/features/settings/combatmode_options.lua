@@ -13,12 +13,24 @@ local C = GUI.Colors
 local Shared = ns.H3z0UI_Options
 
 -- Folder of the Combat Mode addon (now titled "Action Combat Mode"); found by name or title
-local CM_NAME = "CombatMode"
+local CM_NAME = "TrueReticle"
+local isTR = true
 local function FindCM()
     local hh = _G.H3z0UI_Handheld
-    local list = hh and hh.FindCombatModeAddOns and hh.FindCombatModeAddOns()
+    local list = hh and hh.FindReticleAddOns and hh.FindReticleAddOns()
     if list and list[1] then CM_NAME = list[1] end
     return CM_NAME
+end
+
+-- opens True Reticle's own settings by running its slash command (/tr)
+local function OpenTrueReticle()
+    for k, v in pairs(_G) do
+        if type(k) == "string" and k:match("^SLASH_.+%d$") and v == "/tr" then
+            local fn = _G.SlashCmdList and _G.SlashCmdList[k:match("^SLASH_(.-)%d+$")]
+            if fn then fn("") return true end
+        end
+    end
+    return false
 end
 
 local function CMInstalled()
@@ -49,10 +61,10 @@ local function BuildCombatModeTab(tabContent)
     local PADDING = Shared.PADDING
     local db = Shared.GetDB()
 
-    GUI:SetSearchContext({tabIndex = 1, tabName = "H3z0 Features", subTabIndex = 2, subTabName = "Combat Mode"})
+    GUI:SetSearchContext({tabIndex = 1, tabName = "H3z0 Features", subTabIndex = 2, subTabName = "True Reticle"})
 
-    GUI:SetSearchSection("Combat Mode")
-    local header = GUI:CreateSectionHeader(tabContent, "Combat Mode")
+    GUI:SetSearchSection("True Reticle")
+    local header = GUI:CreateSectionHeader(tabContent, "True Reticle")
     header:SetPoint("TOPLEFT", PADDING, y)
     y = y - header.gap
 
@@ -65,7 +77,7 @@ local function BuildCombatModeTab(tabContent)
         return label
     end
 
-    Text("Action Combat Mode (folder CombatMode, by djsmithdev) adds action-combat controls: Mouse Look targeting instead of tab-targeting, a crosshair, soft-target reticle, click casting and ally cycling. It is a separate addon that is not included in H3z0 UI; install it from CurseForge or GitHub if you want it.", 56)
+    Text("True Reticle (type /tr) adds action-camera controls: free look, a reticle, soft targeting and click casting. It is a separate addon that is not included in H3z0 UI; install it from CurseForge if you want it. With a controller (Handheld Mode, PC Controller) H3z0 UI switches it off, with mouse and keyboard it switches it on.", 70)
 
     local status = Text("", 20, C.text)
     local hint = Text("", 36)
@@ -73,13 +85,13 @@ local function BuildCombatModeTab(tabContent)
     local function Refresh()
         if not CMInstalled() then
             status:SetText("Status: |cffff5555Not installed|r")
-            hint:SetText("Install the Action Combat Mode / CombatMode addon (CurseForge / GitHub) into Interface\\AddOns, then restart the game.")
+            hint:SetText("Install the True Reticle addon (CurseForge) into Interface\\AddOns, then restart the game.")
         elseif CMLoaded() then
             status:SetText("Status: |cff55ff55Active|r")
-            hint:SetText("Open the Combat Mode settings below, or type /cm in chat.")
+            hint:SetText("Open the True Reticle settings below, or type /tr in chat.")
         elseif CMEnabled() then
             status:SetText("Status: |cffffff55Enabled - reload to activate|r")
-            hint:SetText("Press Reload UI to load Combat Mode.")
+            hint:SetText("Press Reload UI to load True Reticle.")
         else
             status:SetText("Status: |cffaaaaaaDisabled|r")
             hint:SetText("Use the button below to enable it, then reload the UI.")
@@ -89,18 +101,18 @@ local function BuildCombatModeTab(tabContent)
 
     y = y - 4
 
-    local openBtn = GUI:CreateButton(tabContent, "Open Combat Mode Settings", 220, 28, function()
-        if CMLoaded() and _G.CM and _G.CM.OpenOptions then
-            _G.CM.OpenOptions()
+    local openBtn = GUI:CreateButton(tabContent, "Open True Reticle Settings", 220, 28, function()
+        if CMLoaded() and OpenTrueReticle() then
+            return
         else
-            print("|cff00ff99H3z0 UI|r: Combat Mode is not active. Enable it and reload the UI first.")
+            print("|cff00ff99H3z0 UI|r: True Reticle is not active. Enable it and reload the UI first.")
         end
     end)
     openBtn:SetPoint("TOPLEFT", PADDING, y)
     y = y - 36
 
     local toggleBtn
-    toggleBtn = GUI:CreateButton(tabContent, "Enable / Disable Combat Mode", 220, 28, function()
+    toggleBtn = GUI:CreateButton(tabContent, "Enable / Disable True Reticle", 220, 28, function()
         if not CMInstalled() then Refresh() return end
         local hh = _G.H3z0UI_Handheld
         if hh and hh.SetAddOnEnabled then
@@ -111,7 +123,7 @@ local function BuildCombatModeTab(tabContent)
             C_AddOns.EnableAddOn(CM_NAME)
         end
         Refresh()
-        print("|cff00ff99H3z0 UI|r: Combat Mode setting changed - press Reload UI to apply.")
+        print("|cff00ff99H3z0 UI|r: True Reticle setting changed - press Reload UI to apply.")
     end)
     toggleBtn:SetPoint("TOPLEFT", PADDING, y)
     y = y - 36
@@ -126,7 +138,7 @@ local function BuildCombatModeTab(tabContent)
     header2:SetPoint("TOPLEFT", PADDING, y)
     y = y - header2.gap
 
-    Text("Combat Mode draws its own crosshair. If you use it, turn off the H3z0 UI crosshair (Cursor & Crosshair tab) to avoid seeing two.", 40)
+    Text("True Reticle draws its own crosshair. If you use it, turn off the H3z0 UI crosshair (Cursor & Crosshair tab) to avoid seeing two.", 40)
 
     local ch = db and db.crosshair
     if ch then

@@ -528,9 +528,11 @@ function BuildBar(barKey)
                 local cont = ActionBarsOwned.containers["microbar"]
                 if not btns or not cont then return end
 
+                -- the Bottom Bar's Game Menu icon holds Blizzard's menu button while it shows
+                local taken = _G.H3z0UI_GameMenuButtonTaken and _G.H3z0UI_GameMenuButtonTaken()
                 local needsReparent = false
                 for _, btn in ipairs(btns) do
-                    if btn:GetParent() ~= cont then
+                    if btn:GetParent() ~= cont and not (taken and btn == _G.MainMenuMicroButton) then
                         needsReparent = true
                         break
                     end
@@ -550,7 +552,7 @@ function BuildBar(barKey)
 
                 if needsReparent then
                     for _, btn in ipairs(btns) do
-                        if btn:GetParent() ~= cont then
+                        if btn:GetParent() ~= cont and not (taken and btn == _G.MainMenuMicroButton) then
                             btn:SetParent(cont)
                         end
                     end

@@ -464,6 +464,13 @@ local function BuildAutomation(L, generalDB)
     local pauseW = GUI:CreateFormCheckbox(s.frame, nil, "questHoldShift", generalDB, nil,
         { description = ns.L["Hold Shift while interacting to temporarily disable the quest and gossip automations above."] })
     s.AddRow(row(s.frame, ns.L["Auto Select Single Gossip Option"], gossipW), row(s.frame, ns.L["Hold Shift to Pause Quest/Gossip Automation"], pauseW))
+    -- Lorekeeper shows every quest and gossip itself: these are off while it is on
+    if _G.H3z0UI_LorekeeperActive and _G.H3z0UI_LorekeeperActive() then
+        local reason = "Off while Lorekeeper is on: every quest and gossip goes through Lorekeeper."
+        for _, w in ipairs({ questW, turnInW, gossipW, pauseW }) do
+            if w and w.SetEnabled then pcall(w.SetEnabled, w, false, reason) end
+        end
+    end
 
     local keyW = GUI:CreateFormCheckbox(s.frame, nil, "autoInsertKey", generalDB, nil,
         { description = ns.L["Automatically place your Mythic+ keystone into the font of power when you open the keystone window."] })
@@ -568,12 +575,11 @@ local function BuildAutomation(L, generalDB)
         { description = ns.L["Guard the Release Spirit button while you are dead in a raid: it locks during a 3-second countdown and afterwards only works while Ctrl is held, so you don't release before a battle resurrection."] })
     s.AddRow(row(s.frame, ns.L["Auto Release Spirit"], releaseW), row(s.frame, ns.L["Block Release in Raids"], blockReleaseW))
 
-    local unwrapW = GUI:CreateFormCheckbox(s.frame, nil, "autoUnwrapCollections", generalDB, function()
-        if ns.RefreshCollectionFanfare then ns.RefreshCollectionFanfare() end
-    end, { description = ns.L["Automatically unwrap newly collected mounts, pets, and toys — clears the present-box fanfare in the Collections journal and dismisses the unopened-items alert."] })
+    -- Auto-Unwrap New Collectibles was removed: clearing the fanfare from addon code
+    -- made the Collections window run as H3z0 UI code (toys blocked: UseToy()).
     local socketW = GUI:CreateFormCheckbox(s.frame, nil, "autoConfirmSocketReplace", generalDB, nil,
         { description = ns.L["Skip the confirmation popup when replacing a gem that is already socketed."] })
-    s.AddRow(row(s.frame, ns.L["Auto-Unwrap New Collectibles"], unwrapW), row(s.frame, ns.L["Auto-Confirm Gem Replacement"], socketW))
+    s.AddRow(row(s.frame, ns.L["Auto-Confirm Gem Replacement"], socketW))
 
     local tokenW = GUI:CreateFormCheckbox(s.frame, nil, "autoConfirmTokenPurchase", generalDB, nil,
         { description = ns.L["Skip the confirmation popup when buying items that cost tokens or currencies."] })
@@ -1353,8 +1359,8 @@ local generalSectionFeatures = {
     { id = "quickSalvage",      category = "qol",        nav = { tileId = "qol", subPageIndex = 5 }, sectionKey = "quickSalvage",     sectionTitle = "Quick Salvage",                    searchContext = { tabIndex = 17, tabName = "Quality of Life", subTabIndex = 5, subTabName = "Salvage" } },
     { id = "consumableMacros",  category = "qol",        nav = { tileId = "qol", subPageIndex = 6 }, sectionKey = "consumableMacros", sectionTitle = "Consumable Macros",                searchContext = { tabIndex = 17, tabName = "Quality of Life", subTabIndex = 6, subTabName = "Consumables" } },
     { id = "targetDistance",    category = "qol",        nav = { tileId = "qol", subPageIndex = 7 }, sectionKey = "targetDistance",   sectionTitle = "Target Distance Bracket Display",  searchContext = { tabIndex = 17, tabName = "Quality of Life", subTabIndex = 7, subTabName = "Distance" } },
-    { id = "h3z0uiPanel",          category = "global",     nav = { tileId = "global", subPageIndex = 7 }, sectionKey = "h3z0uiPanel",         sectionTitle = "H3z0UI Panel Settings",               searchContext = { tabIndex = 17, tabName = "Quality of Life", subTabIndex = 8, subTabName = "Panel" } },
-    { id = "reloadBehavior",    category = "global",     nav = { tileId = "global", subPageIndex = 7 }, sectionKey = "reloadBehavior",   sectionTitle = "Reload Behavior",                  searchContext = { tabIndex = 17, tabName = "Quality of Life", subTabIndex = 9, subTabName = "Reload" } },
+    { id = "h3z0uiPanel",          category = "global",     nav = { tileId = "global", subPageIndex = 6 }, sectionKey = "h3z0uiPanel",         sectionTitle = "H3z0UI Panel Settings",               searchContext = { tabIndex = 17, tabName = "Quality of Life", subTabIndex = 8, subTabName = "Panel" } },
+    { id = "reloadBehavior",    category = "global",     nav = { tileId = "global", subPageIndex = 6 }, sectionKey = "reloadBehavior",   sectionTitle = "Reload Behavior",                  searchContext = { tabIndex = 17, tabName = "Quality of Life", subTabIndex = 9, subTabName = "Reload" } },
     { id = "merchantGrid",      category = "qol",        nav = { tileId = "qol", subPageIndex = 8 }, sectionKey = "merchantGrid",     sectionTitle = "Merchant Grid",                    searchContext = { tabIndex = 17, tabName = "Quality of Life", subTabIndex = 10, subTabName = "Merchant" } },
     { id = "friendsList",       category = "qol",        nav = { tileId = "qol", subPageIndex = 9 }, sectionKey = "friendsList",      sectionTitle = "Friends List",                     searchContext = { tabIndex = 17, tabName = "Quality of Life", subTabIndex = 11, subTabName = "Friends List" } },
     { id = "extendedIgnore",    category = "qol",        nav = { tileId = "qol", subPageIndex = 10 }, sectionKey = "extendedIgnore",   sectionTitle = "Extended Ignore",                  searchContext = { tabIndex = 17, tabName = "Quality of Life", subTabIndex = 12, subTabName = "Extended Ignore" } },

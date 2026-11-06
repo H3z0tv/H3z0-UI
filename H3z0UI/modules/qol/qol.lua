@@ -117,12 +117,7 @@ end
 local function HideStaticPopupByWhich(which)
     if type(which) ~= "string" then return end
 
-    for i = 1, GetMaxStaticPopupDialogs() do
-        local frame = _G["StaticPopup" .. i]
-        if frame and frame.which == which and frame:IsShown() then
-            frame:Hide()
-        end
-    end
+    StaticPopup_Hide(which)
 end
 
 local function HookAlertSystem(globalSystemName, toggleKey)
@@ -647,7 +642,7 @@ local function OnMerchantShow()
             local junkCfg = bagsDB and bagsDB.behavior and bagsDB.behavior.junk
             exclusions = junkCfg and junkCfg.exclusions
         end
-        for bag = 0, 5 do
+        for bag = 0, ((ns.Client and ns.Client.LAST_BAG) or 5) do
             for slot = 1, C_Container.GetContainerNumSlots(bag) do
                 local info = C_Container.GetContainerItemInfo(bag, slot)
                 if info then
@@ -1031,7 +1026,14 @@ local function ShouldPauseQuest(settings)
     return settings.questHoldShift and IsShiftKeyDown()
 end
 
+-- Lorekeeper shows every quest and gossip itself: the automations step aside
+local function LorekeeperOwnsQuests()
+    local f = _G.H3z0UI_LorekeeperActive
+    return f and f() or false
+end
+
 local function OnQuestDetail()
+    if LorekeeperOwnsQuests() then return end
     local settings = GetSettings()
     if not settings or settings.autoAcceptQuest ~= true then return end
     if ShouldPauseQuest(settings) then return end
@@ -1040,6 +1042,7 @@ local function OnQuestDetail()
 end
 
 local function OnQuestComplete()
+    if LorekeeperOwnsQuests() then return end
     local settings = GetSettings()
     if not settings or not settings.autoTurnInQuest then return end
     if ShouldPauseQuest(settings) then return end
@@ -1053,6 +1056,7 @@ end
 local gossipClicked = {}
 
 local function OnGossipShow()
+    if LorekeeperOwnsQuests() then return end
     local settings = GetSettings()
     if not settings or not settings.autoSelectGossip then return end
 
@@ -1315,10 +1319,13 @@ local function AutoConfirmPopup(which)
     for i = 1, GetMaxStaticPopupDialogs() do
         local frame = _G["StaticPopup" .. i]
         if frame and frame.which == which and frame:IsShown() then
-            local button = frame.button1 or _G["StaticPopup" .. i .. "Button1"]
-            if button and button:IsEnabled() then
-                button:Click()
+            -- do what the popup's Accept does, then close it (never click
+            -- Blizzard's popup buttons from addon code)
+            local def = StaticPopupDialogs and StaticPopupDialogs[which]
+            if def and type(def.OnAccept) == "function" then
+                pcall(def.OnAccept, frame, frame.data, frame.data2)
             end
+            StaticPopup_Hide(which)
             break
         end
     end
@@ -1355,10 +1362,6 @@ hooksecurefunc("StaticPopup_Show", function(which)
                 local editBox = frame.editBox or _G["StaticPopup" .. i .. "EditBox"]
                 if editBox then
                     editBox:SetText(DELETE_ITEM_CONFIRM_STRING or "DELETE")
-                    local handler = editBox:GetScript("OnTextChanged")
-                    if handler then
-                        handler(editBox)
-                    end
             end
             break
         end

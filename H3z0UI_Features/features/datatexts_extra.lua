@@ -17,6 +17,7 @@ end
 
 local floor = math.floor
 local issecretvalue = issecretvalue or function() return false end
+local Helpers = ns.Helpers
 
 ---------------------------------------------------------------------------
 -- Helpers (same value-color logic as the built-in datatexts)
@@ -199,14 +200,238 @@ local COUNTERS = {
 ---------------------------------------------------------------------------
 -- 1) MICRO MENU: a row of icon buttons
 ---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+-- Opening Blizzard windows from addon code makes them run as addon code
+-- ("... has been blocked from an action only available to the Blizzard UI",
+-- "attempt to compare a secret number value (execution tainted ...)").
+-- So the icons press Blizzard's own micro buttons instead:
+--   * most icons: a secure button that clicks Blizzard's micro button
+--   * Game Menu: Blizzard's menu button only reacts to a real mouse press,
+--     so the real button sits (invisible) on top of the icon while the
+--     Bottom Bar shows it; hovering it still lights the icon up.
+---------------------------------------------------------------------------
+local SECURE_TARGETS = {
+    character = { "CharacterMicroButton" },
+    spellbook = { "PlayerSpellsMicroButton", "TalentMicroButton", "SpellbookMicroButton" },
+    achievements = { "AchievementMicroButton" },
+    quest = { "QuestLogMicroButton" },
+    guild = { "GuildMicroButton" },
+    groupfinder = { "LFDMicroButton", "LFGMicroButton" },
+    adventure = { "EJMicroButton" },
+    collections = { "CollectionsMicroButton" },
+    housing = { "HousingMicroButton" },
+}
+
+local gm = { orig = nil, host = nil, hooked = false, busy = false }
+local function GameMenuButton() return _G.MainMenuMicroButton end
+_G.H3z0UI_GameMenuButtonTaken = function() return gm.host ~= nil end
+
+local function PlaceOnHost()
+    local mb, host = GameMenuButton(), gm.host
+    if not (mb and host) or InCombatLockdown() then return end
+    gm.busy = true
+    pcall(function()
+        if mb:GetParent() ~= host then mb:SetParent(host) end
+        mb:ClearAllPoints()
+        mb:SetAllPoints(host)
+        mb:SetFrameLevel(host:GetFrameLevel() + 5)
+        mb:SetAlpha(0)
+        -- clicks only: no hover on Blizzard's button, so it never builds its
+        -- latency / addon memory tooltip (that caused the FPS spikes on hover)
+        if mb.SetMouseMotionEnabled then mb:SetMouseMotionEnabled(false) end
+        mb:Show()
+    end)
+    gm.busy = false
+end
+
+local function ReleaseGameMenuButton()
+    local mb = GameMenuButton()
+    if not (mb and gm.orig) or InCombatLockdown() then return end
+    gm.host = nil
+    gm.busy = true
+    pcall(function()
+        mb:SetParent(gm.orig.parent)
+        mb:ClearAllPoints()
+        for _, pt in ipairs(gm.orig.points) do mb:SetPoint(unpack(pt)) end
+        mb:SetAlpha(1)
+        if mb.SetMouseMotionEnabled then mb:SetMouseMotionEnabled(true) end
+    end)
+    gm.busy = false
+end
+
+local function AttachGameMenuButton(host)
+    -- Never open the Game Menu from addon code (ToggleGameMenu -> SpellStopCasting
+    -- is protected and gets blocked). Without the real button (combat at load),
+    -- the icon waits and takes the real button as soon as combat ends.
+    local mb = GameMenuButton()
+    if not mb or InCombatLockdown() then
+        local waiter = CreateFrame("Frame")
+        waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+        waiter:SetScript("OnEvent", function(self)
+            self:UnregisterAllEvents()
+            if host:IsVisible() then AttachGameMenuButton(host) end
+        end)
+        return
+    end
+    if not gm.orig then
+        local pts = {}
+        for i = 1, mb:GetNumPoints() do pts[i] = { mb:GetPoint(i) } end
+        gm.orig = { parent = mb:GetParent(), points = pts }
+    end
+    gm.host = host
+    if not gm.hooked then
+        gm.hooked = true
+        -- anything skipped during combat gets placed once combat ends
+        local regen = CreateFrame("Frame")
+        regen:RegisterEvent("PLAYER_REGEN_ENABLED")
+        regen:SetScript("OnEvent", function()
+            if gm.host and gm.host:IsVisible() then PlaceOnHost() end
+        end)
+        -- Blizzard's micro menu or the H3z0 UI micro menu bar can take it back: re-place it
+        hooksecurefunc(mb, "SetParent", function(_, parent)
+            if gm.busy or not gm.host or parent == gm.host then return end
+            C_Timer.After(0, PlaceOnHost)
+        end)
+        hooksecurefunc(mb, "SetPoint", function()
+            if gm.busy or not gm.host then return end
+            C_Timer.After(0, PlaceOnHost)
+        end)
+        -- Blizzard's button gets no hover (see PlaceOnHost): light the icon up
+        -- ourselves while the mouse is over it (a cheap check, only while shown)
+        -- (20 checks a second, and only while the bar is shown)
+        local watch = CreateFrame("Frame")
+        gm.watch = watch
+        local over, since = false, 0
+        watch:SetScript("OnUpdate", function(self, elapsed)
+            since = since + elapsed
+            if since < 0.05 then return end
+            since = 0
+            local h = gm.host
+            if not (h and h:IsVisible()) then
+                if over and h then
+                    local f = h:GetScript("OnLeave")
+                    if f then pcall(f, h) end
+                end
+                over = false
+                self:Hide()
+                return
+            end
+            local now = h:IsMouseOver() or false
+            if now == over then return end
+            over = now
+            if h then
+                local f = h:GetScript(now and "OnEnter" or "OnLeave")
+                if f then pcall(f, h) end
+            end
+        end)
+    end
+    host:HookScript("OnHide", function(self)
+        if gm.host == self then C_Timer.After(0, function()
+            if gm.host == self and not self:IsVisible() then ReleaseGameMenuButton() end
+        end) end
+    end)
+    host:HookScript("OnShow", function(self)
+        gm.host = self
+        if gm.watch then gm.watch:Show() end
+        C_Timer.After(0, PlaceOnHost)
+    end)
+    if gm.watch then gm.watch:Show() end
+    PlaceOnHost()
+end
+
+---------------------------------------------------------------------------
+-- UI Mode button: PC -> PC Controller -> PC Handheld -> Steam Deck -> PC
+-- (left click next, right click back; the switch reloads the UI)
+---------------------------------------------------------------------------
+local UI_MODES = {
+    { key = "pc",         name = "PC",            icon = "mode_pc" },
+    { key = "controller", name = "PC Controller", icon = "mode_controller" },
+    { key = "pchandheld", name = "PC Handheld",   icon = "mode_handheld" },
+    { key = "deck",       name = "Steam Deck",    icon = "mode_deck" },
+}
+
+local function UIModeIndex()
+    local p = Helpers and Helpers.GetProfile and Helpers.GetProfile()
+    local c = p and p.handheld
+    local key = "pc"
+    if c and c.enabled then
+        key = c.pcHandheld and "pchandheld" or "deck"
+    elseif c and c.pcController then
+        key = "controller"
+    end
+    for i, m in ipairs(UI_MODES) do
+        if m.key == key then return i end
+    end
+    return 1
+end
+
+local function UIModeIcon()
+    return UI_MODES[UIModeIndex()].icon
+end
+
+local function UIModeTooltip()
+    local cur = UIModeIndex()
+    GameTooltip:AddLine("UI Mode: " .. UI_MODES[cur].name, 1, 1, 1)
+    for i, m in ipairs(UI_MODES) do
+        if i == cur then
+            GameTooltip:AddLine("> " .. m.name, 0.2, 1, 0.6)
+        else
+            GameTooltip:AddLine("   " .. m.name, 0.7, 0.7, 0.7)
+        end
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Click: choose a mode", 0.6, 0.8, 1)
+    GameTooltip:AddLine("Switching reloads the UI.", 0.6, 0.6, 0.6)
+end
+
+local function UIModeApply(key)
+    local H = _G.H3z0UI_Handheld
+    if not H then return end
+    if InCombatLockdown() then
+        print("|cff34D399H3z0 UI:|r Leave combat to switch the UI mode.")
+        return
+    end
+    local p = Helpers.GetProfile()
+    local c = p and p.handheld or {}
+    if key == "pc" then
+        if c.enabled then
+            H.SetEnabled(false)
+        elseif c.pcController then
+            H.SetPCController(false)
+        end
+    elseif key == "controller" then
+        H.SetPCController(true)
+    elseif key == "pchandheld" then
+        H.SetPCHandheld(true)
+    elseif key == "deck" then
+        H.SetSteamDeck(true)
+    end
+    -- every switch ends with a reload (most of them reload on their own)
+    C_Timer.After(0.2, function()
+        if not InCombatLockdown() then ReloadUI() end
+    end)
+end
+
+local function UIModeMenu(owner)
+    local cur = UIModeIndex()
+    if MenuUtil and MenuUtil.CreateContextMenu then
+        MenuUtil.CreateContextMenu(owner, function(_, root)
+            root:CreateTitle("UI Mode")
+            for i, m in ipairs(UI_MODES) do
+                root:CreateRadio(m.name, function() return i == cur end, function()
+                    if i ~= cur then UIModeApply(m.key) end
+                end)
+            end
+        end)
+        return
+    end
+    -- no Blizzard menu (old client): next mode
+    UIModeApply(UI_MODES[cur % #UI_MODES + 1].key)
+end
+
 local MICRO = {
     { name = "Game Menu", custom = "menu", file = "Interface\\Icons\\INV_Misc_Gear_01", atlas = "UI-HUD-MicroMenu-GameMenu-Up", letter = "M",
-      click = function()
-          if ToggleGameMenu then ToggleGameMenu()
-          elseif GameMenuFrame then
-              if GameMenuFrame:IsShown() then HideUIPanel(GameMenuFrame) else ShowUIPanel(GameMenuFrame) end
-          end
-      end },
+      click = nil },  -- handled by Blizzard's own menu button (see AttachGameMenuButton)
     { name = "Character", custom = "character", atlas = "UI-HUD-MicroMenu-Character-Up", letter = "C",
       click = function() ToggleCharacter("PaperDollFrame") end },
     { name = "Spellbook & Talents", custom = "spellbook", file = "Interface\\Icons\\INV_Misc_Book_09", atlas = "UI-HUD-MicroMenu-SpecTalents-Up", letter = "T",
@@ -234,6 +459,12 @@ local MICRO = {
       click = function() ToggleEncounterJournal() end },
     { name = "Collections", custom = "collections", file = "Interface\\Icons\\Ability_Mount_RidingHorse", atlas = "UI-HUD-MicroMenu-Collections-Up", letter = "P",
       click = function() ToggleCollectionsJournal() end },
+    -- PC / PC Controller / PC Handheld / Steam Deck: the icon shows the mode you are in,
+    -- a click opens a list to pick one
+    { name = "UI Mode", custom = "mode_pc", letter = "D", anyButton = true, passOwner = true,
+      iconFn = function() return UIModeIcon() end,
+      tooltipFn = function() UIModeTooltip() end,
+      click = function(_, owner) UIModeMenu(owner) end },
     { name = "Housing", custom = "housing", letter = "H", click = function() OpenHousing() end },
     { name = "Great Vault", custom = "vault", counter = "vault", letter = "V", click = function() OpenVault() end },
 }
@@ -276,6 +507,26 @@ if IS_FOREVER then
         end
     end
 end
+-- the Classic games: no achievements, adventure guide, collections, housing or
+-- vault; the spellbook and the talents are two windows there
+if ns.Client and ns.Client.isClassic then
+    local GONE = { achievements = true, adventure = true, collections = true, housing = true, vault = true }
+    for i = #MICRO, 1, -1 do
+        local d = MICRO[i]
+        if GONE[d.custom] then
+            table.remove(MICRO, i)
+        elseif d.custom == "spellbook" then
+            d.name = "Spellbook"
+            d.click = function()
+                if ToggleSpellBook then ToggleSpellBook(BOOKTYPE_SPELL or "spell") end
+            end
+            table.insert(MICRO, i + 1, { name = "Talents", custom = "talents", file = "Interface\\Icons\\Ability_Marksmanship",
+                letter = "N", click = function() if ToggleTalentFrame then ToggleTalentFrame() end end })
+        elseif d.custom == "guild" then
+            d.name = "Guild"
+        end
+    end
+end
 
 -- Own icon set (assets\\menuicons\\*.tga); a def's "custom" field picks the file
 local MENU_ICON_PATH = "Interface\\AddOns\\H3z0UI\\assets\\menuicons\\"
@@ -312,8 +563,8 @@ Register(Datatexts, "h3zmenu", {
         if slotFrame._h3z0uiOnWidthDirty then
             local hh = (settings and tonumber(settings.height)) or h
             size = Opt(settings, "menuIconSize", math.max(10, math.min(hh - 6, 22)))
-            gap = tonumber(settings and settings.menuIconSpacing) or 6
-            if gap < 1 then gap = 1 end
+            gap = tonumber(settings and settings.menuIconSpacing) or 0
+            if gap <= 0 then gap = 6 end
             slotFrame._h3z0uiFixedWidth = size * n + gap * (n - 1) + 8
             slotFrame._h3z0uiOnWidthDirty()
         end
@@ -324,7 +575,20 @@ Register(Datatexts, "h3zmenu", {
         local buttons = {}
 
         for i, def in ipairs(MICRO) do
-            local btn = CreateFrame("Button", nil, frame)
+            local btn
+            local target
+            for _, n in ipairs(SECURE_TARGETS[def.custom or ""] or {}) do
+                if _G[n] then target = _G[n] break end
+            end
+            if target and not InCombatLockdown() then
+                btn = CreateFrame("Button", nil, frame, "SecureActionButtonTemplate")
+                btn:SetAttribute("type", "click")
+                btn:SetAttribute("clickbutton", target)
+                btn:SetAttribute("useOnKeyDown", false)   -- acts on release, like a normal click
+                btn._h3zSecure = true
+            else
+                btn = CreateFrame("Button", nil, frame)
+            end
             btn:SetSize(size, size)
             btn:SetPoint("LEFT", frame, "LEFT", startX + (i - 1) * (size + gap), 0)
 
@@ -344,7 +608,7 @@ Register(Datatexts, "h3zmenu", {
                     shown = true
                 end
             elseif def.custom then
-                tex:SetTexture(MENU_ICON_PATH .. def.custom)
+                tex:SetTexture(MENU_ICON_PATH .. ((def.iconFn and def.iconFn()) or def.custom))
                 shown = true
             elseif def.file then
                 tex:SetTexture(def.file)
@@ -396,7 +660,9 @@ Register(Datatexts, "h3zmenu", {
                 end
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:ClearLines()
-                if def.counter == "vault" then
+                if def.tooltipFn then
+                    def.tooltipFn()
+                elseif def.counter == "vault" then
                     FillVaultTooltip(ReadVault())
                 else
                     GameTooltip:AddLine(def.name, 1, 1, 1)
@@ -416,10 +682,19 @@ Register(Datatexts, "h3zmenu", {
                 end
                 GameTooltip:Hide()
             end)
-            btn:RegisterForClicks("AnyUp")
-            btn:SetScript("OnClick", function(_, mouseButton)
-                if mouseButton == "LeftButton" then Try(def.click) end
-            end)
+            if btn._h3zSecure then
+                btn:RegisterForClicks("AnyUp")
+            elseif def.custom == "menu" then
+                btn:RegisterForClicks("AnyUp")
+                AttachGameMenuButton(btn)
+            else
+                btn:RegisterForClicks("AnyUp")
+                btn:SetScript("OnClick", function(_, mouseButton)
+                    if mouseButton == "LeftButton" or def.anyButton then
+                        Try(def.click, mouseButton, def.passOwner and btn or nil)
+                    end
+                end)
+            end
             buttons[i] = btn
         end
 
@@ -442,7 +717,7 @@ Register(Datatexts, "h3zmenu", {
         for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "GUILD_ROSTER_UPDATE", "PLAYER_GUILD_UPDATE", "FRIENDLIST_UPDATE",
                              "BN_FRIEND_INFO_CHANGED", "BN_FRIEND_ACCOUNT_ONLINE", "BN_FRIEND_ACCOUNT_OFFLINE",
                              "WEEKLY_REWARDS_UPDATE", "CHALLENGE_MODE_COMPLETED", "ENCOUNTER_END", "UPDATE_INSTANCE_INFO" }) do
-            frame:RegisterEvent(e)
+            H3z0UI_SafeRegisterEvent(frame, e)
         end
         frame:SetScript("OnEvent", UpdateCounts)
 
@@ -906,7 +1181,7 @@ Register(Datatexts, "vault", {
 
         for _, e in ipairs({ "WEEKLY_REWARDS_UPDATE", "PLAYER_ENTERING_WORLD", "CHALLENGE_MODE_COMPLETED",
                              "ENCOUNTER_END", "UPDATE_INSTANCE_INFO", "PLAYER_REGEN_ENABLED" }) do
-            frame:RegisterEvent(e)
+            H3z0UI_SafeRegisterEvent(frame, e)
         end
         frame:SetScript("OnEvent", Update)
 
@@ -933,35 +1208,3 @@ Register(Datatexts, "vault", {
 
     OnDisable = function(frame) frame:UnregisterAllEvents() end,
 })
-
----------------------------------------------------------------------------
--- Bottom Bar preset (shared by the datatext tab and the Bottom Bar tab)
----------------------------------------------------------------------------
-ns.BottomBarPreset = function()
-    -- Slot widths are weighted so the clock (slot 3) sits exactly in the middle:
-    -- left side 2.3 + 1.5 = 3.8 (wider menu: it has 11 icons), clock 1.0, right side 1.5 + 1.0 + 0.6 + 0.7 = 3.8
-    return {
-        id = "bottombar",
-        name = "Bottom Bar",
-        layoutVersion = 4,
-        enabled = true,
-        locked = false,
-        numSlots = 7,
-        fullWidth = true,
-        width = math.floor(UIParent:GetWidth() or 1920),
-        height = 26,
-        bgOpacity = 60,
-        borderSize = 0,
-        borderColor = {0, 0, 0, 1},
-        accentLine = false,
-        hideBlizzardMenus = true,
-        fontSize = 12,
-        position = {"BOTTOM", "BOTTOM", 0, 0},
-        slots = {"micromenu", "playerspec", "clock", "professions", "gold", "bags", "location"},
-        slotWeights = {2.3, 1.5, 1.0, 1.5, 1.0, 0.6, 0.7},
-        slotSettings = {
-            [5] = {noLabel = true},
-            [6] = {noLabel = true},
-        },
-    }
-end

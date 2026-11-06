@@ -1353,6 +1353,17 @@ local function CreateCDMSetupPage(parent)
             y = y - FORM_ROW
             tabContent._currentY = y
 
+            -- green border on the icon of the ability the game suggests pressing next
+            db.viewers = db.viewers or {}
+            db.viewers.EssentialCooldownViewer = db.viewers.EssentialCooldownViewer or {}
+            local rhCheck = GUI:CreateFormCheckbox(tabContent, "Green Border on the Ability to Press Next", "showRotationHelper", db.viewers.EssentialCooldownViewer, function()
+                if _G.H3z0UI_RefreshRotationHelper then _G.H3z0UI_RefreshRotationHelper() end
+            end)
+            rhCheck:SetPoint("TOPLEFT", PAD, y)
+            rhCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+            tabContent._currentY = y
+
             -- Layout Direction dropdown
             ess.layoutDirection = ess.layoutDirection or "HORIZONTAL"
             local directionOptions = {
@@ -1418,6 +1429,17 @@ local function CreateCDMSetupPage(parent)
             local enableCheck = GUI:CreateFormCheckbox(tabContent, "Enable Utility Cooldowns Display", "enabled", util, RefreshNCDM)
             enableCheck:SetPoint("TOPLEFT", PAD, y)
             enableCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+            tabContent._currentY = y
+
+            -- green border on the icon of the ability the game suggests pressing next
+            db.viewers = db.viewers or {}
+            db.viewers.UtilityCooldownViewer = db.viewers.UtilityCooldownViewer or {}
+            local rhCheck = GUI:CreateFormCheckbox(tabContent, "Green Border on the Ability to Press Next", "showRotationHelper", db.viewers.UtilityCooldownViewer, function()
+                if _G.H3z0UI_RefreshRotationHelper then _G.H3z0UI_RefreshRotationHelper() end
+            end)
+            rhCheck:SetPoint("TOPLEFT", PAD, y)
+            rhCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
             y = y - FORM_ROW
             tabContent._currentY = y
 

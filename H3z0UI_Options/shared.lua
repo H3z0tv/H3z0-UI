@@ -1642,27 +1642,48 @@ local function RegisterFeatureTile(frame, spec)
                 if not page.featureId and not page.featureIds then
                     page.featureId = ResolvePageFeatureId(subPage)
                 end
-                if not page.featureId and not page.featureIds then
+                -- the Classic games leave some modules out: their pages are skipped
+                -- instead of dropping the whole tile
+                local classic = ns.Client and ns.Client.isClassic
+                local CLASSIC_HIDDEN = { keystones = true, skyriding = true, quickSalvage = true }
+                local skip = classic and CLASSIC_HIDDEN[subPage.id] or false
+                if skip then
+                    -- left out on the Classic games
+                elseif not page.featureId and not page.featureIds then
+                    if classic then skip = true else
                     ReportFeatureTileIssue("RegisterFeatureTile(" .. spec.id .. "): subpage " .. tostring(index) .. " has no featureId/featureIds")
                     return
-                end
-                if page.featureId then
-                    if not ValidateFeatureReference(
+                    end
+                elseif page.featureId then
+                    if classic and not HasRegisteredFeature(page.featureId) then
+                        skip = true
+                    elseif not ValidateFeatureReference(
                         "RegisterFeatureTile(" .. spec.id .. ") subpage " .. tostring(index),
                         page.featureId
                     ) then
                         return
                     end
-                elseif page.featureIds and not ValidateFeatureReferences(
-                    "RegisterFeatureTile(" .. spec.id .. ") subpage " .. tostring(index),
-                    page.featureIds
-                ) then
-                    return
+                elseif page.featureIds then
+                    if classic then
+                        local kept = {}
+                        for _, item in ipairs(page.featureIds) do
+                            local fid = type(item) == "table" and item.key or item
+                            if HasRegisteredFeature(fid) then kept[#kept + 1] = item end
+                        end
+                        page.featureIds = kept
+                        if #kept == 0 then skip = true end
+                    elseif not ValidateFeatureReferences(
+                        "RegisterFeatureTile(" .. spec.id .. ") subpage " .. tostring(index),
+                        page.featureIds
+                    ) then
+                        return
+                    end
                 end
 
+                if not skip then
                 RegisterNavRoutes(GUI, spec.id, subPage.navRoutes, index)
 
-                tileConfig.subPages[index] = {
+                tileConfig.subPages[classic and (#tileConfig.subPages + 1) or index] = {
                     id = page.id,
                     name = page.name,
                     featureId = page.featureId,
@@ -1675,6 +1696,7 @@ local function RegisterFeatureTile(frame, spec)
                         BuildFeaturePageBody(body, page, BuildFeatureTabPage)
                     end,
                 }
+                end
             end
         end
     else

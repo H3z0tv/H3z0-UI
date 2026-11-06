@@ -247,6 +247,7 @@ H3z0UI._presetProfiles = {}
 function H3z0UI:OnInitialize()
     self:RegisterChatCommand("h3z0ui", "SlashCommandOpen")
     self:RegisterChatCommand("h3z", "SlashCommandOpen")
+    self:RegisterChatCommand("h3z0", "SlashCommandOpen")
     self:RegisterChatCommand("rl", "SlashCommandReload")
     self:RegisterChatCommand("qpull", "SlashCommandPull")
     self:RegisterChatCommand("h3z0uipull", "SlashCommandPull")
@@ -582,9 +583,9 @@ function H3z0UI:SlashCommandOpen(input)
             print("|cff60A5FAH3z0UI:|r " .. ns.L["Edit Mode diagnostic not loaded yet."])
         end
         return
-    elseif input and input == "perf" then
+    elseif input and input:match("^perftest") then
         if _G.H3z0UI_TogglePerfMonitor then
-            _G.H3z0UI_TogglePerfMonitor()
+            _G.H3z0UI_TogglePerfMonitor(input:match("^perftest%s+(%S+)"))
         else
             print("|cff60A5FAH3z0UI:|r " .. ns.L["Performance Monitor not loaded yet."])
         end

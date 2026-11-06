@@ -1121,8 +1121,12 @@ local function SkinEncounterJournalContents(frame)
         end
         if type(journeys.Refresh) == "function" and not SkinBase.GetFrameData(journeys, "qJourneysChromeHooked") then
             SkinBase.SetFrameData(journeys, "qJourneysChromeHooked", true)
-            hooksecurefunc(journeys, "Refresh", function() SkinEncounterJournalContents(frame) end)
-            hooksecurefunc(journeys, "ResetView", function() SkinEncounterJournalContents(frame) end)
+            hooksecurefunc(journeys, "Refresh", function()
+                if _G.H3z0UI_QueueEncounterJournalContents then _G.H3z0UI_QueueEncounterJournalContents(frame) end
+            end)
+            hooksecurefunc(journeys, "ResetView", function()
+                if _G.H3z0UI_QueueEncounterJournalContents then _G.H3z0UI_QueueEncounterJournalContents(frame) end
+            end)
         end
     end
     local encounter = frame.encounter
@@ -1311,6 +1315,24 @@ local function SkinEncounterJournalContents(frame)
     SkinEncounterJournalBottomTabs(frame)
 end
 
+-- the Adventure Guide calls these update functions many times in a row (loot
+-- list, search as you type, every encounter / creature): skin once after the
+-- burst instead of re-skinning the whole window (and every list row) each time,
+-- which froze the game
+local journalQueued, journalLast = false, 0
+local function QueueEncounterJournalContents(frame)
+    if journalQueued then return end
+    journalQueued = true
+    local wait = math.max(0, 0.15 - (GetTime() - journalLast))
+    C_Timer.After(wait, function()
+        journalQueued = false
+        journalLast = GetTime()
+        if frame and frame:IsShown() then SkinEncounterJournalContents(frame) end
+    end)
+end
+
+_G.H3z0UI_QueueEncounterJournalContents = QueueEncounterJournalContents
+
 local function SkinEncounterJournal()
     if not IsSettingEnabled("skinEncounterJournal") then return end
     local frame = _G.EncounterJournal
@@ -1320,10 +1342,10 @@ local function SkinEncounterJournal()
     SkinEncounterJournalContents(frame)
     for _, name in ipairs({ "EncounterJournal_SetTab", "EncounterJournal_DisplayInstance", "EncounterJournal_DisplayEncounter", "EJ_ContentTab_Select", "EJSuggestFrame_RefreshDisplay", "EncounterJournal_LootUpdate", "EncounterJournal_DisplayCreature", "EncounterJournal_UpdateSearchPreview", "EncounterJournal_SearchUpdate", "EncounterJournal_ShowFullSearch" }) do
         if type(_G[name]) == "function" then
-            hooksecurefunc(name, function() SkinEncounterJournalContents(frame) end)
+            hooksecurefunc(name, function() QueueEncounterJournalContents(frame) end)
         end
     end
-    if frame.HookScript then frame:HookScript("OnShow", function() SkinEncounterJournalContents(frame) end) end
+    if frame.HookScript then frame:HookScript("OnShow", function() QueueEncounterJournalContents(frame) end) end
     SkinEncounterJournalBottomTabs(frame)
     SkinEncounterJournalTutorialsButton(frame)
     HookEncounterJournalTextUpdates(frame)

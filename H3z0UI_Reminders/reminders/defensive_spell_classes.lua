@@ -1,5 +1,5 @@
 local _, ns = ...
-if not (ns.Client and ns.Client.isForever) then return end
+if not (ns.Client and ns.Client.isLegacy) then return end
 
 ns.RemindersDefensiveSpellClasses = {
     [66] = "MAGE",

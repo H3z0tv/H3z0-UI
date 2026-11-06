@@ -19,7 +19,7 @@ local PREFIX = Bags.OpsShared.PREFIX
 local CHAR_FIRST, CHAR_LAST = Storage.ScanBank.GetBagRange(Enum.BankType.Character)
 local WB_FIRST, WB_LAST = Storage.ScanBank.GetBagRange(Enum.BankType.Account)
 local SCOPES = {
-    bags = { first = 0, last = 5, events = { "BagsChanged" }, label = ns.L["bags"], fallback = 0.5 },
+    bags = { first = 0, last = ((ns.Client and ns.Client.LAST_BAG) or 5), events = { "BagsChanged" }, label = ns.L["bags"], fallback = 0.5 },
     characterBank = { first = CHAR_FIRST, last = CHAR_LAST, events = { "BankChanged" }, label = ns.L["character bank"], fallback = 1.5 },
     warbandBank = { first = WB_FIRST, last = WB_LAST, events = { "WarbandChanged" }, label = ns.L["warband bank"], fallback = 1.5 },
 }
@@ -48,9 +48,9 @@ end
 
 local function IsBagIgnored(bagID)
     if bagID == 0 then
-        return C_Container.GetBackpackAutosortDisabled() and true or false
+        return C_Container.GetBackpackAutosortDisabled and C_Container.GetBackpackAutosortDisabled() and true or false
     end
-    if bagID >= 1 and bagID <= 5 then
+    if bagID >= 1 and bagID <= ((ns.Client and ns.Client.LAST_BAG) or 5) and C_Container.GetBagSlotFlag then
         return C_Container.GetBagSlotFlag(bagID, Enum.BagSlotFlags.DisableAutoSort) and true or false
     end
     return false
@@ -109,7 +109,29 @@ local function BuildContainers(scope)
     return containers
 end
 
+-- "Ignored Slots": the last (or first) N slots of your bags are never touched
+local function MarkIgnoredSlots(containers, scopeName)
+    if scopeName ~= "bags" then return end
+    local s = GetSettings()
+    local b = s and s.behavior
+    local n = b and tonumber(b.ignoreSlots) or 0
+    if n <= 0 then return end
+    local list = {}
+    for _, c in ipairs(containers) do
+        if not c.ignored and not c.reagent then
+            for slot = 1, c.size do list[#list + 1] = { c = c, slot = slot } end
+        end
+    end
+    local atStart = b.ignoreSlotsAt == "start"
+    for i = 1, math.min(n, #list) do
+        local pick = atStart and list[i] or list[#list - i + 1]
+        pick.c.ignoredSlots = pick.c.ignoredSlots or {}
+        pick.c.ignoredSlots[pick.slot] = true
+    end
+end
+
 SortExecutor.BuildContainers = BuildContainers
+SortExecutor.MarkIgnoredSlots = MarkIgnoredSlots
 
 local function Finish(ok, reason)
     local run = state
@@ -146,7 +168,9 @@ local function RunPass()
 
     local s = GetSettings()
     local behavior = s and s.behavior
-    local plan = Bags.SortPlanner.Plan(BuildContainers(state.scope), {
+    local containers = BuildContainers(state.scope)
+    MarkIgnoredSlots(containers, state.scopeName)
+    local plan = Bags.SortPlanner.Plan(containers, {
         key = behavior and behavior.sortKey or nil,
         reverse = behavior and behavior.sortReverse or false,
         fillFromBottom = behavior and behavior.fillFromBottom or false,
@@ -215,6 +239,7 @@ function SortExecutor.Start(which, onDone, opts)
 
     state = {
         scope = scope,
+        scopeName = which,
         passes = 0,
         moved = 0,
         stalls = 0,

@@ -2206,8 +2206,22 @@ local function UpdateForeverStatsPanel(scrollChild, unit, y)
             for _, stat in ipairs(category.stats) do
                 if (not stat.unit or stat.unit == unit) and (not stat.showFunc or stat.showFunc()) then
                     local row = CreateStatRow(scrollChild, y)
-                    local value = _G.PAPERDOLL_STATINFO[stat.stat].updateFunc(row, unit, stat.id)
-                    if row:IsShown() and (stat.hideAt == nil or value ~= stat.hideAt) then
+                    -- a stat the game keeps secret (movement speed ...) cannot be worked out by the
+                    -- game's own function from our code: skip that one row, show the rest
+                    -- movement speed comes back secret on some clients: the game's own function would
+                    -- do arithmetic on it from our (tainted) code and raise the error, so it is not called
+                    local skip = false
+                    if stat.stat == "MOVESPEED" and _G.GetUnitSpeed and _G.issecretvalue then
+                        local okSp, cur, run, flight, swim = pcall(_G.GetUnitSpeed, unit)
+                        if not okSp or _G.issecretvalue(cur) or _G.issecretvalue(run)
+                            or _G.issecretvalue(flight) or _G.issecretvalue(swim) then skip = true end
+                    end
+                    local okStat, value = false, nil
+                    if not skip then
+                        okStat, value = pcall(_G.PAPERDOLL_STATINFO[stat.stat].updateFunc, row, unit, stat.id)
+                    end
+                    if not okStat then row:Hide() value = nil end
+                    if okStat and row:IsShown() and (stat.hideAt == nil or value ~= stat.hideAt) then
                         if not hasHeader then
                             local _, headerHeight = CreateSectionHeader(scrollChild, category.categoryName, y)
                             y = y - headerHeight
@@ -3891,7 +3905,7 @@ eventFrame:RegisterEvent("ENCOUNTER_END")
 eventFrame:RegisterEvent("CHALLENGE_MODE_START")
 eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
 eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
-eventFrame:RegisterEvent("PVP_MATCH_ACTIVE")
+H3z0UI_SafeRegisterEvent(eventFrame, "PVP_MATCH_ACTIVE")
 
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then

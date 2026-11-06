@@ -56,12 +56,17 @@ function CategoryLayout.Group(cells, buildDetails, opts)
         end
     end
     local compare = Bags.SortPlanner.MakeComparator(opts)
+    local gearOpts = {}
+    for k, v in pairs(opts or {}) do gearOpts[k] = v end
+    gearOpts.gear = true
+    local compareGear = Bags.SortPlanner.MakeComparator(gearOpts)
     local function less(a, b) return compare(a._sortDetails, b._sortDetails) end
+    local function lessGear(a, b) return compareGear(a._sortDetails, b._sortDetails) end
     local groups = {}
     for _, def in ipairs(CategoryLayout.CATEGORIES) do
         local b = buckets[def.key]
         if b and #b > 0 then
-            table.sort(b, less)
+            table.sort(b, def.key == "equipment" and lessGear or less)
             for _, cell in ipairs(b) do cell._sortDetails = nil end
             groups[#groups + 1] = { key = def.key, title = def.title, cells = b }
         end

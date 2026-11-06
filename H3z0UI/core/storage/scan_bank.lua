@@ -4,7 +4,22 @@ local Storage = ns.Storage or {}; ns.Storage = Storage
 local ScanBank = {}
 Storage.ScanBank = ScanBank
 
+-- Classic games: the bank is the bank container plus the bank bags (no tabs, no warband bank)
+local IS_CLASSIC = ns.Client and ns.Client.isClassic
+local CLASSIC_BANK = {}
+if IS_CLASSIC then
+    local nBags = tonumber(NUM_BAG_SLOTS) or 4
+    CLASSIC_BANK[tonumber(BANK_CONTAINER) or -1] = true
+    for i = nBags + 1, nBags + (tonumber(NUM_BANKBAGSLOTS) or 6) do CLASSIC_BANK[i] = true end
+end
+ScanBank.CLASSIC_BANK = CLASSIC_BANK
+
 function ScanBank.GetBagRange(bankType)
+    if IS_CLASSIC then
+        if bankType == Enum.BankType.Account then return 1000, 999 end   -- none
+        local nBags = tonumber(NUM_BAG_SLOTS) or 4
+        return nBags + 1, nBags + (tonumber(NUM_BANKBAGSLOTS) or 6)
+    end
     local prefix = bankType == Enum.BankType.Account and "AccountBankTab_" or "CharacterBankTab_"
     local first = Enum.BagIndex[prefix .. "1"]
     local last = first
@@ -25,14 +40,23 @@ local charMeta, warbandMeta = {}, {}
 local warbandUnlocked = false
 
 function ScanBank.IsCharTab(bagID)
+    if IS_CLASSIC then return CLASSIC_BANK[bagID] == true end
+    if not (bagID and CHAR_FIRST) then return false end
     return bagID >= CHAR_FIRST and bagID <= CHAR_LAST
 end
 
 function ScanBank.IsWarbandTab(bagID)
+    if IS_CLASSIC or not (bagID and WB_FIRST) then return false end
     return bagID >= WB_FIRST and bagID <= WB_LAST
 end
 
 function ScanBank.RefreshTabMetadata()
+    if IS_CLASSIC then
+        charMeta = {}
+        for id in pairs(CLASSIC_BANK) do charMeta[id] = { ID = id } end
+        warbandUnlocked = false
+        return
+    end
     local charTabs = C_Bank.FetchPurchasedBankTabData(Enum.BankType.Character)
     if charTabs and #charTabs > 0 then
         charMeta = {}
@@ -80,6 +104,7 @@ local function ReadTab(bagID, meta)
 end
 
 local function IsEmptyBankBag(bagID, bankType)
+    if IS_CLASSIC then return false end
     if not (C_Bank.ShouldUsePlayerBagsInBank and C_Bank.ShouldUsePlayerBagsInBank()
         and C_Bank.CanUseBank(bankType)) then return false end
     local account = bankType == Enum.BankType.Account

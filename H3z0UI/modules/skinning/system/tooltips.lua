@@ -458,6 +458,17 @@ local function ApplyTooltipChrome(tooltip)
     end
 
     local sr, sg, sb, sa, bgr, bgg, bgb, bga = GetEffectiveColors()
+    -- colours by type (unit reaction / class, item quality): see tooltip_extras.lua
+    local ex = ns.H3z0UI_TooltipExtras
+    if ex and ex.Override and sa and sa > 0 then
+        local okOv, or_, og, ob, tint = pcall(ex.Override, tooltip)
+        if okOv and or_ then
+            sr, sg, sb = or_, og, ob
+            if tint then
+                bgr, bgg, bgb = bgr * 0.85 + or_ * 0.15, bgg * 0.85 + og * 0.15, bgb * 0.85 + ob * 0.15
+            end
+        end
+    end
     local thickness = math.max(GetEffectiveBorderThickness(), 1)
 
     if SkinBase.ApplyChromeBackdrop then
@@ -498,6 +509,8 @@ local function StyleTooltip(tooltip)
     end
     TooltipDebugEnd(dbg, "skin.style", dbgStart, nil, dbgHeap)
 end
+
+ns.H3z0UI_RestyleTooltip = StyleTooltip
 
 local function CombatRefreshTooltip(tooltip)
     if not tooltip then return end

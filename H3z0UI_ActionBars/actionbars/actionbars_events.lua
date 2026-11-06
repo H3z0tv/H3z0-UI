@@ -281,6 +281,12 @@ function OnOwnedEvent(self, event, ...)
             ActionBarsOwned.pendingStanceUpdate = true
         end
         ApplyBar1OverrideBindings()
+        -- the game finishes a form change a moment after the event; bind the keys
+        -- again once it has settled so the number keys keep working after a shift
+        if C_Timer then
+            C_Timer.After(0.3, function() if not InCombatLockdown() then ApplyBar1OverrideBindings() end end)
+            C_Timer.After(1.2, function() if not InCombatLockdown() then ApplyBar1OverrideBindings() end end)
+        end
         SetupOwnedBarMouseover("bar1")
 
     elseif event == "UPDATE_SHAPESHIFT_COOLDOWN" or event == "UPDATE_SHAPESHIFT_USABLE" then
@@ -398,6 +404,7 @@ function OnOwnedEvent(self, event, ...)
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         local isLogin, isReload = ...
+        local previousInitSafeWindow = ns._inInitSafeWindow
         inInitSafeWindow = true
         ns._inInitSafeWindow = true
         if isReload then
@@ -420,27 +427,49 @@ function OnOwnedEvent(self, event, ...)
         if SyncOwnedFlyoutInfoToHandler then SyncOwnedFlyoutInfoToHandler() end
         RefreshContextVisibilityFade()
         inInitSafeWindow = false
-        ns._inInitSafeWindow = false
+        ns._inInitSafeWindow = previousInitSafeWindow
+        -- the second pass (after the loading screen) is spread over several
+        -- frames, one bar per frame, instead of everything in one frame
+        -- (that single frame was a visible hitch after every loading screen)
         C_Timer.After(0.2, function()
-            if InCombatLockdown() then
-                ActionBarsOwned.pendingRefresh = true
-                ActionBarsOwned.pendingPetUpdate = true
-                ActionBarsOwned.pendingStanceUpdate = true
-                return
-            end
+            local steps = {}
             for _, barKey in ipairs(ALL_MANAGED_BAR_KEYS) do
-                LayoutNativeButtons(barKey)
-                RestoreContainerPosition(barKey)
+                steps[#steps + 1] = function()
+                    LayoutNativeButtons(barKey)
+                    RestoreContainerPosition(barKey)
+                    RefreshNativeVisualsForBar(barKey)
+                end
             end
-            RefreshAllNativeVisuals()
-            ActionBarsOwned.ForceFullVisualRescan()
-            ActionBarsOwned.UpdateAllButtonVisuals()
-            ActionBarsOwned.UpdateAllCooldowns()
-            UpdatePetBarVisibility()
-            UpdateStanceBarLayout()
-            ApplyAllFlyoutDirections()
-            if SyncOwnedFlyoutInfoToHandler then SyncOwnedFlyoutInfoToHandler() end
-            RefreshContextVisibilityFade()
+            steps[#steps + 1] = function()
+                ActionBarsOwned.ForceFullVisualRescan()
+                ActionBarsOwned.UpdateAllButtonVisuals()
+            end
+            steps[#steps + 1] = function() ActionBarsOwned.UpdateAllCooldowns() end
+            steps[#steps + 1] = function()
+                UpdatePetBarVisibility()
+                UpdateStanceBarLayout()
+                ApplyAllFlyoutDirections()
+            end
+            steps[#steps + 1] = function()
+                if SyncOwnedFlyoutInfoToHandler then SyncOwnedFlyoutInfoToHandler() end
+                RefreshContextVisibilityFade()
+            end
+            local i = 0
+            local function NextStep()
+                if InCombatLockdown() then
+                    ActionBarsOwned.pendingRefresh = true
+                    ActionBarsOwned.pendingPetUpdate = true
+                    ActionBarsOwned.pendingStanceUpdate = true
+                    return
+                end
+                i = i + 1
+                local step = steps[i]
+                if not step then return end
+                local ok, err = pcall(step)
+                if not ok then geterrorhandler()(err) end
+                C_Timer.After(0, NextStep)
+            end
+            NextStep()
         end)
         local db = GetDB()
         if db and db.bars and db.bars.bar1 then

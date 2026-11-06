@@ -18,6 +18,50 @@ Bags.Chassis = Chassis
 
 local windows = {}
 
+local settingsGetter
+local function BagSettings()
+    settingsGetter = settingsGetter or (Helpers.CreateDBGetter and Helpers.CreateDBGetter("bags"))
+    return settingsGetter and settingsGetter() or nil
+end
+local function Appearance() local s = BagSettings(); return s and s.appearance end
+local function Behavior() local s = BagSettings(); return s and s.behavior end
+
+-- window padding: smaller with "Reduce Spacing"
+local function CurPad()
+    local a = Appearance()
+    return (a and a.reduceSpacing) and 4 or 8
+end
+
+---------------------------------------------------------------------------
+-- Header buttons shown only while Alt is held (Show Buttons: While Alt Held)
+---------------------------------------------------------------------------
+local altButtons = {}
+local function ButtonsHidden()
+    local a = Appearance()
+    return a and a.showButtons == "alt" and not IsAltKeyDown()
+end
+local function ApplyAltButtons()
+    local hide = ButtonsHidden()
+    for btn in pairs(altButtons) do
+        btn:SetAlpha(hide and 0 or 1)
+        btn:EnableMouse(not hide)
+    end
+end
+function Chassis.RegisterAltButton(btn)
+    if not btn then return end
+    altButtons[btn] = true
+    ApplyAltButtons()
+end
+Chassis.ApplyAltButtons = ApplyAltButtons
+local altWatcher = CreateFrame("Frame")
+altWatcher:RegisterEvent("MODIFIER_STATE_CHANGED")
+altWatcher:SetScript("OnEvent", function(_, _, key)
+    if key == "LALT" or key == "RALT" then
+        local a = Appearance()
+        if a and a.showButtons == "alt" then ApplyAltButtons() end
+    end
+end)
+
 local HEADER_H = 28
 local FOOTER_H = 22
 local PAD = 8
@@ -59,15 +103,36 @@ local function ClampInteger(value, fallback, minValue, maxValue)
     return n
 end
 
+-- Refreshes are merged into one per frame, and when they keep coming (an
+-- event storm while items move) at most one every MIN_REFRESH_GAP seconds, so
+-- the game never stalls redrawing the same window.
+local MIN_REFRESH_GAP = 0.1
+local MAX_REFRESH_GAP = 0.6
+local function Now()
+    return debugprofilestop and debugprofilestop() or (GetTime() * 1000)
+end
+-- The gap grows with what a refresh costs (about five times its time, up to 0.6 s), and
+-- while a sort, a transfer or selling is running a window refreshes at most every 0.4 s:
+-- a big window is not rebuilt for every single item that moves.
 function Chassis.MakeScheduleRefresh(getWin, refresh)
     return function()
         local win = getWin()
         if win and win:IsShown() and not win._updateScheduled then
             win._updateScheduled = true
             win:SetScript("OnUpdate", function(self)
+                local now = GetTime()
+                local gap = self._refreshGap or MIN_REFRESH_GAP
+                if Bags.OpsShared and Bags.OpsShared.OpsBusy and Bags.OpsShared.OpsBusy() then
+                    gap = math.max(gap, 0.4)
+                end
+                if self._lastRefresh and now - self._lastRefresh < gap then return end
                 self:SetScript("OnUpdate", nil)
                 self._updateScheduled = false
+                self._lastRefresh = now
+                local t0 = Now()
                 refresh()
+                local cost = (Now() - t0) / 1000
+                self._refreshGap = math.min(MAX_REFRESH_GAP, math.max(MIN_REFRESH_GAP, cost * 5))
             end)
         end
     end
@@ -90,31 +155,15 @@ end
 
 function Chassis.ShowMoneyPopup(key, kind, onAccept)
     local depositing = (kind == "deposit")
-    local function submit(dialog)
-        local amount = MoneyInputFrame_GetCopper(dialog.MoneyInputFrame)
-        if amount > 0 then onAccept(depositing, amount) end
-    end
-    StaticPopup_Hide(key)
-    StaticPopupDialogs[key] = {
+    H3z0UI_ShowPopup({
         text = depositing and ns.L["Deposit gold:"] or ns.L["Withdraw gold:"],
         button1 = ACCEPT,
         button2 = CANCEL,
-        hasMoneyInputFrame = true,
-        OnAccept = submit,
-        OnHide = function(self)
-            MoneyInputFrame_ResetMoney(self.MoneyInputFrame)
+        hasMoneyInput = true,
+        OnAccept = function(_, _, amount)
+            if amount and amount > 0 then onAccept(depositing, amount) end
         end,
-        EditBoxOnEnterPressed = function(box)
-            local dialog = box:GetParent():GetParent()
-            submit(dialog)
-            dialog:Hide()
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-    StaticPopup_Show(key)
+    })
 end
 
 function Chassis.MeasureHeaderWidth(controls, opts)
@@ -147,8 +196,17 @@ function Chassis.ClampAppearance(appearance)
 end
 
 -- H3z0 UI: rounded slate window (like the character / inspect panes)
+-- a little lighter than the shared slate (follows the UI colour)
 local SLATE_FILL = { 0.105, 0.125, 0.16, 0.97 }
 local SLATE_TOP = { 0.17, 0.2, 0.25, 0.55 }
+local function SyncSlate()
+    local base = ns.Round and ns.Round.SLATE_FILL
+    if not base then return end
+    for i = 1, 3 do
+        SLATE_FILL[i] = math.min(1, base[i] + 0.03)
+        SLATE_TOP[i] = math.min(1, base[i] + 0.095)
+    end
+end
 
 local function EnsureRoundedPanel(win)
     local R = ns.Round
@@ -169,14 +227,25 @@ local function EnsureRoundedPanel(win)
 end
 
 local function Reskin(win)
+    SyncSlate()
     local sr, sg, sb, sa, bgr, bgg, bgb, bga = Helpers.GetWindowColors()
     local panel = EnsureRoundedPanel(win)
+    if panel and panel._glow then
+        panel._glow:SetGradient("VERTICAL", CreateColor(SLATE_TOP[1], SLATE_TOP[2], SLATE_TOP[3], 0), CreateColor(SLATE_TOP[1], SLATE_TOP[2], SLATE_TOP[3], SLATE_TOP[4]))
+    end
     if panel then
         win._bg:SetAlpha(0)
-        if win._border then win._border:Hide() end
+        -- the old 1px white frame border: switch it off for good (it showed itself
+        -- again on every UI scale refresh when it was only hidden)
+        if win._border then
+            if win._border.SetBackdropBorderColor then win._border:SetBackdropBorderColor(0, 0, 0, 0) end
+            if win._border.SetBackdrop then win._border:SetBackdrop(nil) end
+            win._border:Hide()
+        end
         panel:SetFillColor(SLATE_FILL[1], SLATE_FILL[2], SLATE_FILL[3], SLATE_FILL[4])
+        -- no outline around the window (it read as a white line)
         local b = (ns.Round and ns.Round.SLATE_BORDER) or { 0.25, 0.29, 0.33 }
-        panel:SetBorderColor(b[1], b[2], b[3], 1)
+        panel:SetBorderColor(b[1], b[2], b[3], 0)
         panel:SetRadius(10)
         panel:Show()
     else
@@ -219,7 +288,7 @@ function Chassis.CreateWindow(opts)
     win._bg:SetAllPoints()
     win._bg:SetTexture("Interface\\Buttons\\WHITE8x8")
     UIKit.DisablePixelSnap(win._bg)
-    win._border = UIKit.CreateBackdropBorder(win, 1, 1, 1, 1, 1)
+    win._border = UIKit.CreateBackdropBorder(win, 1, 0, 0, 0, 0)
 
     local header = CreateFrame("Frame", nil, win)
     header:SetPoint("TOPLEFT", 0, 0)
@@ -228,6 +297,8 @@ function Chassis.CreateWindow(opts)
     header:EnableMouse(true)
     header:RegisterForDrag("LeftButton")
     header:SetScript("OnDragStart", function()
+        local b = Behavior()
+        if b and b.lockWindows then return end
         win:StartMoving()
     end)
     header:SetScript("OnDragStop", function()
@@ -281,7 +352,7 @@ function Chassis.CreateWindow(opts)
         if not opts.compactSearch then return end
         local expanded = self:HasFocus() or (self:GetText() or "") ~= ""
         local want = expanded and SEARCH_FULL_W or SEARCH_COMPACT_W
-        if self:GetWidth() ~= want then
+        if math.abs(self:GetWidth() - want) > 0.5 then
             self:SetWidth(want)
             if opts.onChromeChanged then opts.onChromeChanged() end
         end
@@ -321,6 +392,48 @@ function Chassis.CreateWindow(opts)
     win._searchBox = search
     RefreshSearchChrome(search)
 
+    -- saved searches: right-click the search box
+    search:HookScript("OnEnter", function(self)
+        if self:HasFocus() then return end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText(_G.SEARCH or ns.L["Search"])
+        GameTooltip:AddLine(ns.L["Right-click: saved searches."], 1, 1, 1, true)
+        GameTooltip:AddLine(ns.L["Words like #potion, #boe, epic, ilvl>600; & = and, | = or, ! = not."], 0.7, 0.7, 0.7, true)
+        GameTooltip:Show()
+    end)
+    search:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    search:HookScript("OnMouseUp", function(self, mouseButton)
+        if mouseButton ~= "RightButton" or not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+        local st = BagSettings()
+        if not st then return end
+        st.savedSearches = st.savedSearches or {}
+        local saved = st.savedSearches
+        MenuUtil.CreateContextMenu(self, function(_, root)
+            root:CreateTitle(ns.L["Saved Searches"])
+            if #saved == 0 then
+                root:CreateButton("|cff888888" .. ns.L["None yet"] .. "|r", function() end)
+            end
+            for i, text in ipairs(saved) do
+                local entry = root:CreateButton(text, function()
+                    self:SetText(text)
+                    self:ClearFocus()
+                end)
+                entry:CreateButton(ns.L["Delete"], function() table.remove(saved, i) end)
+            end
+            local cur = self:GetText() or ""
+            if cur ~= "" then
+                local exists = false
+                for _, t in ipairs(saved) do if t == cur then exists = true end end
+                if not exists then
+                    root:CreateDivider()
+                    root:CreateButton(ns.L["Save"] .. ": " .. cur, function()
+                        saved[#saved + 1] = cur
+                    end)
+                end
+            end
+        end)
+    end)
+
     local body = CreateFrame("Frame", nil, win)
     body:SetPoint("TOPLEFT", PAD, -HEADER_H)
     body:SetPoint("BOTTOMRIGHT", -PAD, FOOTER_H)
@@ -342,16 +455,44 @@ function Chassis.CreateWindow(opts)
         tinsert(UISpecialFrames, opts.name)
     end
 
+    function win:ApplyChromeOptions()
+        local pad = CurPad()
+        if self._pad ~= pad then
+            self._pad = pad
+            body:ClearAllPoints()
+            body:SetPoint("TOPLEFT", pad, -HEADER_H)
+            body:SetPoint("BOTTOMRIGHT", -pad, footerH)
+        end
+        local a = Appearance()
+        local wantSearch = not (a and a.showSearchBox == false)
+        if wantSearch ~= self._searchShown then
+            self._searchShown = wantSearch
+            if wantSearch then
+                search:Show()
+                search:SetWidth(opts.compactSearch and SEARCH_COMPACT_W or SEARCH_FULL_W)
+                RefreshSearchChrome(search)
+            else
+                search:SetText("")
+                search:ClearFocus()
+                search:SetWidth(0.1)
+                search:Hide()
+            end
+        end
+        ApplyAltButtons()
+    end
+
     function win:SetContentSize(contentW, contentH)
+        self:ApplyChromeOptions()
         self._contentW, self._contentH = contentW, contentH
-        self:SetSize(contentW + PAD * 2, contentH + HEADER_H + footerH)
+        local pad = self._pad or PAD
+        self:SetSize(contentW + pad * 2, contentH + HEADER_H + footerH)
     end
 
     function win:SetFooterHeight(h)
         if h == footerH then return end
         footerH = h
         footer:SetHeight(h)
-        body:SetPoint("BOTTOMRIGHT", -PAD, h)
+        body:SetPoint("BOTTOMRIGHT", -(self._pad or PAD), h)
         if self._contentW then
             self:SetContentSize(self._contentW, self._contentH)
         end

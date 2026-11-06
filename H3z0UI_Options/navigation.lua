@@ -4,11 +4,11 @@ local UIKit = ns.UIKit
 
 local groups = {
     { "H3z0 UI", { "h3z_features" } },
-    { ns.L["Setup"], { "welcome", "global", "help" } },
+    { ns.L["Setup"], { "home", "welcome", "global", "help" } },
     { ns.L["Frames & Bars"], { "h3z_unitframes", "h3z_partyframes", "h3z_nameplates", "action_bars" } },
     { ns.L["Abilities & Auras"], { "cooldown_manager", "resource_bars", "h3z_customtrackers", "auras" } },
-    { ns.L["Interface"], { "appearance", "minimap", "infobar", "h3z_chat", "chat_tooltips", "bags", "alts" } },
-    { ns.L["Gameplay & Utilities"], { "gameplay", "reminders", "qol" } },
+    { ns.L["Interface"], { "appearance", "minimap", "infobar", "h3z_herald", "h3z_arcanum", "h3z_lorekeeper", "h3z_chat", "chat_tooltips", "bags", "alts" } },
+    { ns.L["Gameplay & Utilities"], { "gameplay", "reminders", "h3z_oracle", "qol" } },
 }
 
 local function Owner(body)
@@ -794,7 +794,7 @@ function GUI:AttachTileNavigation(frame, tile)
         tile.moduleToggle:ClearAllPoints()
         tile.moduleToggle:SetPoint("RIGHT", arrow, "LEFT", -8, 1)
     end
-    if tile.id == "welcome" then arrow:Hide() end
+    if tile.id == "welcome" or tile.id == "home" then arrow:Hide() end
     tile.text:SetPoint("RIGHT", tile, "RIGHT", tile.moduleToggle and -55 or -23, 0)
     tile:HookScript("OnEnter", function()
         if frame._navigationDocked then return end
@@ -837,8 +837,8 @@ function GUI:LayoutSidebarGroups(frame)
         local label = frame._sidebarGroups[index]
         if not label then
             label = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            Font(label, 9)
-            label:SetTextColor(unpack(self.Colors.sectionLabel))
+            Font(label, 10)
+            label:SetTextColor(self.Colors.accent[1], self.Colors.accent[2], self.Colors.accent[3], 0.95)
             label:SetJustifyH("LEFT")
             frame._sidebarGroups[index] = label
         end
@@ -874,8 +874,8 @@ function GUI:LayoutSidebarGroups(frame)
     end
     parent:SetHeight(y)
     frame._bottomTiles = {}
-    frame._sidebarScroll:SetPoint("TOPLEFT", frame.sidebar, "TOPLEFT", 0, -4)
-    frame._sidebarScroll:SetPoint("BOTTOMRIGHT", frame.sidebar, "BOTTOMRIGHT", 0, frame._toolsStrip and 102 or 8)
+    frame._sidebarScroll:SetPoint("TOPLEFT", frame.sidebar, "TOPLEFT", 0, -(GUI.SIDEBAR_TOP_RESERVE or 4))
+    frame._sidebarScroll:SetPoint("BOTTOMRIGHT", frame.sidebar, "BOTTOMRIGHT", 0, frame._toolsStrip and 130 or 8)
     if frame._sidebarClampScroll then frame._sidebarClampScroll() end
     if UIKit.RegisterScaleRefresh then
         UIKit.RegisterScaleRefresh(frame, "optionsNavigationDock", function() GUI:RefreshNavigationDock(frame) end)

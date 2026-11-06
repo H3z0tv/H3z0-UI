@@ -189,6 +189,13 @@ local function BuildEffectsTab(tabContent)
         glowEnable:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
 
+        -- same glow as the action bars (overrides the type and colour below)
+        if dbTable.matchActionBars == nil then dbTable.matchActionBars = true end
+        local matchAB = GUI:CreateFormCheckbox(tabContent, "Same Glow as the Action Bars", "matchActionBars", dbTable, refreshFn)
+        matchAB:SetPoint("TOPLEFT", PAD, y)
+        matchAB:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        y = y - FORM_ROW
+
         -- Glow Type dropdown
         local glowTypeOptions = {
             {value = "Pixel Glow", text = "Pixel Glow"},

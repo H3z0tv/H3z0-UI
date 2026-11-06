@@ -2,7 +2,7 @@
 ## Title: |cFF30D1FFH3z0 UI|r Bags
 ## Notes: H3z0 UI module. Requires the H3z0 UI core addon.
 ## Author: H3z0
-## Version: 0.25.1
+## Version: 0.28.2
 ## Category: User Interface
 ## Group: H3z0UI
 ## Dependencies: H3z0UI
@@ -23,6 +23,7 @@ bags\ops\junk.lua
 bags\views\details.lua
 bags\views\grid_layout.lua
 bags\views\category_layout.lua
+bags\views\categories.lua
 bags\views\inventory_view.lua
 bags\views\refresh_scope.lua
 bags\views\chassis.lua

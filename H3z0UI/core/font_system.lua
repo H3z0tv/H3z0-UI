@@ -68,9 +68,10 @@ local FONT_OBJECT_SET = {
     "QuestFont_Shadow_Small", "QuestFont_Shadow_Super_Huge", "QuestFont_Super_Huge", "QuestTitleFont",
     "ReputationDetailFont", "SpellFont_Small", "SubSpellFont", "SubZoneTextFont",
     "SystemFont16_Shadow_ThickOutline", "SystemFont_Huge1", "SystemFont_Huge1_Outline", "SystemFont_Huge2",
-    "SystemFont_Large", "SystemFont_LargeNamePlate", "SystemFont_LargeNamePlateFixed",
+    -- the game's own nameplate fonts (names above players and NPCs) are left alone:
+    -- with another font they were drawn small and scaled up, so the names looked blurry
+    "SystemFont_Large",
     "SystemFont_Med1", "SystemFont_Med2", "SystemFont_Med3",
-    "SystemFont_NamePlate", "SystemFont_NamePlateCastBar", "SystemFont_NamePlateFixed", "SystemFont_NamePlate_Outlined",
     "SystemFont_Outline", "SystemFont_Outline_Small", "SystemFont_OutlineThick_Huge2", "SystemFont_OutlineThick_WTF",
     "SystemFont_Shadow_Huge1", "SystemFont_Shadow_Huge2", "SystemFont_Shadow_Huge3", "SystemFont_Shadow_Huge4",
     "SystemFont_Shadow_Large", "SystemFont_Shadow_Large2", "SystemFont_Shadow_Large_Outline",
@@ -185,6 +186,47 @@ function H3z0UICore:ApplyGlobalDefaultFont()
         _G.STANDARD_TEXT_FONT = originalStandardTextFont
         originalStandardTextFont = false
     end
+end
+
+-- One font everywhere: every font setting in the profile that names a font
+-- (unit frames, party / raid frames, nameplates, minimap, datatexts, timers ...)
+-- takes the new one. Settings that follow the global font ("", "global",
+-- "__H3z0UI_GLOBAL__") are left as they are, they follow it anyway.
+local function IsFontKey(k)
+    if type(k) ~= "string" then return false end
+    local l = k:lower()
+    if not l:find("font") then return false end
+    for _, w in ipairs({ "size", "outline", "color", "colour", "flag", "shadow", "scale", "offset", "anchor", "monochrome", "justify", "use", "enabled", "show", "source" }) do
+        if l:find(w) then return false end
+    end
+    return true
+end
+
+function H3z0UICore:SetAllFonts(name)
+    local p = self.db and self.db.profile
+    if not (p and type(name) == "string" and name ~= "") then return 0 end
+    local lsm = ns.LSM or LSM or (LibStub and LibStub("LibSharedMedia-3.0", true))
+    local known = lsm and lsm.HashTable and lsm:HashTable("font") or {}
+    local changed = 0
+    local seen = {}
+    local function Walk(t, depth)
+        if type(t) ~= "table" or depth > 10 or seen[t] then return end
+        seen[t] = true
+        for k, v in pairs(t) do
+            if type(v) == "table" then
+                Walk(v, depth + 1)
+            elseif type(v) == "string" and IsFontKey(k) and v ~= name
+                and (known[v] or (v ~= "" and v ~= "global" and v ~= "Default" and not v:find("^__")
+                    and not v:find("[\\/]") and not v:lower():find("%.ttf$"))) then
+                t[k] = name
+                changed = changed + 1
+            end
+        end
+    end
+    Walk(p, 0)
+    p.general = p.general or {}
+    p.general.font = name
+    return changed
 end
 
 function H3z0UICore:ApplyGlobalFont()

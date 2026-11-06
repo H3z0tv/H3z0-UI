@@ -147,6 +147,14 @@ function ClearOwnedFlyoutButtonCooldown(button)
     if button.chargeCooldown then ClearOwnedCooldown(button.chargeCooldown) end
 end
 
+-- the screen size (absolute units) for the secure layout, which can't ask for it
+function UpdateOwnedFlyoutScreenSize()
+    if not ownedFlyout or InCombatLockdown() then return end
+    local eff = UIParent:GetEffectiveScale() or 1
+    ownedFlyout:SetAttribute("h3z0ui-screenW", (GetScreenWidth() or 0) * eff)
+    ownedFlyout:SetAttribute("h3z0ui-screenH", (GetScreenHeight() or 0) * eff)
+end
+
 EnsureOwnedFlyoutFrame = function()
     if ownedFlyout or not USE_OWNED_FLYOUT then return ownedFlyout end
 
@@ -179,6 +187,10 @@ EnsureOwnedFlyoutFrame = function()
         end
     end)
     ownedFlyout:SetAttribute("numFlyoutButtons", 0)
+    UpdateOwnedFlyoutScreenSize()
+    ownedFlyout:RegisterEvent("DISPLAY_SIZE_CHANGED")
+    ownedFlyout:RegisterEvent("UI_SCALE_CHANGED")
+    ownedFlyout:SetScript("OnEvent", function() UpdateOwnedFlyoutScreenSize() end)
     ownedFlyout:Execute([[H3z0UI_FlyoutInfo = newtable()]])
     ownedFlyout:SetAttribute("HandleFlyout", [[
         local parent = self:GetAttribute("flyoutParentHandle")
@@ -203,12 +215,50 @@ EnsureOwnedFlyoutFrame = function()
         end
 
         local direction = parent:GetAttribute("flyoutDirection") or "UP"
-        local width = 45
-        local height = 45
+        local width = parent:GetWidth() or 45
+        local height = parent:GetHeight() or 45
+        if width < 20 then width = 45 end
+        if height < 20 then height = 45 end
         self:SetParent(parent)
 
+        -- count the spells that will show
+        local total = 0
+        for _, slotInfo in ipairs(info.slots) do
+            if slotInfo and slotInfo.spellID and slotInfo.isKnown then total = total + 1 end
+        end
+
+        -- room on screen in the flyout direction: a long list (teleports)
+        -- wraps into more columns / rows instead of running off the screen
+        local avail
+        local eff = parent:GetEffectiveScale() or 1
+        local screenW = self:GetAttribute("h3z0ui-screenW")
+        local screenH = self:GetAttribute("h3z0ui-screenH")
+        local pl, pb, pw, ph = parent:GetRect()
+        if pl and pb and pw and ph and screenW and screenH and eff > 0 then
+            if direction == "DOWN" then
+                avail = pb - 4
+            elseif direction == "LEFT" then
+                avail = pl - 4
+            elseif direction == "RIGHT" then
+                avail = screenW / eff - (pl + pw) - 4
+            else
+                avail = screenH / eff - (pb + ph) - 4
+            end
+        end
+        local step = height
+        if direction == "LEFT" or direction == "RIGHT" then step = width end
+        local perLine = total
+        if avail then
+            perLine = 1
+            while perLine < total and 14 + (perLine + 1) * step + perLine * 4 <= avail do
+                perLine = perLine + 1
+            end
+        elseif total > 10 then
+            perLine = 10
+        end
+        if perLine < 1 then perLine = 1 end
+
         local usedSlots = 0
-        local prevButton
         for slotID, slotInfo in ipairs(info.slots) do
             if slotInfo and slotInfo.spellID and slotInfo.isKnown then
                 usedSlots = usedSlots + 1
@@ -222,34 +272,25 @@ EnsureOwnedFlyoutFrame = function()
                     slotButton:SetHeight(height)
                     slotButton:ClearAllPoints()
 
+                    -- position along the line and which line it is on
+                    local k = usedSlots - 1
+                    local line = 0
+                    while k >= perLine do
+                        k = k - perLine
+                        line = line + 1
+                    end
+                    local along = 7 + k * (step + 4)
                     if direction == "DOWN" then
-                        if prevButton then
-                            slotButton:SetPoint("TOP", prevButton, "BOTTOM", 0, -4)
-                        else
-                            slotButton:SetPoint("TOP", self, "TOP", 0, -7)
-                        end
+                        slotButton:SetPoint("TOPLEFT", self, "TOPLEFT", 7 + line * (width + 4), -along)
                     elseif direction == "LEFT" then
-                        if prevButton then
-                            slotButton:SetPoint("RIGHT", prevButton, "LEFT", -4, 0)
-                        else
-                            slotButton:SetPoint("RIGHT", self, "RIGHT", -7, 0)
-                        end
+                        slotButton:SetPoint("TOPRIGHT", self, "TOPRIGHT", -along, -(7 + line * (height + 4)))
                     elseif direction == "RIGHT" then
-                        if prevButton then
-                            slotButton:SetPoint("LEFT", prevButton, "RIGHT", 4, 0)
-                        else
-                            slotButton:SetPoint("LEFT", self, "LEFT", 7, 0)
-                        end
+                        slotButton:SetPoint("TOPLEFT", self, "TOPLEFT", along, -(7 + line * (height + 4)))
                     else
-                        if prevButton then
-                            slotButton:SetPoint("BOTTOM", prevButton, "TOP", 0, 4)
-                        else
-                            slotButton:SetPoint("BOTTOM", self, "BOTTOM", 0, 7)
-                        end
+                        slotButton:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 7 + line * (width + 4), along)
                     end
 
                     slotButton:Show()
-                    prevButton = slotButton
                 end
             end
         end
@@ -271,15 +312,20 @@ EnsureOwnedFlyoutFrame = function()
             return
         end
 
-        local extent
+        local inLine = usedSlots
+        if inLine > perLine then inLine = perLine end
+        local lines = 0
+        local left = usedSlots
+        while left > 0 do
+            left = left - perLine
+            lines = lines + 1
+        end
         if direction == "LEFT" or direction == "RIGHT" then
-            extent = 14 + usedSlots * width + (usedSlots - 1) * 4
-            self:SetWidth(extent)
-            self:SetHeight(height)
+            self:SetWidth(14 + inLine * width + (inLine - 1) * 4)
+            self:SetHeight(14 + lines * height + (lines - 1) * 4)
         else
-            extent = 14 + usedSlots * height + (usedSlots - 1) * 4
-            self:SetWidth(width)
-            self:SetHeight(extent)
+            self:SetWidth(14 + lines * width + (lines - 1) * 4)
+            self:SetHeight(14 + inLine * height + (inLine - 1) * 4)
         end
 
         self:SetAttribute("flyoutID", flyoutID)
@@ -372,6 +418,17 @@ function PopulateOwnedFlyoutInfoEntry(info, flyoutID, numSlots, isKnown)
             local petIndex, petName = GetCallPetSpellInfo(spellID)
             if petIndex and (not petName or petName == "") then
                 isKnownSlot = false
+            end
+        end
+
+        -- the flyout's own "known" flag can lag behind (new teleports,
+        -- account-wide ones): also ask the spellbook
+        if not isKnownSlot and type(spellID) == "number" and spellID > 0 then
+            if IsPlayerSpell and IsPlayerSpell(spellID) then
+                isKnownSlot = true
+            elseif C_SpellBook and C_SpellBook.IsSpellKnown then
+                local ok, known = pcall(C_SpellBook.IsSpellKnown, spellID)
+                if ok and known == true then isKnownSlot = true end
             end
         end
 
@@ -473,6 +530,7 @@ SyncOwnedFlyoutInfoToHandler = function()
     local flyout = EnsureOwnedFlyoutFrame()
     if not flyout then return end
 
+    UpdateOwnedFlyoutScreenSize()
     UpdateOwnedFlyoutInfo()
     local maxNumSlots = 0
     local lines = { "H3z0UI_FlyoutInfo = newtable();\n" }

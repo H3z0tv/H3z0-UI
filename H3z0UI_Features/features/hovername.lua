@@ -528,6 +528,7 @@ local function SetStackAnchor(element, anchor, top)
 end
 
 local fontsReady = false
+local stable, pendingSince, goneSince, UpdatePosition   -- the position code is further down
 
 local function UpdateContents()
     if not fontsReady then
@@ -667,33 +668,77 @@ local function UpdateContents()
     end
 
     UpdateBackground()
+    goneSince = nil
+    UpdatePosition(true)
     frame:Show()
 end
 
-local function UpdatePosition()
+-- settings used every frame while the name follows the cursor: read once
+-- when a new unit is hovered (and on refresh), not on every frame
+local pos = { anchor = "TOP", point = "BOTTOM", x = 0, y = 18, gap = 28 }
+local lastX, lastY, lastLook
+local function CachePositionSettings()
+    pos.anchor = Get("cursorAnchor") or "TOP"
+    pos.point = ANCHOR_TO_POINT[pos.anchor] or ANCHOR_TO_POINT.TOP
+    pos.x = tonumber(Get("offsetHorizontal")) or 0
+    pos.y = tonumber(Get("offsetVertical")) or 18
+    pos.gap = tonumber(Get("aimGap")) or 28
+    pos.top = pos.anchor:find("TOP") ~= nil
+    pos.bottom = pos.anchor:find("BOTTOM") ~= nil
+    pos.left = pos.anchor:find("LEFT") ~= nil
+    pos.right = pos.anchor:find("RIGHT") ~= nil
+    lastX = nil
+end
+
+-- Clicking with an aim-reticle addon (True Reticle ...) switches between mouselook and the
+-- free cursor, and for a moment the cursor position and the hovered unit are not steady.
+-- So: the mouselook state must stay the same for a short moment before it counts, the name
+-- stays where it was while it settles, and while aiming the name hangs on the middle of the
+-- screen (the reticle), not on the cursor, which is not a real position then.
+local SETTLE, GONE_GRACE = 0.15, 0.12
+UpdatePosition = function(force)
     if not UnitExists("mouseover") then
-        frame:Hide()
+        -- the hovered unit can drop out for a moment while you click: wait before hiding
+        goneSince = goneSince or GetTime()
+        if GetTime() - goneSince >= GONE_GRACE then frame:Hide() end
         return
     end
-    local x, y = GetCursorPosition()
+    goneSince = nil
+    local raw = IsMouselooking and IsMouselooking() or false
+    if stable == nil or force then
+        stable, pendingSince = raw, nil
+    elseif raw ~= stable then
+        pendingSince = pendingSince or GetTime()
+        if GetTime() - pendingSince < SETTLE then return end   -- still settling: stay where you are
+        stable, pendingSince = raw, nil
+    else
+        pendingSince = nil
+    end
+    local looking = stable
+    local x, y
+    if looking then
+        local scale = UIParent:GetEffectiveScale()
+        x, y = (UIParent:GetWidth() / 2) * scale, (UIParent:GetHeight() / 2) * scale
+    else
+        x, y = GetCursorPosition()
+    end
+    -- nothing moved: leave the frame where it is
+    if not force and x == lastX and y == lastY and looking == lastLook then return end
+    lastX, lastY, lastLook = x, y, looking
     local scale = UIParent:GetEffectiveScale()
-    local anchor = Get("cursorAnchor") or "TOP"
-    local point = ANCHOR_TO_POINT[anchor] or ANCHOR_TO_POINT.TOP
-    local xOff = tonumber(Get("offsetHorizontal")) or 0
-    local yOff = tonumber(Get("offsetVertical")) or 18
+    local xOff, yOff = pos.x, pos.y
 
-    -- While mouselooking / Action Combat the cursor is the aim point in the middle
-    -- of the screen: move the name further away so it never covers the crosshair.
-    if IsMouselooking and IsMouselooking() then
-        local gap = tonumber(Get("aimGap")) or 28
-        if anchor:find("TOP") then yOff = yOff + gap end
-        if anchor:find("BOTTOM") then yOff = yOff - gap end
-        if anchor:find("LEFT") then xOff = xOff - gap end
-        if anchor:find("RIGHT") then xOff = xOff + gap end
+    -- While aiming the name goes further away so it never covers the crosshair.
+    if looking then
+        local gap = pos.gap
+        if pos.top then yOff = yOff + gap end
+        if pos.bottom then yOff = yOff - gap end
+        if pos.left then xOff = xOff - gap end
+        if pos.right then xOff = xOff + gap end
     end
 
     frame:ClearAllPoints()
-    frame:SetPoint(point, UIParent, "BOTTOMLEFT", (x / scale) + xOff, (y / scale) + yOff)
+    frame:SetPoint(pos.point, UIParent, "BOTTOMLEFT", (x / scale) + xOff, (y / scale) + yOff)
 end
 
 ---------------------------------------------------------------------------
@@ -708,12 +753,14 @@ local function Apply()
     end
     pcall(UpdateFonts)
     pcall(UpdateBackground)
+    pcall(CachePositionSettings)
 end
 
 frame:SetScript("OnUpdate", function() pcall(UpdatePosition) end)
 frame:SetScript("OnEvent", function(self, event)
     if event == "UPDATE_MOUSEOVER_UNIT" then
         -- Never let an error here break the UI
+        pcall(CachePositionSettings)
         local ok = pcall(UpdateContents)
         if not ok then self:Hide() end
     elseif event == "PLAYER_LOGIN" then

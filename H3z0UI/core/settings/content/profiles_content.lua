@@ -611,7 +611,7 @@ local function BuildSpecProfilesContent(content)
 
     local specCore = GetCore()
     local specDB = specCore and specCore.db
-    local isForever = ns.Client and ns.Client.isForever
+    local isForever = ns.Client and ns.Client.isLegacy
     local numSpecs = isForever and 2 or GetNumSpecializations()
 
     if specDB and specDB.IsDualSpecEnabled and specDB.SetDualSpecEnabled and specDB.GetDualSpecProfile and specDB.SetDualSpecProfile then

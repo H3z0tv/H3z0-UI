@@ -40,6 +40,11 @@ local function BuildSharedSection(tabContent, headerAt, sectionAt, closeSection,
         Opts.BuildSettingRow(card.frame, ns.L["Hide Duration Swipe"], hideSwipe)
     )
 
+    if settings.hidePermanentBuffs == nil then settings.hidePermanentBuffs = true end
+    local hidePerm = GUI:CreateFormToggle(card.frame, nil, "hidePermanentBuffs", settings, RefreshBuffBorders,
+        { description = ns.L["Leave buffs that never run out (Cat Form and other forms, Skyriding, delve companion, mount auras, ...) out of the buff frame."] })
+    card.AddRow(Opts.BuildSettingRow(card.frame, ns.L["Hide Permanent Buffs"], hidePerm))
+
     local externalSkin = GUI:CreateFormToggle(card.frame, nil, "externalSkinning", settings, RefreshBuffBorders,
         { description = "When an external button-skinning addon is installed, let it skin buff/debuff icons instead of H3z0UI's own border." })
     card.AddRow(

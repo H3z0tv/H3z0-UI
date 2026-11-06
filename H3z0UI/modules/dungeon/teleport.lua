@@ -133,6 +133,9 @@ initFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 initFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 initFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "SPELL_UPDATE_COOLDOWN" or (event == "PLAYER_REGEN_ENABLED" and cooldownRefreshPending) then
+        -- only while the Mythic+ window is open (it updates them when it opens)
+        local cf = _G.ChallengesFrame
+        if not (cf and cf:IsVisible()) then return end
         UpdateCooldowns()
     elseif event == "ADDON_LOADED" and arg1 == "Blizzard_ChallengesUI" then
         if not hooked and ChallengesFrame then

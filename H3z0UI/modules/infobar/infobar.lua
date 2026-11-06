@@ -56,6 +56,9 @@ local function ApplyBackdrop()
         local _, _, _, _, r, g, b = Helpers.GetWindowColors(db, "")
         bgR, bgG, bgB = r, g, b
     end
+    if db.bgColorOn and type(db.bgColor) == "table" then
+        bgR, bgG, bgB = db.bgColor[1] or 0, db.bgColor[2] or 0, db.bgColor[3] or 0
+    end
     bar.bg:SetColorTexture(bgR, bgG, bgB, (db.bgOpacity or 85) / 100)
     if UIKit and UIKit.DisablePixelSnap then
         UIKit.DisablePixelSnap(bar.bg)
@@ -83,13 +86,24 @@ end
 local function ApplyPosition()
     local db = GetDB()
     if not db then return end
+    local scale = math.max(0.5, math.min(2, tonumber(db.barScale) or 1))
+    bar:SetScale(scale)
     bar:ClearAllPoints()
-    if db.position == "BOTTOM" then
-        bar:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
-        bar:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", 0, 0)
+    local width = tonumber(db.barWidth) or 0
+    local ox = (tonumber(db.offsetX) or 0) / scale
+    local oy = (tonumber(db.offsetY) or 0) / scale
+    local bottom = db.position == "BOTTOM"
+    if width > 0 then
+        -- own width, centred (moved with the horizontal position)
+        local pt = bottom and "BOTTOM" or "TOP"
+        bar:SetPoint(pt, UIParent, pt, ox, oy)
+        bar:SetWidth(width / scale)
+    elseif bottom then
+        bar:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, oy)
+        bar:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", 0, oy)
     else
-        bar:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
-        bar:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", 0, 0)
+        bar:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, oy)
+        bar:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", 0, oy)
     end
     bar:SetHeight(db.height or 22)
 end

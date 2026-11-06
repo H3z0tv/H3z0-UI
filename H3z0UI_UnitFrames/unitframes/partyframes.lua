@@ -409,6 +409,8 @@ end
 
 local function UpdateReadyCheck(f)
     if not f.ready then return end
+    -- in a raid the raid tiles show the ticks, not the party frames
+    if not readyPreview and IsInRaid() then f.ready:Hide() return end
     local unit = f.displayUnit
     local status
     if readyPreview then

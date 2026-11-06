@@ -350,6 +350,27 @@ local function StyleItemUpgradeFrame(frame)
         if preview then
             SkinBase.SkinWindow(preview, { noClose = true, noButtonFonts = true, radius = 4 })
             SkinBase.SkinFrameText(preview)
+            -- the preview boxes are tooltips: the tooltip skin and Blizzard's
+            -- own border fight over them and only the corners were left, so
+            -- they get their own 1 pixel border lines on top
+            local edge = preview._h3zEdge
+            if not edge then
+                edge = CreateFrame("Frame", nil, preview)
+                edge:SetAllPoints()
+                edge:EnableMouse(false)
+                edge.lines = {}
+                for i = 1, 4 do edge.lines[i] = edge:CreateTexture(nil, "OVERLAY", nil, 7) end
+                local px = SkinBase.GetPixelSize and SkinBase.GetPixelSize(edge, 1) or 1
+                local t, bo, l, ri = edge.lines[1], edge.lines[2], edge.lines[3], edge.lines[4]
+                t:SetPoint("TOPLEFT"); t:SetPoint("TOPRIGHT"); t:SetHeight(px)
+                bo:SetPoint("BOTTOMLEFT"); bo:SetPoint("BOTTOMRIGHT"); bo:SetHeight(px)
+                l:SetPoint("TOPLEFT"); l:SetPoint("BOTTOMLEFT"); l:SetWidth(px)
+                ri:SetPoint("TOPRIGHT"); ri:SetPoint("BOTTOMRIGHT"); ri:SetWidth(px)
+                preview._h3zEdge = edge
+            end
+            edge:SetFrameLevel(preview:GetFrameLevel() + 10)
+            for i = 1, 4 do edge.lines[i]:SetColorTexture(sr, sg, sb, math.max(sa or 1, 0.8)) end
+            edge:Show()
             if type(preview.GeneratePreviewTooltip) == "function"
                 and not SkinBase.GetFrameData(preview, "qUpgradePreviewHooked") then
                 hooksecurefunc(preview, "GeneratePreviewTooltip", function()

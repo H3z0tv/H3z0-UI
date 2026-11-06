@@ -103,7 +103,75 @@ local function DecodeSeed()
     return payload
 end
 
+---------------------------------------------------------------------------
+-- H3z0 UI default profile (importstrings/h3z0_default_profile.lua): the full
+-- H3z0 UI setup. When it is there and made for this client, new profiles,
+-- Reset Profile and the wizard's fresh start get exactly this profile; only
+-- the string's own wrapper keys are left out. Its Blizzard Edit Mode layout
+-- is kept apart (ns.GetH3z0DefaultEditMode) and applied by the callers.
+---------------------------------------------------------------------------
+local defaultFull, defaultEditMode
+local defaultPositions
+
+local function DecodeH3z0Default()
+    if defaultFull ~= nil then return defaultFull or nil end
+    defaultFull = false
+    local loaders = H3z0UI and H3z0UI._importLoaders
+    local loader = loaders and loaders.H3z0Default
+    if type(loader) ~= "function" then return nil end
+    local AceSerializer = LibStub and LibStub("AceSerializer-3.0", true)
+    local LibDeflate = LibStub and LibStub("LibDeflate", true)
+    if not (AceSerializer and LibDeflate) then return nil end
+    local ok, payload = pcall(function()
+        local entry = loader()
+        local str = type(entry) == "table" and entry.data or entry
+        str = tostring(str or ""):gsub("%s+", "")
+        local prefix = str:match("^([A-Za-z][A-Za-z0-9]*%d):")
+        if prefix then str = str:sub(#prefix + 2) end
+        local okD, data = AceSerializer:Deserialize(LibDeflate:DecompressDeflate(LibDeflate:DecodeForPrint(str)))
+        if not okD or type(data) ~= "table" then return nil end
+        return data
+    end)
+    if not ok or type(payload) ~= "table" then return nil end
+    -- the frame positions of the H3z0 UI setup are the same on Midnight and Forever (Layout Sets reads them)
+    defaultPositions = payload
+    if ns.Client and payload._h3z0uiClient and payload._h3z0uiClient ~= ns.Client.flavor then return nil end
+    defaultEditMode = payload._h3z0uiEditMode
+    for _, k in ipairs({ "_h3z0uiClient", "_h3z0uiEditMode", "_h3z0uiBundledGlobals", "_migrationBackup", "_needsStarterReseed", "setup" }) do
+        payload[k] = nil
+    end
+    -- the H3z0 Pro M+ timer is the H3z0 UI default layout
+    if type(payload.mplusTimer) == "table" then payload.mplusTimer.layoutMode = "pro" end
+    -- Blizzard Frame Mover starts off (Blizzard's windows can't be dragged until it is turned on)
+    if type(payload.blizzardMover) == "table" then payload.blizzardMover.enabled = false end
+    defaultFull = payload
+    return payload
+end
+
+-- the H3z0 UI default setup for its frame positions only: also on a client the full setup is not made for
+function ns.GetH3z0DefaultPositions()
+    DecodeH3z0Default()
+    if defaultPositions == nil then return nil end
+    local c = defaultPositions._h3z0uiClient
+    if c and ns.Client and c ~= ns.Client.flavor
+        and not ((c == "retail" or c == "forever") and (ns.Client.flavor == "retail" or ns.Client.flavor == "forever")) then
+        return nil
+    end
+    return defaultPositions
+end
+
+function ns.GetH3z0DefaultEditMode()
+    DecodeH3z0Default()
+    return defaultEditMode
+end
+
+function ns.HasH3z0DefaultProfile()
+    return DecodeH3z0Default() ~= nil
+end
+
 function ns.GetNewProfileSeed()
+    local full = DecodeH3z0Default()
+    if full then return full end
     if decodedSeed == nil then
         local seed, err = DecodeSeed()
         if not seed then

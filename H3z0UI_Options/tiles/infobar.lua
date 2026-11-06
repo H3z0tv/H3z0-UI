@@ -12,7 +12,7 @@ function V2InfoBar.Register(frame)
     Opts.RegisterFeatureTile(frame, {
         id = "infobar",
         icon = "i",
-        name = "Bottom Bar",
+        name = "Dock Bar",
         moduleFeatureId = "moduleFlag_infobar",
         subPages = {
             {
@@ -35,6 +35,7 @@ function V2InfoBar.Register(frame)
                     ns.L["infobar"],
                     ns.L["data bar"],
                     ns.L["top bar"],
+                    "dock bar",
                     ns.L["bottom bar"],
                 },
             },
@@ -48,7 +49,7 @@ function V2InfoBar.Register(frame)
             if tile.id == "infobar" and tile.config and type(tile.config.subPages) == "table" then
                 table.insert(tile.config.subPages, 1, {
                     id = "h3zBottomBar",
-                    name = "Bottom Bar",
+                    name = "Dock Bar",
                     buildFunc = function(body)
                         local ok, err = pcall(BBO.BuildBottomBarTab, body)
                         if not ok and geterrorhandler then geterrorhandler()(err) end

@@ -248,13 +248,12 @@ local function SyncPurchasedRank(powerID, oldRank, tries)
     end
 end
 
-local function EnsureBuyPopup()
-    if StaticPopupDialogs[BUY_POPUP] then return end
-    StaticPopupDialogs[BUY_POPUP] = {
-        text = ns.L["Purchase %s for %s Artifact Power?"],
+local function BuyPopup(name, costText, powerID)
+    H3z0UI_ShowPopup({
+        text = ns.L["Purchase %s for %s Artifact Power?"]:format(name, costText),
         button1 = _G.YES,
         button2 = _G.NO,
-        OnAccept = function(_, powerID)
+        OnAccept = function()
             if InCombatLockdown() or not Angler.IsArtifactOpen() then return end
             local before = C_ArtifactUI.GetPowerInfo(powerID)
             if C_ArtifactUI.AddPower(powerID) then
@@ -265,11 +264,7 @@ local function EnsureBuyPopup()
                 Window.QueueRefresh()
             end
         end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
+    })
 end
 
 local function RequestPurchase(powerID)
@@ -291,8 +286,7 @@ local function RequestPurchase(powerID)
         Print(ns.L["The prerequisites for %s are not met."]:format(name))
         return
     end
-    EnsureBuyPopup()
-    StaticPopup_Show(BUY_POPUP, name, FormatNumber(info.cost or 0), powerID)
+    BuyPopup(name, FormatNumber(info.cost or 0), powerID)
 end
 
 local function ShowTraitTooltip(node)
@@ -612,7 +606,7 @@ local function Build()
 
     win._title = Text(header, 14)
     win._title:SetPoint("LEFT", 12, 0)
-    win._title:SetText(ns.L["Underlight Angler"])
+    win._title:SetText("Tidecaller")
 
     win._close = UIKit.CreateCloseButton(header, {
         point = "RIGHT", x = -8, y = 0,
@@ -665,13 +659,13 @@ local function Build()
 
     win:SetScript("OnEvent", function() Window.QueueRefresh() end)
     win:SetScript("OnShow", function(self)
-        for _, event in ipairs(EVENTS) do self:RegisterEvent(event) end
+        for _, event in ipairs(EVENTS) do H3z0UI_SafeRegisterEvent(self, event) end
         MuteHostTabs(true)
     end)
     win:SetScript("OnHide", function(self)
         self:StopMovingOrSizing()
         self:UnregisterAllEvents()
-        StaticPopup_Hide(BUY_POPUP)
+        if H3z0UI_HidePopup then H3z0UI_HidePopup() end
         MuteHostTabs(false)
     end)
 end

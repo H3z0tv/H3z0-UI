@@ -10,6 +10,7 @@ Bags.NewItems = NewItems
 local SEEN = 0
 local primed = false
 local sessionStore = {}
+local glowOff = {}   -- hovered new items: glow off, still in Recent for a minute
 local windowToken
 local busHooked = false
 
@@ -68,7 +69,7 @@ end
 
 local function BaselineLiveBags()
     if not (C_Container and C_Container.GetContainerNumSlots) then return end
-    for bagID = 0, 5 do
+    for bagID = 0, ((ns.Client and ns.Client.LAST_BAG) or 5) do
         local size = C_Container.GetContainerNumSlots(bagID) or 0
         for slot = 1, size do
             NewItems.Baseline(sessionStore, SlotGUID(bagID, slot))
@@ -80,6 +81,7 @@ local function WipeStore()
     for guid in pairs(sessionStore) do
         sessionStore[guid] = nil
     end
+    for guid in pairs(glowOff) do glowOff[guid] = nil end
 end
 
 local function OnBagsChangedPrePrime()
@@ -117,8 +119,31 @@ function NewItems.CheckSlot(bagID, slot, entry)
     return nil
 end
 
+-- Hovering a new item stops its glow right away, but it stays in Recent for
+-- RECENT_LINGER_SEC more, so you can still find it there.
+local RECENT_LINGER_SEC = 60
+
+function NewItems.GlowDismissed(guid)
+    return guid ~= nil and glowOff[guid] == true
+end
+
 function NewItems.MarkSlotSeen(guid)
-    NewItems.MarkSeen(sessionStore, guid)
+    if not guid then return end
+    local first = sessionStore[guid]
+    if first == nil or first == SEEN then return end
+    if glowOff[guid] then return end
+    glowOff[guid] = true
+    if C_Timer and C_Timer.After then
+        C_Timer.After(RECENT_LINGER_SEC, function()
+            if glowOff[guid] then
+                glowOff[guid] = nil
+                NewItems.MarkSeen(sessionStore, guid)
+                if Storage.Bus then Storage.Bus.Publish("BagsChanged") end
+            end
+        end)
+    else
+        NewItems.MarkSeen(sessionStore, guid)
+    end
 end
 
 function NewItems.OnLogin()
@@ -149,6 +174,7 @@ end
 
 function NewItems.ClearAllNew()
     NewItems.SeenAll(sessionStore)
+    for guid in pairs(glowOff) do glowOff[guid] = nil end
     if Storage.Bus then Storage.Bus.Publish("BagsChanged") end
 end
 

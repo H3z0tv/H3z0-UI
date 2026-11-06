@@ -43,13 +43,13 @@ local h3zDefaults = {
             applyGlobalFontToBlizzard = true,  -- Apply font to Blizzard UI elements
             autoInsertKey = true,  -- Auto-insert keystone in M+ UI
             skinKeystoneFrame = true,  -- Skin keystone insertion window
-            skinGameMenu = false,  -- Skin ESC menu (opt-in)
+            skinGameMenu = true,  -- Skin ESC menu (opt-in)
             addH3z0UIButton = true,   -- Add H3z0UI button to the bottom of the ESC menu (on by default since 0.17)
             gameMenuFontSize = 12,  -- Game menu button font size
             gameMenuDim = true,  -- Dim background when game menu is open
             skinPowerBarAlt = true,  -- Skin encounter/quest power bar (PlayerPowerBarAlt)
-            skinOverrideActionBar = false,  -- Skin override/vehicle action bar (opt-in)
-            skinObjectiveTracker = false,  -- Skin objective tracker (opt-in)
+            skinOverrideActionBar = true,  -- Skin override/vehicle action bar (opt-in)
+            skinObjectiveTracker = true,  -- Skin objective tracker (opt-in)
             objectiveTrackerHeight = 600,  -- Objective tracker max height
             objectiveTrackerModuleFontSize = 12,  -- Module headers (QUESTS, ACHIEVEMENTS, etc.)
             objectiveTrackerTitleFontSize = 10,  -- Quest/achievement titles
@@ -58,8 +58,8 @@ local h3zDefaults = {
             objectiveTrackerModuleColor = { 1.0, 0.82, 0.0, 1.0 },  -- Module header color (Blizzard gold)
             objectiveTrackerTitleColor = { 1.0, 1.0, 1.0, 1.0 },  -- Quest title color (white)
             objectiveTrackerTextColor = { 0.8, 0.8, 0.8, 1.0 },  -- Objective text color (light gray)
-            skinInstanceFrames = false,  -- Skin PVE/Dungeon/PVP frames (opt-in)
-            skinBgColor = { 0.008, 0.008, 0.008, 1 },  -- Skinning background color (with alpha)
+            skinInstanceFrames = true,  -- Skin PVE/Dungeon/PVP frames (opt-in)
+            skinBgColor = { 0.105, 0.125, 0.16, 0.97 },  -- slate, same as the bags  -- Skinning background color (with alpha)
             skinAlerts = true,  -- Skin alert/toast frames
             skinCharacterFrame = true,  -- Skin Character Frame (Character, Reputation, Currency tabs)
             skinInspectFrame = true,  -- Skin Inspect Frame to match Character Frame
@@ -485,7 +485,7 @@ local h3zDefaults = {
                 keybindOffsetX    = 2,
                 keybindOffsetY    = 2,
                 -- Rotation Helper overlay (uses C_AssistedCombat)
-                showRotationHelper = false,
+                showRotationHelper = true,
                 rotationHelperColor = { 0, 1, 0.84, 1 },  -- #00FFD6 cyan/mint border
                 rotationHelperThickness = 2,  -- Border thickness in pixels
             },
@@ -519,7 +519,7 @@ local h3zDefaults = {
                 keybindOffsetX    = -1,
                 keybindOffsetY    = -7,
                 -- Rotation Helper overlay (uses C_AssistedCombat)
-                showRotationHelper = false,
+                showRotationHelper = true,
                 rotationHelperColor = { 0, 1, 0.84, 1 },  -- #00FFD6 cyan/mint border
                 rotationHelperThickness = 2,  -- Border thickness in pixels
             },
@@ -985,6 +985,73 @@ local h3zDefaults = {
             mplusDisplayRight = false,
         },
 
+        -- Lorekeeper (0.26.22): style "scroll" (parchment scroll on the right instead
+        -- of the gossip / quest windows) or "window" (the normal windows + extras)
+        lorekeeper = {
+            enabled = true, setupDone = false, style = "scroll",
+            camera = true, cameraDistance = 4,
+            hideUI = true, animate = true,
+            typewriter = true, typeSpeed = 60,
+            fontSize = 18, titleSize = 24, npcSize = 17, optionSize = 18, rewardSize = 14, buttonSize = 16,
+            scale = 1, width = 760, minHeight = 720, offsetX = 180, offsetY = 40, bgAlpha = 1,
+            showNpcName = true, keyHints = true,
+            numberKeys = true, spaceKey = true, spaceSelectsFirst = true,
+            autoSelectSingle = false, showObjectives = true,
+            pageSound = true, controller = true, inputDevice = "auto",
+            markSellPrice = true, markUpgrade = true, simpleCurrency = false,
+            hideNames = false, cameraFocus = true,
+            fonts = true,
+            npcWidth = 0, npcHeight = 0, questWidth = 0, questHeight = 0,
+        },
+
+        -- Herald (0.25.7): cinematic banners for zones, level ups, achievements,
+        -- boss emotes, quests and scenarios
+        herald = {
+            enabled = true,
+            zone = true, subzone = true, discovery = true,
+            levelUp = true, achievement = true, bossEmote = true,
+            questAccept = true, questProgress = true, questComplete = true,
+            worldQuest = true, scenario = true,
+            replaceZoneText = true,      -- hide Blizzard's zone text while Herald shows zones
+            replaceBossEmote = true,     -- hide Blizzard's boss emote line while Herald shows them
+            quietInKeys = true,          -- no zone / quest / scenario banners during a Mythic+ key
+            offsetY = -150,
+            scale = 1,
+            titleSize = 30,
+            subtitleSize = 15,
+            holdTime = 3,
+            animSpeed = 1,
+        },
+
+        -- Arcanum (0.25.7): loot toasts, alerts, self highlight, achievement tracker
+        arcanum = {
+            enabled = true,
+            loot = true,
+            lootMinQuality = 0,          -- 0 poor ... 5 legendary
+            lootMoney = true,
+            lootCurrency = true,
+            lootReputation = true,
+            lootSound = true,            -- sound for epic and better
+            toastSide = "RIGHT",         -- RIGHT / LEFT
+            toastGrow = "UP",            -- UP / DOWN
+            offsetX = -40,
+            offsetY = -40,
+            toastWidth = 340,
+            toastHeight = 32,
+            toastScale = 1,
+            toastHold = 4,
+            maxToasts = 6,
+            alertDurability = true, durabilityThreshold = 30,
+            alertBags = true, bagsThreshold = 5,
+            alertMail = false,
+            alertFriends = false,
+            alertVault = true,
+            selfHighlight = false,
+            selfHighlightMode = "outlinecircle",
+            selfHighlightHostile = true,
+            untrackAchievements = false,
+        },
+
         -- H3z0UI Action Bars - Button Skinning and Fade System
         actionBars = {
             enabled = true,
@@ -1266,6 +1333,7 @@ local h3zDefaults = {
                 -- Power bar
                 showPowerBar = false,
                 powerBarHeight = 4,
+                powerBarWidthPct = 100,   -- share of the frame width (20-100)
                 powerBarBorder = true,
                 powerBarUsePowerColor = true,
                 powerBarColor = { 0, 0.5, 1, 1 },  -- Custom power bar color
@@ -1461,6 +1529,7 @@ local h3zDefaults = {
                 -- Power bar
                 showPowerBar = false,
                 powerBarHeight = 4,
+                powerBarWidthPct = 100,
                 powerBarBorder = true,
                 powerBarUsePowerColor = true,
                 powerBarColor = { 0, 0.5, 1, 1 },  -- Custom power bar color
@@ -2464,6 +2533,8 @@ local h3zDefaults = {
         buffBorders = {
             enableBuffs = true,
             enableDebuffs = true,
+            hideSwipe = true,           -- no dark swipe over the buff / debuff icons
+            hidePermanentBuffs = true,  -- no Cat Form / Skyriding / delve ... buffs (no duration)
             borderSize = 2,
             fontSize = 12,
             fontOutline = true,
@@ -2534,7 +2605,7 @@ local h3zDefaults = {
             showDifficulty = false,
             showMissions = false,
             showCalendar = true,
-            showTracking = false,
+            showTracking = true,
 
             -- Dungeon Eye (LFG Queue Status Button) - repositions to minimap when in queue
             dungeonEye = {
@@ -2855,10 +2926,19 @@ local function Fill(dst, src)
     end
 end
 
--- WoW: Forever shows every empty action button (the classic grid): hide them by default there
-if ns.Client and ns.Client.isForever then
-    local ab = h3zDefaults.profile.actionBars
-    if ab and ab.global then ab.global.hideEmptySlots = true end
+-- Forever and Classic: the Player and Target frames show the resource bar under the health bar,
+-- inside the same frame, with a thin line between the two
+if ns.Client and ns.Client.isLegacy then
+    local uf = h3zDefaults.profile.h3z0uiUnitFrames
+    for _, key in ipairs({ "player", "target" }) do
+        local u = uf and uf[key]
+        if u then u.showPowerBar, u.powerBarHeight, u.powerBarBorder = true, 6, true end
+        if u and key == "target" then
+            u.showPowerText, u.powerTextFormat = true, "current"
+            u.powerTextAnchor, u.powerTextOffsetX, u.powerTextOffsetY, u.powerTextFontSize = "BOTTOMLEFT", 9, -20, 12
+        end
+        if u and key == "player" then u.powerTextAnchor, u.powerTextOffsetX, u.powerTextOffsetY, u.powerTextFontSize = "BOTTOMRIGHT", -9, -20, 12 end
+    end
 end
 
 ns.H3z0Defaults = h3zDefaults
@@ -2955,5 +3035,17 @@ do
                 ol.buttonSpacing = 2
             end
         end
+    end
+end
+
+-- Action bars stay on screen when you mount, fly or skyride (Action Bars >
+-- Mouseover Hide > Mounted & Flying turns hiding on again)
+do
+    local cp = type(core) == "table" and core.profile
+    local v = cp and cp.actionBarsVisibility
+    if type(v) == "table" then
+        v.hideWhenMounted = false
+        v.hideWhenFlying = false
+        v.hideWhenSkyriding = false
     end
 end

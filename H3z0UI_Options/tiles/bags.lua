@@ -74,6 +74,24 @@ function V2Bags.Register(frame)
                 },
             },
             {
+                id = "bags_categories",
+                name = ns.L["Categories"],
+                featureId = "bags",
+                renderOptions = { providerPage = "categories" },
+                searchSections = { ns.L["Categories"], ns.L["Category Order"], ns.L["New Category"] },
+                navRoutes = {
+
+                },
+                searchContext = {
+                    tabIndex = SEARCH_TAB_INDEX,
+                    tabName = SEARCH_TAB_NAME,
+                    subTabIndex = 1,
+                    subTabName = ns.L["Bags"],
+                    tileId = "bags",
+                    subPageIndex = 4,
+                },
+            },
+            {
                 id = "bags_junk",
                 name = ns.L["Junk"],
                 featureId = "bags",
@@ -88,7 +106,7 @@ function V2Bags.Register(frame)
                     subTabIndex = 1,
                     subTabName = ns.L["Bags"],
                     tileId = "bags",
-                    subPageIndex = 4,
+                    subPageIndex = 5,
                 },
             },
             {
@@ -106,7 +124,7 @@ function V2Bags.Register(frame)
                     subTabIndex = 1,
                     subTabName = ns.L["Bags"],
                     tileId = "bags",
-                    subPageIndex = 5,
+                    subPageIndex = 6,
                 },
             },
             {
@@ -124,7 +142,7 @@ function V2Bags.Register(frame)
                     subTabIndex = 1,
                     subTabName = ns.L["Bags"],
                     tileId = "bags",
-                    subPageIndex = 6,
+                    subPageIndex = 7,
                 },
             },
         },

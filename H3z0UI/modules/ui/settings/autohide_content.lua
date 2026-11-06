@@ -141,7 +141,12 @@ local function BuildAutohideTab(tabContent)
 
     local bdAlphaW = GUI:CreateFormSlider(sBD.frame, nil, 0, 1, 0.05, "fadeOutAlpha", db.buffBorders, RefreshBuffBorders,
         { precision = 2, description = ns.L["Opacity used when the buff or debuff frame is faded out. 0 is fully invisible, 1 is fully opaque."] })
-    sBD.AddRow(row(sBD.frame, ns.L["Fade Out Opacity"], bdAlphaW))
+    local bdSwipeW = GUI:CreateFormCheckbox(sBD.frame, nil, "hideSwipe", db.buffBorders, RefreshBuffBorders,
+        { description = ns.L["Hide the dark cooldown swipe over the buff and debuff icons; the icons and their time left stay. Same switch as Action Bars > Buff/Debuff Frames > Hide Duration Swipe."] })
+    sBD.AddRow(row(sBD.frame, ns.L["Fade Out Opacity"], bdAlphaW), row(sBD.frame, ns.L["Hide Duration Swipe"], bdSwipeW))
+    local bdPermW = GUI:CreateFormCheckbox(sBD.frame, nil, "hidePermanentBuffs", db.buffBorders, RefreshBuffBorders,
+        { description = ns.L["Leave buffs that never run out (Cat Form and other forms, Skyriding, delve companion, mount auras, ...) out of the buff frame."] })
+    sBD.AddRow(row(sBD.frame, ns.L["Hide Permanent Buffs"], bdPermW))
     L.closeSection(sBD)
 
     L.headerAt(ns.L["Combat & Messages"])

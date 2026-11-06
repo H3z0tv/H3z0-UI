@@ -48,7 +48,7 @@ local function StartUI()
     Bags.GuildTakeover.Init()
     ns.RunAfterFirstFrame(function()
         if not uiActive then return end
-        for _, ev in ipairs(UI_EVENTS) do eventFrame:RegisterEvent(ev) end
+        for _, ev in ipairs(UI_EVENTS) do H3z0UI_SafeRegisterEvent(eventFrame, ev) end
         Bags.GuildTakeover.Init()
         if Bags.NewItems then Bags.NewItems.OnLogin() end
     end, 0.5)

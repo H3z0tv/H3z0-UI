@@ -1,8 +1,8 @@
 ## Interface: 120105, 120100, 120001, 120000, 16001
-## Title: |cFF30D1FFH3z0 UI|r Underlight Angler Helper
-## Notes: H3z0 UI module. Requires the H3z0 UI core addon.
+## Title: |cFF30D1FFH3z0 UI|r Tidecaller
+## Notes: Helper for the Underlight Angler, the fishing artifact rod: a checklist of what you still need to unlock it and its trait tree, where you click a trait to buy it. Opens with /angler or on the artifact window. Loads only when used. Requires the H3z0 UI core addon.
 ## Author: H3z0
-## Version: 0.25.1
+## Version: 0.28.2
 ## Category: User Interface
 ## Group: H3z0UI
 ## Dependencies: H3z0UI

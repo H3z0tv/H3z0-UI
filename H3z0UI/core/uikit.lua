@@ -2386,6 +2386,13 @@ function SkinBase.GetSkinColors(moduleSettings, prefix)
     return sr, sg, sb, sa, bgr, bgg, bgb, bga
 end
 
+-- Buttons, tabs, dropdowns, check boxes, edit boxes and list rows always use
+-- the default H3z0 slate: only window BACKGROUNDS follow the H3z0 Colour.
+local CONTROL_BG = { 0.105, 0.125, 0.16 }
+function SkinBase.GetControlBg()
+    return CONTROL_BG[1], CONTROL_BG[2], CONTROL_BG[3]
+end
+
 function SkinBase.GetWindowColors(moduleSettings, prefix)
     if Helpers.GetWindowColors then return Helpers.GetWindowColors(moduleSettings, prefix) end
     return SkinBase.GetSkinColors(moduleSettings, prefix)
@@ -3252,6 +3259,7 @@ function SkinBase.SkinTabButton(tab, opts)
 
     local sr, sg, sb, sa = SkinBase.GetSkinColors()
     local wr, wg, wb, wa, bgr, bgg, bgb = SkinBase.GetWindowColors()
+    bgr, bgg, bgb = SkinBase.GetControlBg()  -- buttons and controls keep the H3z0 slate
     SkinBase.CreateBackdrop(tab, wr, wg, wb, wa, bgr, bgg, bgb, 0.9, opts.radius or 5)
     local bd = SkinBase.GetBackdrop(tab)
     if bd then
@@ -3549,6 +3557,7 @@ function SkinBase.RefreshTabGroup(tabs, owner)
     if not tabs then return end
     local sr, sg, sb, sa = SkinBase.GetSkinColors()
     local wr, wg, wb, wa, bgr, bgg, bgb = SkinBase.GetWindowColors()
+    bgr, bgg, bgb = SkinBase.GetControlBg()  -- buttons and controls keep the H3z0 slate
     for _, tab in ipairs(tabs) do
         SkinBase.SetFrameData(tab, "skinColor", { sr, sg, sb, sa })
         SkinBase.SetFrameData(tab, "windowColor", { wr, wg, wb, wa })
@@ -4012,6 +4021,7 @@ function SkinBase.SkinButton(button, opts)
     opts = opts or {}
     local ar, ag, ab, aa = SkinBase.GetSkinColors()
     local sr, sg, sb, sa, bgr, bgg, bgb = SkinBase.GetWindowColors()
+    bgr, bgg, bgb = SkinBase.GetControlBg()  -- buttons and controls keep the H3z0 slate
     local boost = opts.bgBoost or BG_BOOST_BUTTON
 
     if opts.strip then
@@ -4056,6 +4066,7 @@ function SkinBase.SkinEditBox(editBox, opts)
     if not editBox or SkinBase.IsStyled(editBox) then return end
     opts = opts or {}
     local sr, sg, sb, sa, bgr, bgg, bgb, bga = SkinBase.GetWindowColors()
+    bgr, bgg, bgb = SkinBase.GetControlBg()  -- buttons and controls keep the H3z0 slate
     if opts.borderAlpha then sa = sa * opts.borderAlpha end
     if opts.bgAlpha then bga = opts.bgAlpha end
     SkinBase.StripTextures(editBox)
@@ -4076,6 +4087,7 @@ function SkinBase.SkinScrollRow(row, opts)
     opts = opts or {}
     local ar, ag, ab, aa = SkinBase.GetSkinColors()
     local sr, sg, sb, sa, bgr, bgg, bgb = SkinBase.GetWindowColors()
+    bgr, bgg, bgb = SkinBase.GetControlBg()  -- buttons and controls keep the H3z0 slate
     local boost = opts.bgBoost or BG_BOOST_ROW
     local borderAlphaMult = opts.borderAlphaMult or 0.5
     local bgAlpha = opts.bgAlpha or 0.6
@@ -4183,6 +4195,7 @@ function SkinBase.SkinStatusBar(bar, opts)
     end
     if opts.backdrop ~= false then
         local sr, sg, sb, sa, bgr, bgg, bgb, bga = SkinBase.GetWindowColors()
+        bgr, bgg, bgb = SkinBase.GetControlBg()  -- buttons and controls keep the H3z0 slate
         SkinBase.CreateBackdrop(bar, sr, sg, sb, sa, bgr, bgg, bgb, bga)
     end
     SkinBase.MarkStyled(bar)
@@ -4228,6 +4241,7 @@ function SkinBase.SkinCheckBox(check, opts)
     if hl and hl.SetAlpha then hl:SetAlpha(0) end
 
     local sr, sg, sb, sa, bgr, bgg, bgb, bga = SkinBase.GetWindowColors()
+    bgr, bgg, bgb = SkinBase.GetControlBg()  -- buttons and controls keep the H3z0 slate
     SkinBase.CreateBackdrop(check, sr, sg, sb, sa, bgr, bgg, bgb, bga)
 
     local ar, ag, ab = UIKit.GetAccentColor()
@@ -4428,6 +4442,7 @@ function SkinBase.SkinDropdown(dropdown, opts)
     opts = opts or {}
     local ar, ag, ab, aa = SkinBase.GetSkinColors()
     local sr, sg, sb, sa, bgr, bgg, bgb = SkinBase.GetWindowColors()
+    bgr, bgg, bgb = SkinBase.GetControlBg()  -- buttons and controls keep the H3z0 slate
     local boost = opts.bgBoost or BG_BOOST_BUTTON
 
     if opts.noStrip then
@@ -4508,6 +4523,7 @@ function SkinBase.RefreshWidget(frame)
     if not kind then return end
     local ar, ag, ab, aa = SkinBase.GetSkinColors()
     local sr, sg, sb, sa, bgr, bgg, bgb, bga = SkinBase.GetWindowColors()
+    bgr, bgg, bgb = SkinBase.GetControlBg()  -- buttons and controls keep the H3z0 slate
 
     if kind == "button" or kind == "dropdown" then
         local boost = SkinBase.GetFrameData(frame, "bgBoost") or BG_BOOST_BUTTON

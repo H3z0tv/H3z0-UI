@@ -51,9 +51,12 @@ end
 
 -- Which Edit Mode systems H3z0 UI places itself (the others are moved by
 -- the frame anchoring of Layout Mode): action bars, chat, damage meter.
+local managedCache
 local function ManagedSystems()
+    if managedCache then return managedCache end
     local S = Enum and Enum.EditModeSystem
     local set = {}
+    if S then managedCache = set end
     if S then
         for _, name in ipairs({ "ChatFrame", "DamageMeter", "CooldownViewer" }) do
             if S[name] ~= nil then set[S[name]] = true end
@@ -87,6 +90,15 @@ BP.SystemFrames = SystemFrames
 local applying = false
 local pending = false
 
+-- Moving, resizing or showing a Blizzard frame makes the game run that frame's own
+-- scripts inside the call. Run from addon code they would run "tainted" and could
+-- store tainted values (the damage meter then fails on its secret numbers).
+-- securecallfunction makes the game treat the call as its own.
+local function SecCall(fn, ...)
+    if type(securecallfunction) == "function" then return pcall(securecallfunction, fn, ...) end
+    return pcall(fn, ...)
+end
+
 local function Place(f, pos)
     if not (f and pos and pos.x and pos.y) then return end
     if InCombatLockdown() and f.IsProtected and f:IsProtected() then
@@ -97,14 +109,13 @@ local function Place(f, pos)
     if not (fs and us and fs > 0) then return end
     local k = us / fs
     applying = true
-    pcall(function()
-        -- Edit Mode frames: the plain SetPoint (Blizzard's own SetPoint also
-        -- marks the layout as changed / snapped)
-        local clear = f.ClearAllPointsBase or f.ClearAllPoints
-        local set = f.SetPointBase or f.SetPoint
-        clear(f)
-        set(f, "CENTER", UIParent, "CENTER", pos.x * k, pos.y * k)
-    end)
+    -- Edit Mode frames: the plain SetPoint (Blizzard's own SetPoint also
+    -- marks the layout as changed / snapped)
+    local clear = f.ClearAllPointsBase or f.ClearAllPoints
+    local set = f.SetPointBase or f.SetPoint
+    if SecCall(clear, f) then
+        SecCall(set, f, "CENTER", UIParent, "CENTER", pos.x * k, pos.y * k)
+    end
     applying = false
 end
 
@@ -115,7 +126,7 @@ local function PlaceSize(f, sz)
         return
     end
     applying = true
-    pcall(f.SetSize, f, sz.w, sz.h)
+    SecCall(f.SetSize, f, sz.w, sz.h)
     applying = false
 end
 
@@ -153,6 +164,25 @@ local function IsWatched(f)
 end
 
 local recheckQueued = {}
+-- guard: if something keeps moving a viewer back (another addon, a viewer
+-- that re-anchors itself), stop fighting it for a few seconds instead of
+-- moving it back and forth every frame
+local fight = {}
+local function TooManyPlaces(f)
+    local now = GetTime()
+    local st = fight[f]
+    if not st then st = { start = now, n = 0, pause = 0 }; fight[f] = st end
+    if now < st.pause then return true end
+    if now - st.start > 1 then st.start, st.n = now, 0 end
+    st.n = st.n + 1
+    if st.n > 6 then
+        st.pause = now + 3
+        st.n = 0
+        return true
+    end
+    return false
+end
+
 local function Recheck(f)
     if recheckQueued[f] then return end
     recheckQueued[f] = true
@@ -164,6 +194,7 @@ local function Recheck(f)
         if not pos then return end
         local x, y = CurrentOffset(f)
         if x and math.abs(x - pos.x) <= 1 and math.abs(y - pos.y) <= 1 then return end
+        if TooManyPlaces(f) then return end
         Place(f, pos)
     end)
 end

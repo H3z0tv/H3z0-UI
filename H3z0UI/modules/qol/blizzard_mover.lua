@@ -400,7 +400,8 @@ local function installForegroundTracking()
 	foregroundWatcher:SetScript("OnEvent", function()
 		foregroundFrame = nil
 		if not db or not db.enabled or InCombatLockdown() or not GetMouseFoci then return end
-		local frame = GetMouseFoci()[1]
+		local foci = GetMouseFoci()
+		local frame = foci and foci[1]
 		while frame do
 			if issecretvalue and issecretvalue(frame) then return end
 			if IsFrameHandle and IsFrameHandle(frame) then return end
@@ -448,7 +449,7 @@ function M.functions.deferApply(frame, entry)
 	if frame then M.variables.pendingApply[frame] = entry or true end
 end
 
-local function readSavedOffset(panel, row)
+local function readSavedOffsetBase(panel, row)
 	local mode = db.positionPersistence or "reset"
 	if mode == "lockout" then
 		local sp = M.variables.sessionPositions
@@ -460,6 +461,16 @@ local function readSavedOffset(panel, row)
 	end
 	if mode == "reset" then return row end
 	return nil
+end
+
+M.variables.autoPositions = M.variables.autoPositions or {}
+
+-- The user's own saved spot always wins; otherwise a spot the mover picked itself
+-- (for example Inspect next to Character) is used.
+local function readSavedOffset(panel, row)
+	local r = readSavedOffsetBase(panel, row)
+	if r and r.point and r.x ~= nil and r.y ~= nil then return r end
+	return M.variables.autoPositions[panel.id] or r
 end
 
 local function writeSavedOffset(panel, row, point, x, y)
@@ -1427,6 +1438,9 @@ function M.functions.createHooks(root, entry)
 		end
 
 		root:HookScript("OnShow", function(self)
+			if panel.id == "InspectFrame" or panel.id == "CharacterFrame" then
+				C_Timer.After(0.05, M.functions.AvoidCharacterOverlap)
+			end
 			reconcileOpenPositionOnShow(panel, self)
 			if not ctx(self).blizzardAnchors then rememberAnchors(self) end
 			if panel.proxyParent then
@@ -1439,6 +1453,7 @@ function M.functions.createHooks(root, entry)
 
 		if not panel.skipOnHide then
 			root:HookScript("OnHide", function(self)
+				if panel.id == "InspectFrame" then M.variables.autoPositions.InspectFrame = nil end
 				clearOpenPosition(panel, self)
 				if db.positionPersistence == "close" and usesNativePlacement(self, panel) then restoreNativePanelLayout(self) end
 				if (db.positionPersistence or "reset") ~= "close" then return end
@@ -1547,6 +1562,68 @@ function M.functions.RefreshEntry(entry)
 	if not panel then return end
 	if panel.id == "CollectionsJournal" then tweakWardrobeSecondaryLabel() end
 	if panel.id == "PlayerChoiceFrame" and PlayerChoiceFrame then installPlayerChoiceLayoutGuard(PlayerChoiceFrame) end
+end
+
+-- Opening Inspect while the Character window is open puts both on the same spot.
+-- If the user has no saved position for Inspect, put it beside Character instead.
+function M.functions.AvoidCharacterOverlap()
+	local ap = M.variables.autoPositions
+	local ins, chr = _G.InspectFrame, _G.CharacterFrame
+	if not ins or not ins:IsShown() then ap.InspectFrame = nil return end
+	if not db or not db.enabled or not chr or not chr:IsShown() then return end
+	if InCombatLockdown() or ap.InspectFrame then return end
+	local panel = R.panels and R.panels.InspectFrame
+	if not panel or not panelIsActive(panel) then return end
+	local saved = readSavedOffsetBase(panel, storageRowForPanel(panel))
+	if saved and saved.point and saved.x ~= nil and saved.y ~= nil then return end
+
+	local uiEff = UIParent:GetEffectiveScale()
+	local function rect(f)
+		local l, r, t, b = f:GetLeft(), f:GetRight(), f:GetTop(), f:GetBottom()
+		if not (l and r and t and b) then return nil end
+		local k = f:GetEffectiveScale() / uiEff
+		return l * k, r * k, t * k, b * k
+	end
+	local cL, cR, cT, cB = rect(chr)
+	local iL, iR, iT, iB = rect(ins)
+	if not (cL and iL) then return end
+	if not (iL < cR and iR > cL and iB < cT and iT > cB) then return end
+
+	local uiW, uiH = UIParent:GetWidth(), UIParent:GetHeight()
+	local w = iR - iL
+	local gap = 6
+	local left
+	if cR + gap + w <= uiW then
+		left = cR + gap
+	elseif cL - gap - w >= 0 then
+		left = cL - gap - w
+	else
+		left = math.max(0, math.min(uiW - w, cL + 40))
+	end
+	local top = cT
+	if left == cL + 40 then top = cT - 40 end
+	local k = uiEff / ins:GetEffectiveScale()
+	ap.InspectFrame = { point = "TOPLEFT", x = left * k, y = (top - uiH) * k }
+	M.functions.applyFrameSettings(ins, panel)
+end
+
+-- Diagnostic for /h3z0ui moverscan: one line per supported window.
+function M.functions.Scan()
+	local out = { masterOn = db and db.enabled == true, modifier = db and db.modifier, requireModifier = db and db.requireModifier, rows = {} }
+	for _, panel in ipairs(R.panelList) do
+		local state, hooked = "missing", false
+		local active = panelIsActive(panel)
+		for _, path in ipairs(panel.names or {}) do
+			local f = objectFromDottedPath(path)
+			if f then
+				state = "exists"
+				if rootContext[f] then hooked = true end
+			end
+		end
+		if not addonsSatisfied(panel) then state = "addon not loaded" end
+		out.rows[#out.rows + 1] = { id = panel.id, state = state, active = active and true or false, hooked = hooked, canMove = not panel.disableMove }
+	end
+	return out
 end
 
 function M.functions.ApplyAll()

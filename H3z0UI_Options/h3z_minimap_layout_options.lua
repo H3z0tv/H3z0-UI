@@ -10,7 +10,7 @@ local Settings_ = ns.Settings
 local ProviderPanels = Settings_ and Settings_.ProviderPanels
 local ProviderFeatures = Settings_ and Settings_.ProviderFeatures
 
-local KEYS = { minimap = 1, h3zMapCoords = 1 }
+local KEYS = { minimap = 1 }
 
 -- one builder after the other, each in its own block
 local function BuildStack(content, builders)

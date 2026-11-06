@@ -129,18 +129,25 @@ end
 
 -- put a frame's centre at x / y (UIParent units from the screen centre).
 -- SetPoint offsets are in the frame's own scale, so they are converted.
+-- Moving, resizing or showing a Blizzard frame makes the game run that frame's own
+-- scripts inside the call. Run from addon code they would run "tainted" and could
+-- store tainted values (the damage meter then fails on its secret numbers).
+-- securecallfunction makes the game treat the call as its own.
+local function SecCall(fn, ...)
+    if type(securecallfunction) == "function" then return pcall(securecallfunction, fn, ...) end
+    return pcall(fn, ...)
+end
+
 local function PlaceCenter(f, x, y)
     if not (f and x and y) then return end
     if InCombatLockdown() and f.IsProtected and f:IsProtected() then return end
     local fs, us = f:GetEffectiveScale(), UIParent:GetEffectiveScale()
     if not (fs and us and fs > 0) then return end
     local k = us / fs
-    pcall(function()
-        local clear = f.ClearAllPointsBase or f.ClearAllPoints
-        local set = f.SetPointBase or f.SetPoint
-        clear(f)
-        set(f, "CENTER", UIParent, "CENTER", x * k, y * k)
-    end)
+    local clear = f.ClearAllPointsBase or f.ClearAllPoints
+    local set = f.SetPointBase or f.SetPoint
+    SecCall(clear, f)
+    SecCall(set, f, "CENTER", UIParent, "CENTER", x * k, y * k)
     -- Blizzard may line the bars up again right after: put saved ones back
     local BP = ns.BlizzPositions
     if BP and BP.QueueApply then BP.QueueApply() end
@@ -163,7 +170,7 @@ local function TrackPlace(f, opts, onSaved)
         local pos = f._h3zSavedPos or f._h3zOpenPos
         local size = f._h3zSize
         f._h3zSavedPos, f._h3zOpenPos, f._h3zSize = nil, nil, nil
-        if size and not (InCombatLockdown() and f:IsProtected()) then pcall(f.SetSize, f, size[1], size[2]) end
+        if size and not (InCombatLockdown() and f:IsProtected()) then SecCall(f.SetSize, f, size[1], size[2]) end
         if pos then PlaceCenter(f, pos[1], pos[2]) end
         if f == _G.ChatFrame1 and FCF_SavePositionAndDimensions then pcall(FCF_SavePositionAndDimensions, f) end
         if _G.H3z0UI_RefreshWindowSkins then pcall(_G.H3z0UI_RefreshWindowSkins) end
@@ -183,9 +190,9 @@ local function Lm() return ns.H3z0UI_LayoutMode end
 local function Tie(f, handle)
     local clear = f.ClearAllPointsBase or f.ClearAllPoints
     local set = f.SetPointBase or f.SetPoint
-    pcall(clear, f)
-    pcall(set, f, "TOPLEFT", handle, "TOPLEFT", 0, 0)
-    pcall(set, f, "BOTTOMRIGHT", handle, "BOTTOMRIGHT", 0, 0)
+    SecCall(clear, f)
+    SecCall(set, f, "TOPLEFT", handle, "TOPLEFT", 0, 0)
+    SecCall(set, f, "BOTTOMRIGHT", handle, "BOTTOMRIGHT", 0, 0)
 end
 
 local function AttachGrip(key, f)
@@ -350,20 +357,13 @@ function BL.RegisterAll()
                 pcall(EnforceCDMOff, f)
             end
         elseif f.system == S.DamageMeter then
-            -- the meter is hidden out of combat (Blizzard's visibility setting): always list it
-            -- and show it while Layout Mode is open
+            -- the meter is hidden out of combat (Blizzard's visibility setting): always list it.
+            -- Its window is NOT shown from here: showing it (or asking it to update its shown
+            -- state) ran Blizzard's damage meter code from H3z0 UI, and the values it saved
+            -- that way broke the meter later ("durationSeconds ... tainted by H3z0UI").
+            -- The Layout Mode box still shows where it sits.
             Register(lm, "h3zMeter_" .. key, f, "Damage Meter" .. ((f.systemIndex or 1) > 1 and (" " .. f.systemIndex) or ""), GROUP_WINDOWS, 10 + (f.systemIndex or 1), true, {
                 isEnabled = function() return true end,
-                onOpen = function()
-                    if InCombatLockdown() then return end
-                    f._h3zLayoutShown = true
-                    pcall(f.Show, f)
-                end,
-                onClose = function()
-                    if not f._h3zLayoutShown then return end
-                    f._h3zLayoutShown = nil
-                    if f.UpdateShownState then pcall(f.UpdateShownState, f) end
-                end,
             })
         end
     end
@@ -378,7 +378,7 @@ RegisterMeterWindows = function(lm)
         if win and not registered[key] then
             registered[key] = true
             local wopts = TrackPlace(win, WithGrip(key, win, {}), function()
-                if win.SetUserPlaced and win:IsMovable() then pcall(win.SetUserPlaced, win, true) end
+                if win.SetUserPlaced and win:IsMovable() then SecCall(win.SetUserPlaced, win, true) end
             end)
             lm:RegisterElement({
                 onOpen = wopts.onOpen,
@@ -401,11 +401,9 @@ RegisterMeterWindows = function(lm)
                     local cx, cy = ToCenter(win, point, relPoint, x, y)
                     win._h3zSavedPos = { cx, cy }
                     local k = (UIParent:GetEffectiveScale() or 1) / (win:GetEffectiveScale() or 1)
-                    pcall(function()
-                        win:ClearAllPoints()
-                        win:SetPoint("CENTER", UIParent, "CENTER", cx * k, cy * k)
-                        if win.SetUserPlaced and win:IsMovable() then win:SetUserPlaced(true) end
-                    end)
+                    SecCall(win.ClearAllPoints, win)
+                    SecCall(win.SetPoint, win, "CENTER", UIParent, "CENTER", cx * k, cy * k)
+                    if win.SetUserPlaced and win:IsMovable() then SecCall(win.SetUserPlaced, win, true) end
                     if _G.H3z0UI_RefreshWindowSkins then pcall(_G.H3z0UI_RefreshWindowSkins) end
                 end,
             })

@@ -35,8 +35,11 @@ function GuildTakeover.OnAddonLoaded(name)
     if live then GuildTakeover.SuppressNow() end
 end
 
+-- the Classic games keep Blizzard's own guild bank window
+local function ClassicBank() return ns.Client and ns.Client.isClassic end
+
 function GuildTakeover.SuppressNow()
-    if suppressed then return end
+    if suppressed or ClassicBank() then return end
     local guildBankFrame = GuildBankFrame
     if not guildBankFrame then return end
     suppressed = true
@@ -54,7 +57,7 @@ function GuildTakeover.SuppressNow()
 end
 
 function GuildTakeover.OnOpened()
-    if live then return end
+    if live or ClassicBank() then return end
     GuildTakeover.SuppressNow()
     live = true
     Bags.GuildWindow.ShowLive()

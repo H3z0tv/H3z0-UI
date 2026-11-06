@@ -11,6 +11,7 @@ function Details.Build(entry)
     local extended = Storage.ItemInfo.GetExtended(entry.itemID, entry.link)
     return {
         itemID       = entry.itemID,
+        link         = entry.link,
         count        = entry.count,
         quality      = entry.quality,
         isBound      = entry.isBound,

@@ -115,6 +115,32 @@ local function SplitSlots(panel)
     return left, center, right, ids
 end
 
+-- One time: the old (0.24.9) datapanel Bottom Bar is removed for good, the
+-- Info Bar is the only Bottom Bar (a test build had switched the old one back on)
+function BB.RemoveOldPanel()
+    local p = Profile()
+    if not p or p.h3zOldBottomBarRemoved then return end
+    p.h3zOldBottomBarRemoved = true
+    local panels = p.h3z0uiDatatexts and p.h3z0uiDatatexts.panels
+    if type(panels) == "table" then
+        for i = #panels, 1, -1 do
+            if type(panels[i]) == "table" and panels[i].id == OLD_PANEL_ID then
+                -- its menu hiding / bar switches carry over
+                local ib = InfoBarDB()
+                if ib and panels[i].h3zHidBars and not ib.h3zHidBars then ib.h3zHidBars = panels[i].h3zHidBars end
+                table.remove(panels, i)
+            end
+        end
+    end
+    local dp = H3z0UICore.Datapanels
+    if dp and dp.DeletePanel and dp.activePanels and dp.activePanels[OLD_PANEL_ID] then
+        pcall(dp.DeletePanel, dp, OLD_PANEL_ID)
+    end
+    -- the test build switched the Info Bar off: back on
+    local ib = InfoBarDB()
+    if ib and p.h3zBottomBarBack then ib.enabled = true end
+end
+
 -- One time: the old datapanel Bottom Bar -> Info Bar
 -- 0.25.0 used the core menu icons: switch to the H3z0 icon set once
 function BB.UseH3z0MenuIcons()
@@ -360,6 +386,8 @@ ev:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGIN" then
         local ok, err = pcall(BB.MigrateOldPanel)
         if not ok and geterrorhandler then geterrorhandler()(err) end
+        ok, err = pcall(BB.RemoveOldPanel)
+        if not ok and geterrorhandler then geterrorhandler()(err) end
         pcall(BB.UseH3z0MenuIcons)
         C_Timer.After(0.5, BB.Refresh)
         return
@@ -374,4 +402,15 @@ end)
 local InfoBar = H3z0UICore.InfoBar
 if InfoBar and type(InfoBar.ApplyAll) == "function" then
     hooksecurefunc(InfoBar, "ApplyAll", function() C_Timer.After(0, BB.ApplyMenus) end)
+end
+
+-- a new default font (or font size scale) must reach every widget of the bar,
+-- not only the ones that are drawn again later
+local function RefreshBarFonts()
+    C_Timer.After(0, function()
+        if _G.H3z0UI_RefreshInfoBar and not InCombatLockdown() then pcall(_G.H3z0UI_RefreshInfoBar) end
+    end)
+end
+for _, method in ipairs({ "ApplyGlobalFont", "RefreshAllFonts" }) do
+    if type(H3z0UICore[method]) == "function" then hooksecurefunc(H3z0UICore, method, RefreshBarFonts) end
 end

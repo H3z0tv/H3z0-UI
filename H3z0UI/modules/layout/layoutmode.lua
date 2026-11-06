@@ -51,6 +51,7 @@ end
 
 local CreateHandle, CreateProxyMover, CreateChildOverlay
 local SyncHandle, HandleToOffsets, SetHandleFromOffsets
+local RecordUndo
 local SnapshotPositions, CommitPositions, RevertPositions
 local ShowSaveDiscardPopup, AddHandleVisuals, AddHandleScripts
 local GetFrameAnchoring
@@ -128,6 +129,10 @@ H3z0UI_LayoutMode.isActive       = false
 H3z0UI_LayoutMode._combatSuspended = false
 H3z0UI_LayoutMode._hasChanges      = false
 H3z0UI_LayoutMode._pendingPositions   = {}
+H3z0UI_LayoutMode._undoStack = {}
+H3z0UI_LayoutMode._redoStack = {}
+H3z0UI_LayoutMode._undoPre = {}
+H3z0UI_LayoutMode._locked = {}
 H3z0UI_LayoutMode._snapshotPositions  = {}
 H3z0UI_LayoutMode._handles           = {}
 H3z0UI_LayoutMode._elements          = {}
@@ -601,6 +606,7 @@ function H3z0UI_LayoutMode:Open()
     local ui = ns.H3z0UI_LayoutMode_UI
     if ui then
         ui:Show()
+        if ui.UpdateUndoButtons then ui:UpdateUndoButtons() end
     end
 
     if not self._combatFrame then
@@ -729,6 +735,7 @@ function H3z0UI_LayoutMode:Close(skipSaveCheck)
 
     self._selectedKey = nil
     self._pendingPositions = {}
+    self:ClearUndo()
     self._snapshotPositions = {}
     self._snapshotHiddenHandles = nil
 end
@@ -1066,6 +1073,7 @@ local GROW_ANCHOR_FRAC_Y = {
 
 local function SavePendingPosition(key, point, relPoint, offsetX, offsetY, anchorTarget, anchorPointSelf, anchorPointTarget)
     local def = H3z0UI_LayoutMode._elements[key]
+    if RecordUndo then RecordUndo(key, point, offsetX, offsetY, anchorTarget) end
     if def and def.usesCustomPositionPersistence then
         anchorTarget = nil
         anchorPointSelf = nil
@@ -1655,6 +1663,12 @@ AddHandleScripts = function(handle, def)
     handle:SetScript("OnDragStart", function(self)
         if InCombatLockdown() then return end
         GameTooltip:Hide()
+        if H3z0UI_LayoutMode._locked[self._barKey] then
+            self:StopMovingOrSizing()
+            H3z0UI_LayoutMode:FlashLockedHandle(self._barKey)
+            return
+        end
+        H3z0UI_LayoutMode:CaptureUndoStart(self._barKey)
 
         local def = H3z0UI_LayoutMode._elements[self._barKey]
         local usesCustomPersistence = def and def.usesCustomPositionPersistence
@@ -2473,6 +2487,8 @@ end
 
 function H3z0UI_LayoutMode:NudgeMover(key, dx, dy, deferPersist)
     if InCombatLockdown() then return false end
+    if self._locked[key] then self:FlashLockedHandle(key) return false end
+    self:CaptureUndoStart(key)
 
     local handle = self._handles[key]
     if not handle then return false end
@@ -2539,6 +2555,166 @@ function H3z0UI_LayoutMode:NudgeMover(key, dx, dy, deferPersist)
         handle._coords:SetText(string.format(ns.L["X: %d  Y: %d"], ox, oy))
     end
 
+    return true
+end
+
+---------------------------------------------------------------------------
+-- Undo / redo for free-position moves (drag, nudge, reset to center).
+-- Anchored changes are not recorded. The history is cleared when Layout
+-- Mode closes.
+---------------------------------------------------------------------------
+local UNDO_LIMIT = 100
+
+function H3z0UI_LayoutMode:CaptureUndoStart(key)
+    if not key or self._undoing or self._undoPre[key] then return end
+    local handle = self._handles and self._handles[key]
+    if not handle then return end
+    local pending = self._pendingPositions[key]
+    local ox, oy = HandleToOffsets(handle, true)
+    self._undoPre[key] = {
+        ox = ox, oy = oy,
+        anchored = (pending and pending.anchorTarget ~= nil) or handle._isAnchored or false,
+    }
+end
+
+RecordUndo = function(key, point, ox, oy, anchorTarget)
+    local um = H3z0UI_LayoutMode
+    if um._undoing then return end
+    local pre = um._undoPre[key]
+    um._undoPre[key] = nil
+    if not pre or pre.anchored or anchorTarget or point ~= "CENTER" then return end
+    if not ox or not oy then return end
+    if math.abs(pre.ox - ox) < 0.5 and math.abs(pre.oy - oy) < 0.5 then return end
+    local stack = um._undoStack
+    stack[#stack + 1] = { key = key, bx = pre.ox, by = pre.oy, ax = ox, ay = oy }
+    if #stack > UNDO_LIMIT then table.remove(stack, 1) end
+    um._redoStack = {}
+    local ui = ns.H3z0UI_LayoutMode_UI
+    if ui and ui.UpdateUndoButtons then ui:UpdateUndoButtons() end
+end
+
+function H3z0UI_LayoutMode:ClearUndo()
+    self._undoStack = {}
+    self._redoStack = {}
+    self._undoPre = {}
+    self._locked = {}
+    local ui = ns.H3z0UI_LayoutMode_UI
+    if ui and ui.UpdateUndoButtons then ui:UpdateUndoButtons() end
+end
+
+function H3z0UI_LayoutMode:CanUndo() return #self._undoStack > 0 end
+function H3z0UI_LayoutMode:CanRedo() return #self._redoStack > 0 end
+
+local function ApplyUndoPosition(um, key, ox, oy, keepRecording)
+    local handle = um._handles[key]
+    if not handle then return false end
+    local def = um._elements[key]
+    um._undoing = not keepRecording
+    if handle._isChildOverlay then
+        SetHandleFromOffsets(handle, ox, oy)
+    else
+        handle:ClearAllPoints()
+        handle:SetPoint("CENTER", UIParent, "CENTER", ox, oy)
+        local frame = def and def.getFrame and def.getFrame()
+        if frame then
+            ns.SafeCallMethod("best-effort-style", frame, "ClearAllPoints")
+            if key == "bossFrames" then
+                local cdx, cdy = 0, 0
+                if def.getCenterOffset then cdx, cdy = def.getCenterOffset(handle:GetSize()) end
+                ns.SafeCallMethod("best-effort-style", frame, "SetPoint", "CENTER", handle, "CENTER", -cdx, -cdy)
+            else
+                ns.SafeCallMethod("best-effort-style", frame, "SetPoint", "CENTER", UIParent, "CENTER", ox, oy)
+            end
+        end
+    end
+    SavePendingPosition(key, "CENTER", "CENTER", ox, oy)
+    if handle._coords then handle._coords:SetText(string.format(ns.L["X: %d  Y: %d"], math.floor(ox + 0.5), math.floor(oy + 0.5))) end
+    SyncHandle(key)
+    um._undoing = false
+    return true
+end
+
+function H3z0UI_LayoutMode:ToggleLock(key)
+    key = key or self._selectedKey
+    if not key or not self._handles[key] then return false end
+    self._locked[key] = (not self._locked[key]) or nil
+    local handle = self._handles[key]
+    if handle._border and handle._border.SetColor then
+        if self._locked[key] then handle._border:SetColor(1, 0.3, 0.3, 1)
+        else handle._border:SetColor(ACCENT_R, ACCENT_G, ACCENT_B, 1) end
+    end
+    local ui = ns.H3z0UI_LayoutMode_UI
+    if ui and ui.UpdateUndoButtons then ui:UpdateUndoButtons() end
+    return self._locked[key] == true
+end
+
+function H3z0UI_LayoutMode:IsLocked(key) return self._locked[key] == true end
+
+function H3z0UI_LayoutMode:CopyPosition(key)
+    key = key or self._selectedKey
+    local handle = key and self._handles[key]
+    if not handle then return false end
+    local ox, oy = HandleToOffsets(handle, true)
+    local def = self._elements[key]
+    local w, h
+    if def and def.matchSize then w, h = def.matchSize.get() end
+    self._clipboard = { ox = ox, oy = oy, key = key, w = w, h = h }
+    local ui = ns.H3z0UI_LayoutMode_UI
+    if ui and ui.UpdateUndoButtons then ui:UpdateUndoButtons() end
+    return true
+end
+
+function H3z0UI_LayoutMode:PastePosition(key)
+    key = key or self._selectedKey
+    local clip = self._clipboard
+    if not (self.isActive and key and clip and self._handles[key]) then return false end
+    if InCombatLockdown() then return false end
+    if self._locked[key] then self:FlashLockedHandle(key) return false end
+    self:CaptureUndoStart(key)
+    local ok = ApplyUndoPosition(self, key, clip.ox, clip.oy, true)
+    return ok
+end
+
+function H3z0UI_LayoutMode:MatchSize(which)
+    local key, clip = self._selectedKey, self._clipboard
+    if not (self.isActive and key and clip) or InCombatLockdown() then return false end
+    if self._locked[key] then self:FlashLockedHandle(key) return false end
+    local def = self._elements[key]
+    if not (clip.w and clip.h and def and def.matchSize) then
+        print("|cff60A5FAH3z0UI Layout Mode:|r Match size only works between elements that have a size setting here (the chat windows). Copy Position on one of them first.")
+        return false
+    end
+    local w, h = clip.w, clip.h
+    if which == "height" then w = nil elseif which == "width" then h = nil end
+    local ok = def.matchSize.set(w, h)
+    if ok then
+        self._hasChanges = true
+        SyncHandle(key)
+    end
+    return ok
+end
+
+function H3z0UI_LayoutMode:Undo()
+    if not self.isActive or InCombatLockdown() then return false end
+    local e = table.remove(self._undoStack)
+    if not e then return false end
+    if ApplyUndoPosition(self, e.key, e.bx, e.by) then
+        self._redoStack[#self._redoStack + 1] = e
+    end
+    local ui = ns.H3z0UI_LayoutMode_UI
+    if ui and ui.UpdateUndoButtons then ui:UpdateUndoButtons() end
+    return true
+end
+
+function H3z0UI_LayoutMode:Redo()
+    if not self.isActive or InCombatLockdown() then return false end
+    local e = table.remove(self._redoStack)
+    if not e then return false end
+    if ApplyUndoPosition(self, e.key, e.ax, e.ay) then
+        self._undoStack[#self._undoStack + 1] = e
+    end
+    local ui = ns.H3z0UI_LayoutMode_UI
+    if ui and ui.UpdateUndoButtons then ui:UpdateUndoButtons() end
     return true
 end
 
@@ -3047,6 +3223,26 @@ do
                         end
                     end,
                     getFrame = getFrame,
+                    matchSize = {
+                        get = function()
+                            local f = getFrame()
+                            if not f then return nil end
+                            return math.floor(f:GetWidth() + 0.5), math.floor(f:GetHeight() + 0.5)
+                        end,
+                        set = function(w, h)
+                            local f = getFrame()
+                            if not f then return false end
+                            local cw, ch = f:GetWidth(), f:GetHeight()
+                            w = math.max(220, math.min(1400, math.floor((w or cw) + 0.5)))
+                            h = math.max(100, math.min(900, math.floor((h or ch) + 0.5)))
+                            f:SetSize(w, h)
+                            persist()
+                            if _G.H3z0UI_ReassertAnchorAfterResize then
+                                _G.H3z0UI_ReassertAnchorAfterResize(key)
+                            end
+                            return true
+                        end,
+                    },
                     setupOverlay = function(overlay, frame)
                         SetupChatWindowOverlay(overlay, frame, getFrame, persist,
                             function()
@@ -3726,6 +3922,7 @@ function H3z0UI_LayoutMode:ResetToCenter(key)
     if not self.isActive then return end
     local def = self._elements[key]
     if not def then return end
+    if self._locked[key] then self:FlashLockedHandle(key) return end
 
     local handle = self._handles[key]
     if not handle then
@@ -3733,6 +3930,7 @@ function H3z0UI_LayoutMode:ResetToCenter(key)
         self._handles[key] = handle
     end
 
+    self:CaptureUndoStart(key)
     SavePendingPosition(key, "CENTER", "CENTER", 0, 0)
 
     SetHandleFromOffsets(handle, 0, 0)

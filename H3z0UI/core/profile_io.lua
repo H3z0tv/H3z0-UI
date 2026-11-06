@@ -213,7 +213,10 @@ local function ValidateProfilePayloadDetailed(core, profileData)
     end
 
     local sourceClient = type(profileData) == "table" and profileData._h3z0uiClient
-    if ns.Client and sourceClient ~= nil and sourceClient ~= ns.Client.flavor then
+    -- Midnight and Forever share the same layout of settings, so a profile string moves between
+    -- them; the other clients (Classic Era, TBC) still only take their own
+    local function Shares(a, b) return (a == "retail" or a == "forever") and (b == "retail" or b == "forever") end
+    if ns.Client and sourceClient ~= nil and sourceClient ~= ns.Client.flavor and not Shares(sourceClient, ns.Client.flavor) then
         return false, {
             summary = "This profile was exported for a different WoW client. Import a profile from the same client.",
             errors = { { kind = "client_mismatch" } },
@@ -2027,12 +2030,22 @@ local function ApplyFullProfilePayload(core, importedProfile)
     end
     for key, value in pairs(importedProfile) do
         if key ~= "_migrationBackup" and key ~= "_needsStarterReseed"
-            and key ~= "_h3z0uiClient" and key ~= PROFILE_EXPORT_GLOBALS_KEY then
+            and key ~= "_h3z0uiClient" and key ~= PROFILE_EXPORT_GLOBALS_KEY
+            and key ~= "_h3z0uiEditMode" then
             profile[key] = CloneValue(value)
         end
     end
 
     ApplyImportedGlobals(core, bundledGlobals)
+
+    -- H3z0 UI: the Edit Mode layout that came with the string becomes the active one
+    local ES = ns.H3z0EditModeShare
+    if ES and ES.Import and type(importedProfile._h3z0uiEditMode) == "table" then
+        local ok, err = ES.Import(importedProfile._h3z0uiEditMode)
+        if not ok and err then
+            print("|cff60A5FAH3z0UI:|r Edit Mode layout not applied: " .. tostring(err))
+        end
+    end
 
     StampSourceSpecOnImportedSpecBars(profile, importedProfile)
 
@@ -2343,6 +2356,11 @@ function H3z0UICore:ExportProfileToString()
     if bundle then
         payload[PROFILE_EXPORT_GLOBALS_KEY] = bundle
     end
+
+    -- H3z0 UI: Blizzard's Edit Mode layout goes along, so the whole screen matches
+    local ES = ns.H3z0EditModeShare
+    local em = ES and ES.Export and ES.Export()
+    if em then payload[ES.KEY] = em end
 
     local exportString, exportErr = SerializeProfileExportPayload(payload)
     return exportString or exportErr or "Failed to export profile."

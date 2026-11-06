@@ -3,7 +3,7 @@
 ## IconTexture: Interface\AddOns\H3z0UI\assets\icon
 ## Notes: Options window for H3z0 UI
 ## Author: H3z0
-## Version: 0.25.1
+## Version: 0.28.2
 ## Category: User Interface
 ## Group: H3z0UI
 ## RequiredDeps: H3z0UI
@@ -38,6 +38,7 @@ shared.lua
 # H3z0 UI option page helpers
 h3z_compat.lua
 navigation.lua
+shell_v2.lua
 wizard.lua
 # Options-only settings framework, deferred out of the login path. Every
 # consumer reaches these lazily (inside a function) from UI-build code; none
@@ -66,6 +67,10 @@ wizard.lua
 ..\H3z0UI\core\settings\pins_ui.lua
 ..\H3z0UI\core\settings\content\anchoring_shared_content.lua
 ..\H3z0UI\core\settings\content\welcome_page.lua
+..\H3z0UI\core\settings\content\home_page.lua
+..\H3z0UI\core\settings\content\overrides_page.lua
+..\H3z0UI\core\settings\content\profile_tools_page.lua
+..\H3z0UI\core\settings\content\looks_page.lua
 tiles\help_content.lua
 ..\H3z0UI\core\settings\content\help_page.lua
 ..\H3z0UI\core\settings\content\troubleshooting_page.lua
@@ -152,8 +157,14 @@ aura_elements_editor.lua
 ..\H3z0UI_Features\features\settings\setup_options.lua
 ..\H3z0UI_Features\features\settings\quickaccess_options.lua
 ..\H3z0UI_Features\features\settings\hovername_options.lua
+..\H3z0UI_Features\features\settings\herald_options.lua
+..\H3z0UI_Features\features\settings\arcanum_options.lua
+..\H3z0UI_Features\features\settings\lorekeeper_options.lua
+..\H3z0UI_Features\features\settings\oracle_options.lua
+..\H3z0UI_Features\features\settings\interrupts_options.lua
 ..\H3z0UI_Chat\chat\settings\chat_options.lua
 ..\H3z0UI_Nameplates\nameplates\settings\nameplates_options.lua
+..\H3z0UI_Nameplates\nameplates\settings\nameplates_quicksetup.lua
 ..\H3z0UI_UnitFrames\unitframes\settings\castbar_options.lua
 ..\H3z0UI_UnitFrames\unitframes\settings\partyframes_options.lua
 ..\H3z0UI_UnitFrames\unitframes\settings\unitframes_options.lua

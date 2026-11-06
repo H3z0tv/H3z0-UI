@@ -81,9 +81,9 @@ local function WatchArtifactFrame()
     if watcher or not artifactFrame then return end
 
     watcher = CreateFrame("Frame")
-    watcher:RegisterEvent("ARTIFACT_UPDATE")
-    watcher:RegisterEvent("ARTIFACT_XP_UPDATE")
-    watcher:RegisterEvent("ARTIFACT_CLOSE")
+    H3z0UI_SafeRegisterEvent(watcher, "ARTIFACT_UPDATE")
+    H3z0UI_SafeRegisterEvent(watcher, "ARTIFACT_XP_UPDATE")
+    H3z0UI_SafeRegisterEvent(watcher, "ARTIFACT_CLOSE")
     watcher:SetScript("OnEvent", OnArtifactChanged)
     artifactFrame:HookScript("OnShow", OnArtifactChanged)
     artifactFrame:HookScript("OnHide", OnArtifactChanged)

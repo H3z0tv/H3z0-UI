@@ -503,7 +503,7 @@ local function StepReview(host, ctx, y, C)
 
     local applyBtn = GUI:CreateButton(host, ns.L["Apply Setup"], 160, 28, function()
         if #customList > 0 then
-            StaticPopupDialogs["H3z0UI_AURA_WIZARD_REPLACE"] = {
+            local popup = {
                 text = string.format(ns.L["You've customized %s. Applying replaces that surface's aura layout."], table.concat(customLabels, ", ")),
                 button1 = ACCEPT,
                 button2 = CANCEL,
@@ -511,12 +511,9 @@ local function StepReview(host, ctx, y, C)
                     local msg = DoApply(ctx, {})
                     if ctx.state._wizardStatus then ctx.state._wizardStatus:SetText(msg or "") end
                 end,
-                timeout = 0,
-                whileDead = true,
-                hideOnEscape = true,
-                preferredIndex = 3,
             }
-            StaticPopup_Show("H3z0UI_AURA_WIZARD_REPLACE")
+            local show = ns.ShowPopup or _G.H3z0UI_ShowPopup
+            if show then show(popup) end
         else
             local msg = DoApply(ctx, {})
             if ctx.state._wizardStatus then ctx.state._wizardStatus:SetText(msg or "") end

@@ -470,7 +470,7 @@ function GUI:ShowImportPopup(config)
     ImportPopup.hint:SetText(config.hint or "Paste the import string below")
     ImportPopup.editBox:SetText("")
     ImportPopup:Show()
-    ImportPopup:Raise()
+    if GUI.BringAboveOptions then GUI:BringAboveOptions(ImportPopup) end
     ImportPopup.editBox:SetFocus()
 end
 end

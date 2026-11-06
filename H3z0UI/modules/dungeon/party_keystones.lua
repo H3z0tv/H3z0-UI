@@ -189,6 +189,16 @@ local function PositionKeyTracker()
         local relPoint = s and s.keyTrackerRelPoint or "BOTTOMRIGHT"
         local offsetX = s and s.keyTrackerOffsetX or 0
         local offsetY = s and s.keyTrackerOffsetY or 0
+        -- the tabs (Dungeons & Raids, Player vs. Player, Mythic+ Dungeons) sit
+        -- under the window: with the default position the panel starts below them
+        if offsetY == 0 and relPoint == "BOTTOMRIGHT" then
+            local tabH = 0
+            for i = 1, 6 do
+                local tab = _G["PVEFrameTab" .. i]
+                if tab and tab:IsShown() then tabH = math.max(tabH, tab:GetHeight() or 0) end
+            end
+            offsetY = -((tabH > 0 and tabH or 30) + 2)
+        end
         KeyTrackerFrame:SetPoint(point, PVEFrame, relPoint, offsetX, offsetY)
     end
 end

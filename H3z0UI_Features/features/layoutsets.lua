@@ -49,7 +49,6 @@ local STATIC = {
     { "combatTimer", "xOffset" }, { "combatTimer", "yOffset" },
     { "mplusTimer", "position" },
     { "minimap", "position" },
-    { "minimap", "coordsConfig", "offsetX" }, { "minimap", "coordsConfig", "offsetY" },
     { "raidBuffs", "position" },
     { "skyriding", "offsetX" }, { "skyriding", "offsetY" },
     { "general", "consumableFreePosition" },
@@ -121,6 +120,81 @@ function LS.Restore(snap)
             elseif entry.value == NIL then parent[k] = nil else parent[k] = DeepCopy(entry.value) end
         end
     end
+end
+
+-- Forever: the H3z0 UI places for the Forever screen, taken from H3z0's own Forever profile
+-- (layout_forever_data.lua). The Midnight setup is made for another screen size, so on Forever
+-- these are used instead. Frames the data has no place for keep their own.
+local function ApplyForeverPlaces()
+    local p = Profile()
+    local data = ns.ForeverLayoutData
+    if not (p and type(data) == "table") then return false end
+    p.frameAnchoring = p.frameAnchoring or {}
+    for key, entry in pairs(data.frameAnchoring or {}) do
+        p.frameAnchoring[key] = DeepCopy(entry)
+    end
+    for _, item in ipairs(data.values or {}) do
+        local t = p
+        local path = item.path
+        for i = 1, #path - 1 do
+            if type(t[path[i]]) ~= "table" then t[path[i]] = {} end
+            t = t[path[i]]
+        end
+        t[path[#path]] = DeepCopy(item.value)
+    end
+    -- Blizzard's windows that H3z0 UI places (chat, damage meter, Cooldown Manager ...): back to the
+    -- Edit Mode layout, then the chat and the damage meter where H3z0's Forever layout has them
+    -- (centre offset and size in UI units, as Layout Mode shows them)
+    local mode = LS.CurrentMode()
+    if type(p.blizzPositions) == "table" then p.blizzPositions[mode] = {} end
+    if type(p.blizzSizes) == "table" then p.blizzSizes[mode] = {} end
+    local BP = ns.BlizzPositions
+    if BP and BP.Save and BP.SaveSize then
+        local windows = {
+            { _G.DamageMeterSessionWindow1, -876, -199, 441, 211 },
+            { _G.ChatFrame1, -876, -492, 441, 181 },
+        }
+        for _, w in ipairs(windows) do
+            local f = w[1]
+            if f and f.system then
+                pcall(BP.SaveSize, f, w[4], w[5])
+                pcall(BP.Save, f, w[2], w[3])
+            end
+        end
+    end
+    local Display = ns.H3z0UI and ns.H3z0UI.Chat and ns.H3z0UI.Chat.DisplayLayer
+    if Display and Display.PersistGeometry then pcall(Display.PersistGeometry, 1) end
+    return true
+end
+
+-- Put every H3z0 UI frame back where the H3z0 UI default setup has it (the positions only)
+function LS.ApplyDefaults()
+    if ns.Client and ns.Client.isForever then return ApplyForeverPlaces() end
+    -- only the real H3z0 UI setup has the right places; the old starter seed does not (it scattered
+    -- the frames on Forever), so without it nothing is moved
+    local seed = ns.GetH3z0DefaultPositions and ns.GetH3z0DefaultPositions()
+    if type(seed) ~= "table" or not Profile() then return false end
+    local snap = {}
+    local prof = Profile()
+    for _, path in ipairs(Paths()) do
+        if #path == 1 and path[1] == "frameAnchoring" then
+            -- one frame at a time: frames the setup does not place keep their own place
+            if type(seed.frameAnchoring) == "table" then
+                prof.frameAnchoring = prof.frameAnchoring or {}
+                for key, v in pairs(seed.frameAnchoring) do
+                    local fp = { "frameAnchoring", key }
+                    snap[Key(fp)] = { path = fp, value = DeepCopy(v) }
+                end
+            end
+        else
+        local parent, k = Resolve(seed, path)
+        if parent and parent[k] ~= nil then   -- a place the setup does not have keeps the current one
+            snap[Key(path)] = { path = path, value = DeepCopy(parent[k]) }
+        end
+        end
+    end
+    LS.Restore(snap)
+    return true
 end
 
 function LS.Save(mode)

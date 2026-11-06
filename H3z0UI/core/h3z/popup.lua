@@ -55,18 +55,68 @@ local function Build()
     f.text:SetJustifyH("CENTER")
     f.text:SetSpacing(2)
 
+    -- optional text input (def.hasEditBox) and gold / silver / copper input (def.hasMoneyInput)
+    local eb = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+    eb:SetSize(240, 22)
+    eb:SetAutoFocus(false)
+    eb:Hide()
+    f.editBox = eb
+
+    local money = CreateFrame("Frame", nil, f)
+    money:SetSize(260, 22)
+    money:Hide()
+    local function MoneyBox(label, width)
+        local b = CreateFrame("EditBox", nil, money, "InputBoxTemplate")
+        b:SetSize(width, 22)
+        b:SetAutoFocus(false)
+        b:SetNumeric(true)
+        b.label = money:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        b.label:SetPoint("LEFT", b, "RIGHT", 4, 0)
+        b.label:SetText(label)
+        return b
+    end
+    money.gold = MoneyBox("g", 90)
+    money.silver = MoneyBox("s", 34)
+    money.copper = MoneyBox("c", 34)
+    money.gold:SetPoint("LEFT", money, "LEFT", 6, 0)
+    money.silver:SetPoint("LEFT", money.gold, "RIGHT", 22, 0)
+    money.copper:SetPoint("LEFT", money.silver, "RIGHT", 22, 0)
+    money.silver:SetMaxLetters(2)
+    money.copper:SetMaxLetters(2)
+    f.money = money
+    function f:GetMoney()
+        local g = tonumber(money.gold:GetText()) or 0
+        local sv = tonumber(money.silver:GetText()) or 0
+        local c = tonumber(money.copper:GetText()) or 0
+        return g * 10000 + sv * 100 + c
+    end
+
     f.b1 = MakeButton(f)
     f.b2 = MakeButton(f)
     f.b1:SetScript("OnClick", function()
         local def = f.def
+        -- what was typed is read before the popup clears itself
+        local value
+        if def and def.hasEditBox then value = strtrim(f.editBox:GetText() or "")
+        elseif def and def.hasMoneyInput then value = f:GetMoney() end
         f:Hide()
-        if def and def.OnAccept then def.OnAccept(f, f.data) end
+        if def and def.OnAccept then def.OnAccept(f, f.data, value) end
     end)
     f.b2:SetScript("OnClick", function()
         local def = f.def
         f.def = nil
         f:Hide()
         if def and def.OnCancel then def.OnCancel(f, f.data) end
+    end)
+    local function Accept() if f.b1:IsShown() then f.b1:Click() end end
+    local function Cancel() if f.def and f.b2:IsShown() then f.b2:Click() else f:Hide() end end
+    for _, box in ipairs({ eb, money.gold, money.silver, money.copper }) do
+        box:SetScript("OnEnterPressed", Accept)
+        box:SetScript("OnEscapePressed", Cancel)
+    end
+    f:SetScript("OnHide", function(self)
+        self.editBox:ClearFocus()
+        for _, k in ipairs({ "gold", "silver", "copper" }) do self.money[k]:SetText(""); self.money[k]:ClearFocus() end
     end)
     dlg = f
     return f
@@ -98,13 +148,39 @@ function ns.ShowPopup(name, textArg, data)
         f.b1:SetPoint("BOTTOM", f, "BOTTOM", 0, 14)
         f.b2:Hide()
     end
-    f:SetHeight(math.max(110, (f.text:GetStringHeight() or 40) + 76))
+    local extra = 0
+    f.editBox:Hide(); f.money:Hide()
+    local textH = f.text:GetStringHeight() or 20
+    if def.hasEditBox then
+        f.editBox:ClearAllPoints()
+        f.editBox:SetPoint("TOP", f.text, "TOP", 0, -(textH + 12))
+        f.editBox:SetMaxLetters(def.maxLetters or 0)
+        f.editBox:SetText(def.editText or "")
+        f.editBox:Show()
+        extra = 34
+    elseif def.hasMoneyInput then
+        f.money:ClearAllPoints()
+        f.money:SetPoint("TOP", f.text, "TOP", 0, -(textH + 12))
+        f.money:Show()
+        extra = 34
+    end
+    f:SetHeight(math.max(110, textH + 76 + extra))
     f:Show()
     f:Raise()
+    if def.hasEditBox then
+        f.editBox:SetFocus()
+        f.editBox:HighlightText()
+    elseif def.hasMoneyInput then
+        f.money.gold:SetFocus()
+    end
     return f
 end
 
 _G.H3z0UI_ShowPopup = ns.ShowPopup
+function ns.HidePopup()
+    if dlg and dlg:IsShown() then dlg.def = nil; dlg:Hide() end
+end
+_G.H3z0UI_HidePopup = ns.HidePopup
 
 ---------------------------------------------------------------------------
 -- 0.24.9: one "reload needed" popup for every option that only fully applies after a

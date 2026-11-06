@@ -33,6 +33,64 @@ Utils.PADDING = 0
 Utils.PROVIDER_TO_V2 = {
 }
 
+-- Where an Edit Mode element's options live in the H3z0 UI menu, for elements
+-- that have no registered settings feature of their own.
+Utils.FALLBACK_ROUTES = {
+    actionBars = { "action_bars", 1 }, leaveVehicle = { "action_bars", 6 },
+    h3zPlayerFrame = { "h3z_unitframes", 2 }, h3zTargetFrame = { "h3z_unitframes", 3 },
+    h3zToTFrame = { "h3z_unitframes", 4 }, h3zPetFrame = { "h3z_unitframes", 5 },
+    h3zFocusFrame = { "h3z_unitframes", 6 }, h3zBossFrames = { "h3z_unitframes", 7 },
+    h3zPlayerCastbar = { "h3z_unitframes", 2 }, h3zTargetCastbar = { "h3z_unitframes", 3 },
+    h3zFocusCastbar = { "h3z_unitframes", 6 },
+    h3zPartyFrames = { "h3z_partyframes", 1 }, h3zRaidFrames = { "h3z_partyframes", 2 },
+    h3zHerald = { "h3z_herald", 1 }, h3zLorekeeper = { "h3z_lorekeeper", 1 },
+    h3zArcanumToasts = { "h3z_arcanum", 1 },
+    chatFrame1 = { "h3z_chat", 1 },
+    minimap = { "minimap", 1 },
+    alertAnchor = { "appearance", 4 }, toastAnchor = { "appearance", 4 }, bnetToastAnchor = { "appearance", 4 },
+    lootRollAnchor = { "appearance", 4 }, lootFrame = { "appearance", 4 }, powerBarAlt = { "appearance", 4 },
+    topCenterWidgets = { "appearance", 9 }, belowMinimapWidgets = { "appearance", 9 },
+    equipmentDurability = { "appearance", 9 },
+    missingRaidBuffs = { "gameplay", 5 }, rangeCheck = { "gameplay", 6 }, healerMana = { "gameplay", 6 },
+}
+
+-- returns a route table { tileId, subPageIndex } or nil
+function Utils.ResolveOptionsRoute(key)
+    if not key then return nil end
+    local Nav = ns.Settings and ns.Settings.Nav
+    local route = Nav and Nav.GetRoute and Nav:GetRoute(key)
+    if not route and Nav and Nav.GetRouteByLookupKey then route = Nav:GetRouteByLookupKey(key) end
+    if route and route.tileId then return route end
+    route = Utils.PROVIDER_TO_V2 and Utils.PROVIDER_TO_V2[key]
+    if route then return route end
+    local fb = Utils.FALLBACK_ROUTES[key]
+    if fb then return { tileId = fb[1], subPageIndex = fb[2] } end
+    local s = tostring(key)
+    if s:find("^chatFrame%d") or s:find("^h3zMeterWin") or s:find("^chat") then return { tileId = "h3z_chat", subPageIndex = 1 } end
+    if s:find("^h3zBar") or s:find("^bar%d") then return { tileId = "action_bars", subPageIndex = 2 } end
+    if s:find("[Dd]atatext") or s:find("[Dd]atapanel") or s:find("^panel") then return { tileId = "minimap", subPageIndex = 2 } end
+    if s:find("[Aa]ura") or s:find("[Bb]uff") then return { tileId = "auras", subPageIndex = 1 } end
+    if s:find("^h3z") then return { tileId = "h3z_features", subPageIndex = 4 } end
+    return nil
+end
+
+-- close Edit Mode, open the H3z0 UI menu and jump to the route
+function Utils.OpenOptionsRoute(route)
+    if not route then return end
+    local GUI = H3z0UI and H3z0UI.GUI
+    if _G.H3z0UI_ToggleLayoutMode then ns.SafeCall("bulkhead", _G.H3z0UI_ToggleLayoutMode) end
+    if H3z0UI and H3z0UI.SlashCommandOpen then
+        H3z0UI:SlashCommandOpen("")
+    elseif GUI and GUI.Toggle then
+        GUI:Toggle()
+    end
+    local frame = GUI and GUI.MainFrame
+    if frame and GUI.FindV2TileByID and GUI.SelectFeatureTile then
+        local _, idx = GUI:FindV2TileByID(frame, route.tileId)
+        if idx then GUI:SelectFeatureTile(frame, idx, { subPageIndex = route.subPageIndex }) end
+    end
+end
+
 function Utils.GetProfileDB()
     local core = Helpers.GetCore()
     return core and core.db and core.db.profile

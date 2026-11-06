@@ -253,17 +253,21 @@ end
 
 ownedEventFrame = CreateFrame("Frame")
 
+function RefreshNativeVisualsForBar(barKey)
+    local buttons = ActionBarsOwned.nativeButtons[barKey]
+    local settings = GetEffectiveSettings(barKey)
+    if buttons and settings and SKINNABLE_BAR_KEYS[barKey] then
+        for _, btn in ipairs(buttons) do
+            SkinButton(btn, settings)
+            UpdateButtonText(btn, settings)
+            UpdateEmptySlotVisibility(btn, settings)
+        end
+    end
+end
+
 function RefreshAllNativeVisuals()
     for _, barKey in ipairs(ALL_MANAGED_BAR_KEYS) do
-        local buttons = ActionBarsOwned.nativeButtons[barKey]
-        local settings = GetEffectiveSettings(barKey)
-        if buttons and settings and SKINNABLE_BAR_KEYS[barKey] then
-            for _, btn in ipairs(buttons) do
-                SkinButton(btn, settings)
-                UpdateButtonText(btn, settings)
-                UpdateEmptySlotVisibility(btn, settings)
-            end
-        end
+        RefreshNativeVisualsForBar(barKey)
     end
 end
 

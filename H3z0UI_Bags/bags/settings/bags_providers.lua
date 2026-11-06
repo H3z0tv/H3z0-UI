@@ -203,6 +203,10 @@ ProviderPanels:RegisterAfterLoad(function(ctx)
                 { description = ns.L["How many item columns the guild bank grid uses."] })
             s1.AddRow(row(s1.frame, ns.L["Bank Columns"], bankColsW), row(s1.frame, ns.L["Guild Bank Columns"], guildColsW))
 
+            local bankInvW = GUI:CreateFormCheckbox(s1.frame, nil, "bankInventory", bags.appearance, Refresh,
+                { description = "Use the Inventory layout (categories on the left, items in sections) in the bank window too. It applies when the Layout above is Inventory; turn this off to keep the plain grid with tabs in the bank." })
+            s1.AddRow(row(s1.frame, "Bank: Inventory Layout", bankInvW))
+
             local groupEmptyW = GUI:CreateFormCheckbox(s1.frame, nil, "groupEmptySlots", bags.appearance, Refresh,
                 { description = ns.L["Flat Grid only: collapse each section's empty slots into a single cell showing the free count."] })
             local greyJunkW = GUI:CreateFormCheckbox(s1.frame, nil, "greyJunk", bags.appearance, Refresh,
@@ -232,6 +236,30 @@ ProviderPanels:RegisterAfterLoad(function(ctx)
             local hide4W = GUI:CreateFormCheckbox(s1.frame, nil, 4, hiddenBags, Refresh,
                 { description = ns.L["Hide bag 4's slots from the bag window grid. Display-only: search and sort still cover it."] })
             s1.AddRow(row(s1.frame, ns.L["Hide Bag 3"], hide3W), row(s1.frame, ns.L["Hide Bag 4"], hide4W))
+
+            local searchBoxW = GUI:CreateFormCheckbox(s1.frame, nil, "showSearchBox", bags.appearance, Refresh,
+                { description = ns.L["Show the search box in the header of the bag, bank and guild bank windows."] })
+            local reduceW = GUI:CreateFormCheckbox(s1.frame, nil, "reduceSpacing", bags.appearance, Refresh,
+                { description = ns.L["Tighter window edges around the items for a smaller window."] })
+            s1.AddRow(row(s1.frame, ns.L["Show Search Box"], searchBoxW), row(s1.frame, ns.L["Reduce Spacing"], reduceW))
+
+            local blankW = GUI:CreateFormDropdown(s1.frame, nil, {
+                { value = false, text = ns.L["At The Bottom"] },
+                { value = true, text = ns.L["At The Top"] },
+            }, "emptySpaceAtTop", bags.appearance, Refresh,
+                { description = ns.L["Flat Grid only: where the part-filled row of items goes, at the bottom (after the last item) or at the top."] })
+            local buttonsW = GUI:CreateFormDropdown(s1.frame, nil, {
+                { value = "always", text = ns.L["Always"] },
+                { value = "alt", text = ns.L["While Alt Held"] },
+            }, "showButtons", bags.appearance, Refresh,
+                { description = ns.L["Show the header buttons (sort, bank, guild bank, select, character) all the time, or only while you hold Alt for a cleaner window."] })
+            s1.AddRow(row(s1.frame, ns.L["Blank Space"], blankW), row(s1.frame, ns.L["Show Buttons"], buttonsW))
+
+            local boeCommonW = GUI:CreateFormCheckbox(s1.frame, nil, "hideBoeOnCommon", bags.appearance, Refresh,
+                { description = ns.L["Don't show the BoE / BoU / binding corner text on poor and common quality items."] })
+            local flashNewW = GUI:CreateFormCheckbox(s1.frame, nil, "newItemFlash", bags.appearance, Refresh,
+                { description = ns.L["Play the flashing animation on new items. Off: new items keep a steady highlight."] })
+            s1.AddRow(row(s1.frame, ns.L["Hide BoE On Common Items"], boeCommonW), row(s1.frame, ns.L["Flashing New Items"], flashNewW))
             L.closeSection(s1)
         end
 
@@ -248,6 +276,17 @@ ProviderPanels:RegisterAfterLoad(function(ctx)
                 { value = "expansion", text = ns.L["Expansion"] },
                 { value = "crafting_quality", text = ns.L["Crafting Quality (R1-R5)"] },
                 { value = "upgrade_track", text = ns.L["Upgrade Track"] },
+                { value = "boe", text = ns.L["Bind On Equip (BoE)"] },
+                { value = "bou", text = ns.L["Bind On Use (BoU)"] },
+                { value = "boa", text = ns.L["Bind On Account (BoA)"] },
+                { value = "wue", text = ns.L["Warbound Until Equipped (WuE)"] },
+                { value = "warbound", text = ns.L["Warbound (WB)"] },
+                { value = "tradeable", text = ns.L["Tradeable Loot (TL)"] },
+                { value = "upgrade", text = ns.L["Upgrade Arrow"] },
+                { value = "transmog", text = ns.L["Uncollected Appearance"] },
+                { value = "equipment_set_icon", text = ns.L["Equipment Set Icon"] },
+                { value = "keystone_level", text = ns.L["Keystone Level"] },
+                { value = "battle_pet_level", text = ns.L["Battle Pet Level"] },
             }
             local function cornerDD(key, desc)
                 return GUI:CreateFormDropdown(sc.frame, nil, CORNER_OPTS, key, bags.appearance.corners, Refresh,
@@ -314,6 +353,40 @@ ProviderPanels:RegisterAfterLoad(function(ctx)
             local glowTimeoutW = GUI:CreateFormSlider(s2.frame, nil, 5, 120, 5, "timeoutMinutes", behavior.newItemGlow, nil,
                 { description = ns.L["Minutes before a new-item highlight expires on its own."] })
             s2.AddRow(row(s2.frame, ns.L["New Item Highlight"], glowEnableW), row(s2.frame, ns.L["Highlight Timeout (min)"], glowTimeoutW))
+
+            local lockW = GUI:CreateFormCheckbox(s2.frame, nil, "lockWindows", behavior, Refresh,
+                { description = ns.L["Lock the bag, bank and guild bank windows in place so they can't be dragged by accident."] })
+            local dupW = GUI:CreateFormCheckbox(s2.frame, nil, "flashDuplicates", behavior, Refresh,
+                { description = ns.L["Alt+click an item to make every copy of it in your bags flash for a few seconds."] })
+            s2.AddRow(row(s2.frame, ns.L["Lock Windows"], lockW), row(s2.frame, ns.L["Flash Duplicates (Alt+Click)"], dupW))
+
+            local sortBtnW = GUI:CreateFormCheckbox(s2.frame, nil, "showSortButton", behavior, Refresh,
+                { description = ns.L["Show the sort button in the bag and bank window headers."] })
+            local sortOpenW = GUI:CreateFormCheckbox(s2.frame, nil, "sortOnOpen", behavior, Refresh,
+                { description = ns.L["Sort your bags every time you open the bag window."] })
+            s2.AddRow(row(s2.frame, ns.L["Show Sort Button"], sortBtnW), row(s2.frame, ns.L["Sort On Open"], sortOpenW))
+
+            local arrangeW = GUI:CreateFormDropdown(s2.frame, nil, {
+                { value = false, text = ns.L["From The Top"] },
+                { value = true, text = ns.L["From The Bottom"] },
+            }, "fillFromBottom", behavior, Refresh,
+                { description = ns.L["Where sorting puts your items: packed from the first slot, or packed towards the last slot so the empty space is at the top."] })
+            local upgradeW = GUI:CreateFormDropdown(s2.frame, nil, {
+                { value = "auto", text = ns.L["Pawn If Installed, Else Item Level"] },
+                { value = "ilvl", text = ns.L["Item Level"] },
+                { value = "pawn", text = ns.L["Pawn Only"] },
+            }, "upgradeDetection", behavior, Refresh,
+                { description = ns.L["How the Upgrade Arrow corner and the #upgrade search decide an item is an upgrade: Pawn's verdict, or a higher item level than what you have equipped in that slot."] })
+            s2.AddRow(row(s2.frame, ns.L["Arrange Items"], arrangeW), row(s2.frame, ns.L["Upgrade Detection"], upgradeW))
+
+            local ignoreW = GUI:CreateFormSlider(s2.frame, nil, 0, 40, 1, "ignoreSlots", behavior, Refresh,
+                { description = ns.L["How many bag slots the Sort button never touches (items there stay where they are)."] })
+            local ignoreAtW = GUI:CreateFormDropdown(s2.frame, nil, {
+                { value = "end", text = ns.L["Last Slots"] },
+                { value = "start", text = ns.L["First Slots"] },
+            }, "ignoreSlotsAt", behavior, Refresh,
+                { description = ns.L["Whether the ignored slots are the last or the first slots of your bags."] })
+            s2.AddRow(row(s2.frame, ns.L["Ignored Slots"], ignoreW), row(s2.frame, ns.L["Ignored Slots Are"], ignoreAtW))
             L.closeSection(s2)
         end
 
@@ -330,6 +403,9 @@ ProviderPanels:RegisterAfterLoad(function(ctx)
                 { key = "socket", label = ns.L["Socketing"], desc = ns.L["Open the bag window when socketing an item."] },
                 { key = "bank", label = ns.L["Bank"], desc = ns.L["Open the bag window alongside the bank window."] },
                 { key = "guildBank", label = ns.L["Guild Bank"], desc = ns.L["Open the bag window alongside the guild bank window."] },
+                { key = "catalyst", label = ns.L["Catalyst"], desc = ns.L["Open the bag window at the Catalyst (and other item interaction windows)."] },
+                { key = "craftingWindow", label = ns.L["Crafting Window"], desc = ns.L["Open the bag window when you open a profession."] },
+                { key = "characterPanel", label = ns.L["Character Panel"], desc = ns.L["Open the bag window with your Character panel."] },
             }
             local pendingCell = nil
             for _, def in ipairs(autoOpenRows) do
@@ -439,6 +515,174 @@ ProviderPanels:RegisterAfterLoad(function(ctx)
                 note:SetTextColor(1, 0.6, 0.1, 1)
                 note:SetText(ns.L["Enable the Datatexts module addon (Modules page) to configure the currency list."])
                 L.placeCustom(noteRow, 18)
+            end
+        end
+
+        if not page or page == "categories" then
+            local Cat = ns.Bags and ns.Bags.Categories
+            local cdb = Cat and Cat.DB() or {}
+            L.headerAt(ns.L["Categories"])
+            local sk = L.sectionAt()
+            local groupIdW = GUI:CreateFormCheckbox(sk.frame, nil, "groupIdentical", cdb, Refresh,
+                { description = ns.L["Identical items share one button that shows the total count (gear only when it is exactly the same item)."] })
+            local groupEmptyW = GUI:CreateFormCheckbox(sk.frame, nil, "groupEmpty", cdb, Refresh,
+                { description = ns.L["Show all empty slots as one button with the free count (one for your bags, one for the reagent bag). Off: every empty slot is shown."] })
+            sk.AddRow(row(sk.frame, ns.L["Group Identical Items"], groupIdW), row(sk.frame, ns.L["Group Empty Slots"], groupEmptyW))
+            local spacingW = GUI:CreateFormSlider(sk.frame, nil, 0, 30, 1, "spacing", cdb, Refresh,
+                { description = ns.L["Gap between the category blocks."] })
+            local catSortOpts = { { value = "", text = ns.L["Same As Bags"] } }
+            for _, o in ipairs(sortOptions) do catSortOpts[#catSortOpts + 1] = o end
+            local catSortW = GUI:CreateFormDropdown(sk.frame, nil, catSortOpts, "categorySortKey", behavior, Refresh,
+                { description = ns.L["How the items inside each category are ordered. Same As Bags uses the Sort Items By setting."] })
+            sk.AddRow(row(sk.frame, ns.L["Category Spacing"], spacingW), row(sk.frame, ns.L["Sort Inside Categories"], catSortW))
+            L.closeSection(sk)
+            PlaceNote(L, content,
+                ns.L["These apply to the Inventory and Categories layouts (General page > Layout). Hearthstone and Keystone always stay on top. In the bag window, drop an item on a category (title or + slot) to put it there for good, and right-click a category to move or hide it."],
+                40)
+
+            -- the category list: shown / hidden, order, your own categories
+            if Cat then
+                L.headerAt(ns.L["Category Order"])
+                local list = Cat.List()
+                local ROW = 26
+                local box = CreateFrame("Frame", nil, content)
+                local rowsFrames = {}
+                local function SmallButton(parent, text, w, onClick)
+                    local b = GUI:CreateButton(parent, text, w, 18, onClick)
+                    return b
+                end
+                local function Rebuild()
+                    list = Cat.List()
+                    for _, rf in ipairs(rowsFrames) do rf:Hide() end
+                    local y = -4
+                    for i, e in ipairs(list) do
+                        local r = rowsFrames[i]
+                        if not r then
+                            r = CreateFrame("Frame", nil, box)
+                            r:SetHeight(ROW - 4)
+                            r.cb = GUI:CreateFormCheckbox(r, nil, nil, nil, function(val)
+                                Cat.SetHidden(r.key, not val)
+                                Refresh()
+                            end, { description = ns.L["Show this category in the bag window. A hidden category's items are not shown."] })
+                            r.cb:SetPoint("LEFT", 4, 0)
+                            r.name = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                            r.name:SetPoint("LEFT", r, "LEFT", 40, 0)
+                            r.name:SetJustifyH("LEFT")
+                            r.up = SmallButton(r, "^", 22, function() Cat.Move(r.key, -1); Rebuild(); Refresh() end)
+                            r.up:SetPoint("RIGHT", r, "RIGHT", -28, 0)
+                            r.down = SmallButton(r, "v", 22, function() Cat.Move(r.key, 1); Rebuild(); Refresh() end)
+                            r.down:SetPoint("RIGHT", r, "RIGHT", -2, 0)
+                            r.del = SmallButton(r, ns.L["Delete"], 60, function()
+                                Cat.DeleteCustom(r.key)
+                                Refresh()
+                                NotifyProviderFor(r.del, { structural = true })
+                            end)
+                            r.del:SetPoint("RIGHT", r.up, "LEFT", -6, 0)
+                            r.edit = SmallButton(r, ns.L["Search"], 60, function()
+                                local c = Cat.DB()
+                                local def = c and c.custom[r.key]
+                                if not def then return end
+                                H3z0UI_ShowPopup({
+                                    text = ns.L["Search text for"] .. " " .. (def.name or "") .. ":",
+                                    button1 = ACCEPT, button2 = CANCEL,
+                                    hasEditBox = true, maxLetters = 200, editText = def.search or "",
+                                    OnAccept = function(_, _, value)
+                                        def.search = value or ""
+                                        Rebuild()
+                                        Refresh()
+                                    end,
+                                })
+                            end)
+                            r.edit:SetPoint("RIGHT", r.del, "LEFT", -6, 0)
+                            r.name:SetPoint("RIGHT", r.edit, "LEFT", -6, 0)
+                            rowsFrames[i] = r
+                        end
+                        r.key = e.key
+                        r:ClearAllPoints()
+                        r:SetPoint("TOPLEFT", box, "TOPLEFT", 0, y)
+                        r:SetPoint("RIGHT", box, "RIGHT", 0, 0)
+                        local label = e.name
+                        if e.custom then
+                            local c = Cat.DB()
+                            local q = c and c.custom[e.key] and c.custom[e.key].search or ""
+                            label = label .. "  |cff888888(" .. (q ~= "" and q or ns.L["no search"]) .. ")|r"
+                        end
+                        r.name:SetText(label)
+                        r.name:SetTextColor(e.hidden and 0.5 or 0.9, e.hidden and 0.5 or 0.9, e.hidden and 0.5 or 0.9)
+                        r.cb:SetValue(not e.hidden, true)
+                        r.up:SetAlpha(i > 1 and 1 or 0.3)
+                        r.down:SetAlpha(i < #list and 1 or 0.3)
+                        r.del:SetShown(e.custom)
+                        r.edit:SetShown(e.custom)
+                        r:Show()
+                        y = y - ROW
+                    end
+                end
+                L.placeCustom(box, #list * ROW + 8)
+                Rebuild()
+
+                -- new category: name + search text
+                L.headerAt(ns.L["New Category"])
+                local sn = L.sectionAt()
+                local newCat = { name = "", search = "" }
+                local nameW = GUI:CreateFormEditBox(sn.frame, nil, "name", newCat, nil, {
+                    commitOnEnter = true, commitOnFocusLost = true,
+                }, { description = ns.L["Name of the new category."] })
+                local searchW = GUI:CreateFormEditBox(sn.frame, nil, "search", newCat, nil, {
+                    commitOnEnter = true, commitOnFocusLost = true,
+                }, { description = ns.L["Which items go in it, with the bag search words: for example  #potion|#flask   epic&#armor   ilvl>600   #boe   !#junk   or part of an item name."] })
+                sn.AddRow(row(sn.frame, ns.L["Name"], nameW), row(sn.frame, ns.L["Search Text"], searchW))
+                local addHolder = CreateFrame("Frame", nil, sn.frame)
+                addHolder:SetSize(260, 22)
+                local addBtn = GUI:CreateButton(addHolder, ns.L["Add Category"], 120, 22, function()
+                    local nameText = nameW.editBox and nameW.editBox:GetText() or newCat.name
+                    local searchText = searchW.editBox and searchW.editBox:GetText() or newCat.search
+                    if not nameText or nameText == "" then
+                        print("|cffff0000H3z0UI:|r " .. ns.L["Enter a name for the category."])
+                        return
+                    end
+                    Cat.AddCustom(nameText, searchText or "")
+                    newCat.name, newCat.search = "", ""
+                    Refresh()
+                    NotifyProviderFor(addHolder, { structural = true })
+                end)
+                addBtn:SetPoint("LEFT", addHolder, "LEFT", 0, 0)
+                local resetBtn = GUI:CreateButton(addHolder, ns.L["Reset Order"], 120, 22, function()
+                    Cat.Reset()
+                    Rebuild()
+                    Refresh()
+                    NotifyProviderFor(addHolder, { structural = true })
+                end)
+                resetBtn:SetPoint("LEFT", addBtn, "RIGHT", 8, 0)
+                sn.AddRow(row(sn.frame, "", addHolder))
+                L.closeSection(sn)
+                PlaceNote(L, content,
+                    ns.L["Search words: #weapon #armor #cloth #leather #mail #plate #consumable #potion #flask #food #gem #reagent #tradegoods #recipe #quest #toy #mount #battlepet #keystone #housing #boe #bou #boa #warbound #junk #upgrade #transmog #set, qualities (epic, rare, ...), expansions (tww, midnight, ...), slots (ring, trinket, ...), item level (ilvl>600, 600-650). Combine with & (and), | (or), ! (not)."],
+                    70)
+
+                -- items you put in a category yourself
+                local c = Cat.DB()
+                local assigned = {}
+                for itemID, key in pairs(c and c.assign or {}) do
+                    assigned[#assigned + 1] = { value = itemID, text = ItemLabel(itemID) .. " -> " .. Cat.Name(key) }
+                end
+                table.sort(assigned, function(a, b) return a.text < b.text end)
+                if #assigned > 0 then
+                    L.headerAt(ns.L["Items Placed By Hand"])
+                    local sa = L.sectionAt()
+                    local pick = { selected = "" }
+                    local opts = { { value = "", text = ns.L["Select to remove..."] } }
+                    for _, o in ipairs(assigned) do opts[#opts + 1] = o end
+                    local dd
+                    dd = GUI:CreateFormDropdown(sa.frame, nil, opts, "selected", pick, function(value)
+                        if not value or value == "" then return end
+                        c.assign[value] = nil
+                        Refresh()
+                        NotifyProviderFor(dd, { structural = true })
+                    end, { description = ns.L["Items you dropped on a category title. Pick one to send it back to its normal category."] })
+                    sa.AddRow(row(sa.frame, ns.L["Remove"], dd))
+                    L.closeSection(sa)
+                end
             end
         end
 

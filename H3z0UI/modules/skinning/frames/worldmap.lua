@@ -408,14 +408,10 @@ local function StyleDetailText(details)
     end
 end
 
-local function StyleQuestPane(frame)
-    local quest = frame and frame.QuestLog
-    if not quest then return end
-    StyleExtraPanes(quest)
-    HideArt(quest.VerticalSeparator)
-    for _, key in ipairs({ "QuestsTab", "EventsTab", "MapLegendTab" }) do StyleQuestTab(quest[key]) end
+local function StyleQuestTabs(quest)
+    for _, key in ipairs({ "QuestsTab", "EventsTab", "MapLegendTab", "H3z0WaygateTab" }) do StyleQuestTab(quest[key]) end
     local previous
-    for _, key in ipairs({ "QuestsTab", "EventsTab", "MapLegendTab" }) do
+    for _, key in ipairs({ "QuestsTab", "EventsTab", "MapLegendTab", "H3z0WaygateTab" }) do
         local tab = quest[key]
         if tab and tab:IsShown() then
             tab:ClearAllPoints()
@@ -427,6 +423,14 @@ local function StyleQuestPane(frame)
             previous = tab
         end
     end
+end
+
+local function StyleQuestPane(frame)
+    local quest = frame and frame.QuestLog
+    if not quest then return end
+    StyleExtraPanes(quest)
+    HideArt(quest.VerticalSeparator)
+    StyleQuestTabs(quest)
     local list = quest.QuestsFrame
     local scroll = list and list.ScrollFrame
     if scroll then
@@ -548,6 +552,12 @@ local function StyleBountyBoard(board)
         end
         SkinBase.SetFrameData(board, "mapBountyBoardHooked", true)
     end
+end
+
+-- Waygate (H3z0 Features) adds a tab; it asks for the same look as the others
+_G.H3z0UI_RestyleMapTabs = function()
+    local map = _G.WorldMapFrame
+    if map and map.QuestLog and IsSettingEnabled("skinWorldMap") then StyleQuestTabs(map.QuestLog) end
 end
 
 local function StyleMapControls(frame)

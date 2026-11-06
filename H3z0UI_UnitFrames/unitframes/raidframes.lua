@@ -604,9 +604,24 @@ local function ApplyPreview(s)
     end
 end
 
+-- While H3z0 raid frames replace Blizzard's, Blizzard's own ready check icons stay off,
+-- so every player has one tick: the one on the H3z0 tile.
+local blizzRCHooked = false
+local function HookBlizzardReadyIcons()
+    if blizzRCHooked or not _G.CompactUnitFrame_UpdateReadyCheck then return end
+    blizzRCHooked = true
+    hooksecurefunc("CompactUnitFrame_UpdateReadyCheck", function(frame)
+        local s = GetSettings()
+        if not (s and s.enabled and s.hideBlizzard) then return end
+        local icon = frame and frame.readyCheckIcon
+        if icon and icon.Hide then icon:Hide() end
+    end)
+end
+
 local function HideBlizzardRaid()
     local s = GetSettings()
     local hide = s and s.enabled and s.hideBlizzard
+    HookBlizzardReadyIcons()
     local fr = _G.CompactRaidFrameContainer
     if not fr then return end
     pcall(fr.SetAlpha, fr, hide and 0 or 1)

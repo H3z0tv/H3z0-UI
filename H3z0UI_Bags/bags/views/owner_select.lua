@@ -62,5 +62,6 @@ function OwnerSelect.Attach(win, opts)
         self:Show()
     end
 
+    if Bags.Chassis.RegisterAltButton then Bags.Chassis.RegisterAltButton(btn) end
     return btn
 end

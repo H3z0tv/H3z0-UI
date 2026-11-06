@@ -106,6 +106,9 @@ local function ApplyEditModeBaseLayout()
         if type(newInfo) ~= "table" or type(newInfo.systems) ~= "table" then
             error(L["The bundled layout string was not recognized."], 0)
         end
+        if ns.H3z0EditModeShare and ns.H3z0EditModeShare.FixAuraLoop then
+            ns.H3z0EditModeShare.FixAuraLoop(newInfo)
+        end
 
         local layoutInfo = C_EditMode.GetLayouts()
         local customs = layoutInfo and layoutInfo.layouts

@@ -127,7 +127,7 @@ local function BuildImportExportTab(tabContent)
 
     local exportNote = CreateWrappedLabel(
         tabContent,
-        ns.L["Generate a full profile string or export only selected categories. Selective exports use the same H3z0UI1 profile format as full exports, so they can be pasted into the import analyzer below."],
+        ns.L["FULL PROFILE makes one string with your whole H3z0 UI setup: every setting, every position you set in H3z0 UI Edit Mode (PC and Deck), the Chat, Damage Meter and Cooldown Manager places and sizes, and your Blizzard Edit Mode layout. Whoever imports it gets exactly the same screen (Blizzard's layout is added as \"H3z0 UI Shared\"). Or export only selected categories; both use the same H3z0UI1 format."],
         10,
         C.textMuted
     )
@@ -1036,7 +1036,7 @@ if Registry and Schema
         id = "importExportPage",
         moverKey = "importExport",
         category = "global",
-        nav = { tileId = "global", subPageIndex = 4 },
+        nav = { tileId = "global", subPageIndex = 3 },
         sections = {
             Schema.Section({
                 id = "settings",

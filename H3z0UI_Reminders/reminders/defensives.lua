@@ -183,7 +183,7 @@ end
 
 function D.SpecCandidates()
     local out = {}
-    local isForever = ns.Client and ns.Client.isForever
+    local isForever = ns.Client and ns.Client.isLegacy
     local data
     if isForever then
         data = ns.RemindersDefensiveSpellClasses

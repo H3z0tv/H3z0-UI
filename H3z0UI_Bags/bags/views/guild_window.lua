@@ -116,19 +116,12 @@ local function ShowPurchasePopup()
     local cost = GetGuildBankTabCost()
     if not cost then return end
     local costText = GetMoneyString and GetMoneyString(cost, true) or tostring(cost)
-    StaticPopupDialogs["H3z0UI_GUILDBANK_BUY_TAB"] = {
+    H3z0UI_ShowPopup({
         text = ns.L["Purchase guild bank tab?"] .. "\n\n" .. costText,
         button1 = ACCEPT,
         button2 = CANCEL,
-        OnAccept = function()
-            BuyGuildBankTab()
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-    StaticPopup_Show("H3z0UI_GUILDBANK_BUY_TAB")
+        OnAccept = function() BuyGuildBankTab() end,
+    })
 end
 
 local function ShowRenamePopup(entry)
@@ -136,41 +129,22 @@ local function ShowRenamePopup(entry)
     local tab = rec and rec.tabs and rec.tabs[entry.tab]
     if not tab then return end
     local tabIndex = entry.tab
-    StaticPopupDialogs["H3z0UI_GUILDBANK_RENAME_TAB"] = {
+    H3z0UI_ShowPopup({
         text = ns.L["Rename guild bank tab:"],
         button1 = ACCEPT,
         button2 = CANCEL,
         hasEditBox = true,
         maxLetters = 15,
-        OnShow = function(self)
-            local box = self.editBox or self.EditBox
-            if box then
-                box:SetText(tab.name or "")
-                box:HighlightText()
-            end
-        end,
-        OnAccept = function(self)
-            local box = self.editBox or self.EditBox
-            local text = box and box:GetText()
+        editText = tab.name or "",
+        OnAccept = function(_, _, text)
             if not text or text == "" then return end
             SetGuildBankTabInfo(tabIndex, text, tab.icon)
         end,
-        EditBoxOnEnterPressed = function(box)
-            StaticPopup_OnClick(box:GetParent(), 1)
-        end,
-        EditBoxOnEscapePressed = function(box)
-            box:GetParent():Hide()
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-    StaticPopup_Show("H3z0UI_GUILDBANK_RENAME_TAB")
+    })
 end
 
 local function HideMoneyPopups()
-    StaticPopup_Hide("H3z0UI_GUILDBANK_MONEY")
+    if H3z0UI_HidePopup then H3z0UI_HidePopup() end
 end
 
 local function ShowMoneyPopup(kind)

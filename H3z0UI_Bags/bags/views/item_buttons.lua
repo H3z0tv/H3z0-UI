@@ -42,6 +42,8 @@ end
 ItemButtons.GetQualityColor = GetQualityColor
 
 local function ApplyIconOverlay(button, entry)
+    -- (the Classic games don't have the item overlays)
+    if not (SetItemButtonOverlay and ClearItemButtonOverlay) then return end
     if entry and entry.link then
         SetItemButtonOverlay(button, entry.link, entry.quality)
     else
@@ -83,6 +85,7 @@ end
 local function LiveGetItemContextMatchResult(button)
     local auction = AuctionContextMatchResult(button)
     if auction ~= nil then return auction end
+    if not ContainerFrameItemButtonMixin then return nil end
     return ContainerFrameItemButtonMixin.GetItemContextMatchResult(button)
 end
 
@@ -105,8 +108,20 @@ function ItemButtons.DismissNewItemGlow(button)
     StopNewItemGlow(button)
 end
 
+-- the Classic games: their bag slot is a plain Button that finds its bag
+-- from the parent's ID (the holder carries the bag ID)
+local CLASSIC_ITEM_BUTTONS = ns.Client and ns.Client.isClassic
+local function ClassicGetBagID(self) return self._h3zBagID end
+local function ClassicSetBagID(self, id) self._h3zBagID = id end
+
 function ItemButtons.CreateLive(holder, bagID)
-    local button = CreateFrame("ItemButton", nil, holder, "ContainerFrameItemButtonTemplate")
+    local button
+    if CLASSIC_ITEM_BUTTONS then
+        button = CreateFrame("Button", nil, holder, "ContainerFrameItemButtonTemplate")
+        button.GetBagID, button.SetBagID = ClassicGetBagID, ClassicSetBagID
+    else
+        button = CreateFrame("ItemButton", nil, holder, "ContainerFrameItemButtonTemplate")
+    end
     button:SetBagID(bagID)
     button.GetItemContextMatchResult = LiveGetItemContextMatchResult
     if button.IconBorder then button.IconBorder:SetAlpha(0) end
@@ -205,14 +220,14 @@ function ItemButtons.DressCached(button, entry, searchResult)
             appearance and appearance.markUnusable
             and ItemButtons.IsUnusable(nil, nil, entry.link))
         if Bags.CornerWidgets then
-            Bags.CornerWidgets.Apply(button, {
+            Bags.CornerWidgets.Apply(button, Bags.CornerWidgets.ExtraContext({
                 entry = entry,
                 details = Bags.Details and Bags.Details.Build(entry) or nil,
                 isJunk = entry.quality == 0,
                 inSet = false,
                 qualityColorText = appearance and appearance.qualityColorText or false,
                 craftQualityAtlas = CraftQualityAtlas(entry),
-            }, appearance)
+            }, appearance, nil, nil, entry.link), appearance)
         end
     else
         button._link = nil
@@ -327,14 +342,14 @@ function ItemButtons.DressGuildLive(button, tab, slot, entry, searchResult)
             appearance and appearance.markUnusable
             and ItemButtons.IsUnusable(nil, nil, entry.link))
         if Bags.CornerWidgets then
-            Bags.CornerWidgets.Apply(button, {
+            Bags.CornerWidgets.Apply(button, Bags.CornerWidgets.ExtraContext({
                 entry = entry,
                 details = Bags.Details and Bags.Details.Build(entry) or nil,
                 isJunk = isJunk,
                 inSet = false,
                 qualityColorText = appearance and appearance.qualityColorText or false,
                 craftQualityAtlas = CraftQualityAtlas(entry),
-            }, appearance)
+            }, appearance, nil, nil, entry.link), appearance)
         end
     else
         button._link = nil
@@ -406,7 +421,8 @@ function ItemButtons.Dress(button, entry, searchResult, newGuid)
             end
         end
         if Bags.CornerWidgets then
-            Bags.CornerWidgets.Apply(button, {
+            local CW = Bags.CornerWidgets
+            CW.Apply(button, CW.ExtraContext({
                 entry = entry,
                 details = Bags.Details and Bags.Details.Build(entry) or nil,
                 isJunk = isJunk,
@@ -414,7 +430,7 @@ function ItemButtons.Dress(button, entry, searchResult, newGuid)
                 qualityColorText = appearance and appearance.qualityColorText or false,
                 craftQualityAtlas = CraftQualityAtlas(entry),
                 upgradeTrack = upgradeTrack,
-            }, appearance)
+            }, appearance, button:GetBagID(), button:GetID(), entry.link), appearance)
         end
     else
         SetItemButtonTexture(button, nil)
@@ -440,14 +456,20 @@ function ItemButtons.Dress(button, entry, searchResult, newGuid)
     end
     button._newItemGuid = newGuid
     if button.NewItemTexture then
-        if newGuid then
+        -- hovered already: no glow, but it is still listed in Recent for a while
+        if newGuid and not (Bags.NewItems and Bags.NewItems.GlowDismissed and Bags.NewItems.GlowDismissed(newGuid)) then
             local atlas
             if ColorManager and ColorManager.GetAtlasDataForNewItemQuality then
                 atlas = ColorManager.GetAtlasDataForNewItemQuality(entry and entry.quality)
             end
             button.NewItemTexture:SetAtlas(atlas or "bags-glow-white")
             button.NewItemTexture:Show()
-            if button.flashAnim and button.newitemglowAnim
+            local flash = not appearance or appearance.newItemFlash ~= false
+            if not flash then
+                if button.flashAnim and button.flashAnim:IsPlaying() then button.flashAnim:Stop() end
+                if button.newitemglowAnim and button.newitemglowAnim:IsPlaying() then button.newitemglowAnim:Stop() end
+            end
+            if flash and button.flashAnim and button.newitemglowAnim
                 and not button.flashAnim:IsPlaying()
                 and not button.newitemglowAnim:IsPlaying() then
                 button.flashAnim:Play()

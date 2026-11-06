@@ -893,6 +893,27 @@ local function CreateUnitFramesPage(parent)
         powerHeader:SetPoint("TOPLEFT", PAD, y)
         y = y - powerHeader.gap
 
+        -- Forever / Classic: pick where the player's resource bar lives; the other one is switched off
+        local modeLocked = false
+        local widthSlider0
+        if unitKey == "player" and ns.Client and ns.Client.isLegacy then
+            local prof = ns.Addon and ns.Addon.db and ns.Addon.db.profile
+            if prof then
+                local modeOptions = {
+                    {value = "frame", text = "On the frame, with health"},
+                    {value = "separate", text = "Separate bars"},
+                }
+                if not prof.h3zResourceMode then prof.h3zResourceMode = "frame" end
+                local modeDropdown = GUI:CreateFormDropdown(tabContent, "Resource Bar", modeOptions, "h3zResourceMode", prof, function()
+                    if _G.H3z0UI_ApplyResourceMode then _G.H3z0UI_ApplyResourceMode(prof.h3zResourceMode) end
+                end)
+                modeDropdown:SetPoint("TOPLEFT", PAD, y)
+                modeDropdown:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+                y = y - FORM_ROW
+                modeLocked = true
+            end
+        end
+
         local showPowerCheck = GUI:CreateFormCheckbox(tabContent, "Show Power Bar", "showPowerBar", unitDB, RefreshUnit)
         showPowerCheck:SetPoint("TOPLEFT", PAD, y)
         showPowerCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
@@ -901,6 +922,11 @@ local function CreateUnitFramesPage(parent)
         local powerHeightSlider = GUI:CreateFormSlider(tabContent, "Power Bar Height", 1, 20, 1, "powerBarHeight", unitDB, RefreshUnit)
         powerHeightSlider:SetPoint("TOPLEFT", PAD, y)
         powerHeightSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        y = y - FORM_ROW
+
+        local powerWidthSlider = GUI:CreateFormSlider(tabContent, "Power Bar Width (%)", 20, 100, 1, "powerBarWidthPct", unitDB, RefreshUnit)
+        powerWidthSlider:SetPoint("TOPLEFT", PAD, y)
+        powerWidthSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
 
         local powerBorderCheck = GUI:CreateFormCheckbox(tabContent, "Power Bar Border", "powerBarBorder", unitDB, RefreshUnit)
@@ -932,6 +958,12 @@ local function CreateUnitFramesPage(parent)
         local powerTextHeader = GUI:CreateSectionHeader(tabContent, "Power Text")
         powerTextHeader:SetPoint("TOPLEFT", PAD, y)
         y = y - powerTextHeader.gap
+
+        if unitDB.showLevel == nil then unitDB.showLevel = (unitKey == "target" or unitKey == "player") end
+        local showLevelCheck = GUI:CreateFormCheckbox(tabContent, "Show Level (on the portrait, or at the left end of the frame)", "showLevel", unitDB, RefreshUnit)
+        showLevelCheck:SetPoint("TOPLEFT", PAD, y)
+        showLevelCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        y = y - FORM_ROW
 
         local showPowerTextCheck = GUI:CreateFormCheckbox(tabContent, "Show Power Text", "showPowerText", unitDB, RefreshUnit)
         showPowerTextCheck:SetPoint("TOPLEFT", PAD, y)

@@ -165,7 +165,7 @@ Datatexts:Register("vault", {
 
         frame.Update = Update
 
-        frame:RegisterEvent("WEEKLY_REWARDS_UPDATE")
+        H3z0UI_SafeRegisterEvent(frame, "WEEKLY_REWARDS_UPDATE")
         frame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
         frame:RegisterEvent("PLAYER_ENTERING_WORLD")
         frame:SetScript("OnEvent", Update)

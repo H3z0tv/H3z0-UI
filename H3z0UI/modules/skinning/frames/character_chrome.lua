@@ -965,7 +965,26 @@ end
 ---------------------------------------------------------------------------
 -- Theme refresh + lifecycle
 ---------------------------------------------------------------------------
+-- zoom / rotate buttons along the top of the model, between the gear columns
+local function PlaceModelControls()
+    local scene = _G.CharacterModelScene
+    local controls = scene and scene.ControlFrame
+    if not controls or InCombatLockdown() then return end
+    controls:ClearAllPoints()
+    controls:SetPoint("TOP", scene, "TOP", 0, -4)
+    if not SkinBase.GetFrameData(controls, "qCharacterModelPlaceHooked") then
+        SkinBase.SetFrameData(controls, "qCharacterModelPlaceHooked", true)
+        controls:HookScript("OnShow", function()
+            if not InCombatLockdown() then
+                controls:ClearAllPoints()
+                controls:SetPoint("TOP", scene, "TOP", 0, -4)
+            end
+        end)
+    end
+end
+
 local function StyleCharacterModelControls()
+    PlaceModelControls()
     if CharacterChrome.GetOwnership().shell == "none" then return end
     local scene = _G.CharacterModelScene
     local controls = scene and scene.ControlFrame
@@ -986,11 +1005,17 @@ local function StyleCharacterModelControls()
             end
             SkinBase.SkinFontString(text, { size = key == "resetButton" and 10 or 16, color = { 0.9, 0.9, 0.9, 1 } })
             text:SetText(glyph)
+            -- "Reset" needs a wider button than the arrows
+            if key == "resetButton" and not InCombatLockdown() then
+                local w = math.ceil((text:GetStringWidth() or 30) + 14)
+                if (button:GetWidth() or 0) < w then button:SetWidth(w) end
+            end
             SkinBase.RefreshWidget(button)
         end
     end
     controls.buttonHorizontalPadding = 4
     if type(controls.UpdateLayout) == "function" then controls:UpdateLayout() end
+    PlaceModelControls()
     if not SkinBase.GetFrameData(controls, "qCharacterModelControlsHooked") then
         controls:HookScript("OnShow", StyleCharacterModelControls)
         SkinBase.SetFrameData(controls, "qCharacterModelControlsHooked", true)

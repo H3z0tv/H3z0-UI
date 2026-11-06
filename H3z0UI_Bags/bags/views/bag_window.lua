@@ -25,6 +25,7 @@ local BAG_SLOT_SIZE = 24
 
 local win
 local holders = {}
+local pendingReparent = false
 local buttons = {}
 local cachedButtons = {}
 local catHeaderPool = {}
@@ -155,23 +156,70 @@ local function RightClickRoute()
     })
 end
 
+-- category titles: drop an item on one (or click it with an item on the
+-- cursor) to put that item in the category for good; right-click for options
+local function CategoryHeaderMenu(anchor, key)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) or not key then return end
+    local Cat = Bags.Categories
+    MenuUtil.CreateContextMenu(anchor, function(_, root)
+        root:CreateTitle(Cat.Name(key))
+        root:CreateButton(ns.L["Move Left / Up"], function() Cat.Move(key, -1); BagWindow.Refresh() end)
+        root:CreateButton(ns.L["Move Right / Down"], function() Cat.Move(key, 1); BagWindow.Refresh() end)
+        root:CreateButton(ns.L["Hide Category"], function() Cat.SetHidden(key, true); BagWindow.Refresh() end)
+    end)
+end
+
+local function AssignCursorItem(key)
+    local kind, itemID = GetCursorInfo()
+    if kind ~= "item" or not itemID or not key or key == "empty" or key == "recent" then return false end
+    Bags.Categories.Assign(itemID, key)
+    ClearCursor()
+    BagWindow.Refresh()
+    return true
+end
+
 local function RenderCategoryHeaders(headers, xOff)
-    for _, fs in ipairs(catHeaderPool) do fs:Hide() end
+    for _, b in ipairs(catHeaderPool) do b:Hide() end
     if not headers then return end
     for i, h in ipairs(headers) do
-        local fs = catHeaderPool[i]
-        if not fs then
-            fs = win._body:CreateFontString(nil, "ARTWORK")
-            CJKFont(fs, Helpers.GetGeneralFont() or STANDARD_TEXT_FONT, 11, "OUTLINE")
-            fs:SetJustifyH("LEFT")
-            catHeaderPool[i] = fs
+        local b = catHeaderPool[i]
+        if not b then
+            b = CreateFrame("Button", nil, win._body)
+            b:SetHeight(CAT_HEADER_H - 2)
+            b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            b.fs = b:CreateFontString(nil, "ARTWORK")
+            CJKFont(b.fs, Helpers.GetGeneralFont() or STANDARD_TEXT_FONT, 11, "OUTLINE")
+            b.fs:SetJustifyH("LEFT")
+            b.fs:SetWordWrap(false)
+            b.fs:SetPoint("LEFT", 1, 0)
+            b.fs:SetPoint("RIGHT", 0, 0)
+            b:SetScript("OnClick", function(self, mouseButton)
+                if AssignCursorItem(self._key) then return end
+                if mouseButton == "RightButton" then CategoryHeaderMenu(self, self._key) end
+            end)
+            b:SetScript("OnReceiveDrag", function(self) AssignCursorItem(self._key) end)
+            b:SetScript("OnEnter", function(self)
+                if not self._key then return end
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(self._title or "")
+                if self._key ~= "empty" and self._key ~= "recent" then
+                    GameTooltip:AddLine(ns.L["Drop an item here to put it in this category."], 1, 1, 1, true)
+                end
+                GameTooltip:AddLine(ns.L["Right-click: move or hide this category."], 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            catHeaderPool[i] = b
         end
         local sr, sg, sb = Helpers.GetSkinColors()
-        fs:SetTextColor(sr, sg, sb)
-        fs:SetText(h.title)
-        fs:ClearAllPoints()
-        fs:SetPoint("TOPLEFT", win._body, "TOPLEFT", 1 + (xOff or 0), h.y - 2)
-        fs:Show()
+        b.fs:SetTextColor(sr, sg, sb)
+        b.fs:SetText(h.title)
+        b._key, b._title = h.key, h.title
+        b:EnableMouse(h.key ~= nil)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", win._body, "TOPLEFT", (h.x or 0) + (xOff or 0), h.y)
+        b:SetWidth(h.w or 200)
+        b:Show()
     end
 end
 
@@ -431,6 +479,10 @@ local function EnsureWindow()
             BagWindow.Refresh()
         end)
 
+    for _, b in ipairs({ win._sortBtn, win._bankBtn, win._guildBtn, win._selectBtn }) do
+        Bags.Chassis.RegisterAltButton(b)
+    end
+
     local sell = Bags.Chassis.CreatePanelButton(win._footer, true)
     sell._label:SetText(ns.L["Sell Junk"])
     sell:SetSize(math.max(40, math.ceil(sell._label:GetStringWidth()) + 12), 18)
@@ -500,10 +552,18 @@ end
 
 local function DressPlacedCell(cell, btn, live, rightClickRoute)
     local result = SearchResultFor(cell)
+    local entry = cell.entry
+    if entry and cell._groupCount then
+        -- identical items sharing one button: show the total
+        local copy = {}
+        for k, v in pairs(entry) do copy[k] = v end
+        copy.count = cell._groupCount
+        entry = copy
+    end
     if live then
-        Bags.ItemButtons.Dress(btn, cell.entry, result, cell._newGuid)
+        Bags.ItemButtons.Dress(btn, entry, result, cell._newGuid)
     else
-        Bags.ItemButtons.DressCached(btn, cell.entry, result)
+        Bags.ItemButtons.DressCached(btn, entry, result)
     end
     if cell._freeCount then
         Bags.ItemButtons.SetFreeCount(btn, cell._freeCount)
@@ -538,11 +598,30 @@ local function UpdateFreeText(slots)
     win._free:SetText(free .. " " .. ns.L["free"])
 end
 
-local function SignatureOpts(appearance, behavior)
+-- the slots that hold a new item (they sit in Recent in the category layouts)
+local function RecentKey(slots)
+    local out = {}
+    for _, cell in ipairs(slots or {}) do
+        if cell._newGuid ~= nil then out[#out + 1] = cell.bagID .. ":" .. cell.slot end
+    end
+    return table.concat(out, ",")
+end
+
+local function SignatureOpts(appearance, behavior, slots)
+    local grouped = appearance.layoutMode == "inventory" or appearance.layoutMode == "categories"
+    local extra = ""
+    if grouped then
+        extra = table.concat({
+            (appearance.layoutMode == "inventory" and Bags.InventoryView) and Bags.InventoryView.Signature() or "",
+            Bags.Categories and Bags.Categories.Signature and Bags.Categories.Signature() or "",
+            RecentKey(slots),
+        }, ";")
+    end
     return {
         layoutMode = appearance.layoutMode,
-        extra = (appearance.layoutMode == "inventory" and Bags.InventoryView)
-            and Bags.InventoryView.Signature() or nil,
+        extra = extra,
+        -- identical items share one button there: a new count changes what it shows
+        withCounts = grouped,
         reagentDisplay = appearance.reagentDisplay,
         groupEmptySlots = appearance.groupEmptySlots and true or false,
         sortKey = behavior and behavior.sortKey,
@@ -603,11 +682,14 @@ function BagWindow.Refresh()
             cell.recent = cell._newGuid ~= nil
         end
         local behavior = s and s.behavior
-        local groups = Bags.CategoryLayout.Group(slots, Bags.Details.Build, {
-            key = behavior and behavior.sortKey,
+        local Cat = Bags.Categories
+        local groups = Cat.Group(slots, Bags.Details.Build, {
+            key = behavior and ((behavior.categorySortKey and behavior.categorySortKey ~= "" and behavior.categorySortKey) or behavior.sortKey),
             reverse = behavior and behavior.sortReverse,
-        })
-        local cl = Bags.CategoryLayout.Compute(groups, gridOpts)
+        }, live)
+        local cdb = Cat.DB()
+        gridOpts.categorySpacing = cdb and cdb.spacing or 10
+        local cl = Cat.Compute(groups, gridOpts)
         placed, catHeaders = cl.buttons, cl.headers
         contentW, contentH = cl.width, cl.height
         if contentW == 0 then
@@ -645,10 +727,16 @@ function BagWindow.Refresh()
             mainCells = collapse(mainCells)
             reagentCells = collapse(reagentCells)
         end
-        local layout = Bags.GridLayout.Compute(#mainCells, gridOpts)
+        -- "Blank Space: At The Top": the part-filled row goes first
+        local lead = 0
+        local cols = gridOpts.columns or 12
+        if appearance.emptySpaceAtTop and #mainCells % cols ~= 0 then
+            lead = cols - (#mainCells % cols)
+        end
+        local layout = Bags.GridLayout.Compute(#mainCells + lead, gridOpts)
         placed = {}
         for i, cell in ipairs(mainCells) do
-            placed[i] = { cell = cell, x = layout[i].x, y = layout[i].y }
+            placed[i] = { cell = cell, x = layout[i + lead].x, y = layout[i + lead].y }
         end
         catHeaders = nil
         contentW, contentH = layout.width, layout.height
@@ -729,11 +817,15 @@ function BagWindow.Refresh()
         and win._currencyBar:Update(ViewedRecord(), viewedCharacter == nil) or 0
     win._ownerSelect:Update()
 
-    if live then
+    local wantSort = not (s and s.behavior and s.behavior.showSortButton == false)
+    if live and wantSort then
         local sr, sg, sb, sa = Helpers.GetWindowColors()
         UIKit.UpdateBorderLines(win._sortBtn, 1, sr, sg, sb, 0.35 * sa)
+        win._sortBtn:SetWidth(18)
         win._sortBtn:Show()
     else
+        -- keeps its place in the header row, just takes no room
+        win._sortBtn:SetWidth(0.1)
         win._sortBtn:Hide()
     end
 
@@ -763,6 +855,28 @@ function BagWindow.Refresh()
 
     -- H3z0 UI Inventory view: items live in its scrolling area
     local anchorFrame = (inventoryMode and inv and inv.anchor) or win._body
+    -- Opened in combat with the item holders still outside the scrolling area: the
+    -- game does not let us move them now, and drawing them anyway would spread the
+    -- whole inventory over the window. Wait for the end of combat instead.
+    if InCombatLockdown() then
+        local stuck = false
+        for _, holder in pairs(holders) do
+            if holder:GetParent() ~= anchorFrame then stuck = true break end
+        end
+        if stuck then
+            pendingReparent = true
+            if not win._combatNote then
+                win._combatNote = win._body:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                win._combatNote:SetPoint("CENTER", win._body, "CENTER", 0, 0)
+                win._combatNote:SetText(ns.L["Your bags fill in when combat ends."])
+                win._combatNote:SetTextColor(0.8, 0.8, 0.8)
+            end
+            win._combatNote:Show()
+            return
+        end
+    end
+    if win._combatNote then win._combatNote:Hide() end
+    pendingReparent = false
     if not InCombatLockdown() then
         for _, holder in pairs(holders) do
             if holder:GetParent() ~= anchorFrame then
@@ -793,6 +907,13 @@ function BagWindow.Refresh()
             if not btn then
                 btn = Bags.ItemButtons.CreateLive(holders[cell.bagID], cell.bagID)
                 btn:SetID(cell.slot)
+                btn:HookScript("OnClick", function(self, mouseButton)
+                    if mouseButton ~= "LeftButton" or not IsAltKeyDown() then return end
+                    local st = GetSettings()
+                    if st and st.behavior and st.behavior.flashDuplicates == false then return end
+                    local info = C_Container.GetContainerItemInfo(self:GetBagID(), self:GetID())
+                    if info and info.itemID then BagWindow.FlashItem(info.itemID) end
+                end)
                 if Bags.InventoryView then Bags.InventoryView.HookButton(btn) end
                 local catcher = CreateFrame("Button", nil, btn)
                 catcher:SetAllPoints()
@@ -910,9 +1031,10 @@ function BagWindow.Refresh()
     UpdateSendButton()
 
     repaint.placed = placed
+    repaint.inv = inventoryMode and inv or nil
     repaint.live = live
     repaint.sig = Bags.RefreshScope.LayoutSignature(slots,
-        SignatureOpts(appearance, s and s.behavior), Bags.Details.Build)
+        SignatureOpts(appearance, s and s.behavior, slots), Bags.Details.Build)
     repaint.contentW, repaint.contentH = contentW, contentH
     local index = {}
     for _, p in ipairs(placed) do
@@ -995,6 +1117,9 @@ RunScheduledRepaint = function()
     if bagSet and not live then
         dressAll, bagSet = true, nil
     end
+    -- the category layouts used to be rebuilt for every change; now, like the flat grid,
+    -- only when the items or their places change (a lock or a cooldown just redraws the
+    -- buttons, see the signature check below)
     if bagSet or dressAll then
         local s = GetSettings()
         local appearance = Bags.Chassis.ClampAppearance((s and s.appearance) or nil)
@@ -1007,17 +1132,59 @@ RunScheduledRepaint = function()
             end
         end
         local sig = Bags.RefreshScope.LayoutSignature(slots,
-            SignatureOpts(appearance, s and s.behavior), Bags.Details.Build)
+            SignatureOpts(appearance, s and s.behavior, slots), Bags.Details.Build)
         if sig ~= repaint.sig then
             BagWindow.Refresh()
             return
         end
         RedressCells(not dressAll and bagSet or nil)
+        if repaint.inv and Bags.InventoryView then
+            -- the quickview copies (Pinned) and the section titles
+            Bags.InventoryView.Finish(win, repaint.inv, live, SearchResultFor)
+        end
         UpdateFreeText(slots)
         UpdateBagSlotStripCounts()
     end
     if search then SearchPass() end
     if currency then UpdateCurrencyBar() end
+end
+
+-- Build the window and put the item holders where the layout wants them while
+-- it is still safe (out of combat), so opening the bags in combat works.
+local function PrepareHolders()
+    if not win or InCombatLockdown() then return end
+    local s = GetSettings()
+    local appearance = Bags.Chassis.ClampAppearance((s and s.appearance) or nil)
+    if appearance.layoutMode == "inventory" and Bags.InventoryView and Bags.InventoryView.GetAnchor then
+        local anchor = Bags.InventoryView.GetAnchor(win)
+        if anchor then
+            for _, holder in pairs(holders) do
+                if holder:GetParent() ~= anchor then
+                    holder:SetParent(anchor)
+                    holder:ClearAllPoints()
+                    holder:SetAllPoints(anchor)
+                end
+            end
+        end
+    end
+end
+function BagWindow.Warm()
+    if InCombatLockdown() then return end
+    EnsureWindow()
+    PrepareHolders()
+end
+do
+    local ev = CreateFrame("Frame")
+    ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ev:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then
+            PrepareHolders()
+            if pendingReparent and win and win:IsShown() then BagWindow.Refresh() end
+        else
+            C_Timer.After(2, function() pcall(BagWindow.Warm) end)
+        end
+    end)
 end
 
 function BagWindow.Show()
@@ -1029,6 +1196,31 @@ function BagWindow.Show()
         PlaySound(SOUNDKIT.IG_BACKPACK_OPEN)
     end
     BagWindow.Refresh()
+    -- Sort On Open
+    local s = GetSettings()
+    if not wasShown and s and s.behavior and s.behavior.sortOnOpen then
+        C_Timer.After(0, function()
+            if win:IsShown() and viewedCharacter == nil and not InCombatLockdown()
+                and Bags.SortExecutor and not Bags.SortExecutor.IsRunning() then
+                Bags.SortExecutor.Start("bags", BagWindow.Refresh)
+            end
+        end)
+    end
+end
+
+-- flash every copy of an item for a few seconds (Alt+click an item)
+function BagWindow.FlashItem(itemID)
+    if not (win and win:IsShown()) or not itemID then return end
+    focusItemID = itemID
+    repaint.pendingDressAll = true
+    ScheduleRefresh()
+    C_Timer.After(3, function()
+        if focusItemID == itemID then
+            focusItemID = nil
+            repaint.pendingDressAll = true
+            ScheduleRefresh()
+        end
+    end)
 end
 
 function BagWindow.Hide()

@@ -52,7 +52,101 @@ local KEYWORDS = {
 KEYWORDS.equipment = KEYWORDS.gear
 KEYWORDS.trash = KEYWORDS.junk
 
+-- more search words (item class / subclass, binding, collections)
+local function Class(id, sub)
+    return function(d)
+        if d.classID == nil then return nil end
+        if d.classID ~= id then return false end
+        if sub == nil then return true end
+        if type(sub) == "table" then return sub[d.subClassID] == true end
+        return d.subClassID == sub
+    end
+end
+local function Bind(kinds, unboundOnly)
+    return function(d)
+        if d.bindType == nil then return nil end
+        if unboundOnly and d.isBound then return false end
+        return kinds[d.bindType] == true
+    end
+end
+local function LinkHas(pattern)
+    return function(d)
+        if type(d.link) ~= "string" then return nil end
+        return d.link:find(pattern) ~= nil
+    end
+end
+
+KEYWORDS.consumable  = Class(0)
+KEYWORDS.potion      = Class(0, 1)
+KEYWORDS.elixir      = Class(0, 2)
+KEYWORDS.flask       = Class(0, 3)
+KEYWORDS.phial       = KEYWORDS.flask
+KEYWORDS.food        = Class(0, 5)
+KEYWORDS.drink       = KEYWORDS.food
+KEYWORDS.bandage     = Class(0, 7)
+KEYWORDS.rune        = Class(0, 9)
+KEYWORDS.container   = Class(1)
+KEYWORDS.weapon      = Class(2)
+KEYWORDS.gem         = Class(3)
+KEYWORDS.armor       = Class(4)
+KEYWORDS.armour      = KEYWORDS.armor
+KEYWORDS.cloth       = Class(4, 1)
+KEYWORDS.leather     = Class(4, 2)
+KEYWORDS.mail        = Class(4, 3)
+KEYWORDS.plate       = Class(4, 4)
+KEYWORDS.cosmetic    = Class(4, 5)
+KEYWORDS.shield      = Class(4, 6)
+KEYWORDS.tradegoods  = Class(7)
+KEYWORDS.tradegood   = KEYWORDS.tradegoods
+KEYWORDS.enhancement = Class(8)
+KEYWORDS.recipe      = Class(9)
+KEYWORDS.key         = Class(13)
+KEYWORDS.miscellaneous = Class(15)
+KEYWORDS.misc        = KEYWORDS.miscellaneous
+KEYWORDS.mount       = Class(15, 5)
+KEYWORDS.glyph       = Class(16)
+KEYWORDS.battlepet   = Class(17)
+KEYWORDS.profession  = Class(19)
+KEYWORDS.housing     = Class(20)
+KEYWORDS.decor       = KEYWORDS.housing
+KEYWORDS.boe         = Bind({ [2] = true }, true)
+KEYWORDS.bou         = Bind({ [3] = true }, true)
+KEYWORDS.boa         = Bind({ [7] = true, [8] = true })
+KEYWORDS.warbound    = Bind({ [7] = true, [8] = true, [9] = true })
+KEYWORDS.wue         = Bind({ [9] = true }, true)
+KEYWORDS.keystone    = LinkHas("keystone:")
+KEYWORDS.toy = function(d)
+    if not (d.itemID and C_ToyBox and C_ToyBox.GetToyInfo) then return nil end
+    return C_ToyBox.GetToyInfo(d.itemID) ~= nil
+end
+KEYWORDS.upgrade = function(d)
+    local CW = Bags.CornerWidgets
+    if not (CW and CW.IsUpgrade) then return nil end
+    return CW.IsUpgrade(d)
+end
+KEYWORDS.transmog = function(d)
+    local CW = Bags.CornerWidgets
+    if not (CW and CW.IsUncollectedAppearance) then return nil end
+    return CW.IsUncollectedAppearance(d.link)
+end
+KEYWORDS.uncollected = KEYWORDS.transmog
+KEYWORDS.set = function(d)
+    if not d.itemID or not C_EquipmentSet or not C_EquipmentSet.GetItemIDs then return nil end
+    for _, id in ipairs(C_EquipmentSet.GetEquipmentSetIDs and C_EquipmentSet.GetEquipmentSetIDs() or {}) do
+        for _, itemID in pairs(C_EquipmentSet.GetItemIDs(id) or {}) do
+            if itemID == d.itemID then return true end
+        end
+    end
+    return false
+end
+KEYWORDS.equipmentset = KEYWORDS.set
+
 local function MakeTermMatcher(term)
+    -- "#weapon" (keyword marker) and "ilvl>600" / "ilvl:600-650" forms
+    local keywordOnly = term:sub(1, 1) == "#"
+    term = term:gsub("^#", "")
+    term = term:gsub("^ilvl:?", "")
+    if term == "" then return function() return true end end
     local op, num = term:match("^([<>=])(%d+)$")
     if op then
         num = tonumber(num)
@@ -93,7 +187,16 @@ local function MakeTermMatcher(term)
         end
     end
     if KEYWORDS[term] then
-        return KEYWORDS[term]
+        local kw = KEYWORDS[term]
+        if keywordOnly then return kw end
+        -- a plain word is the keyword or a name match ("mail" still finds Chainmail)
+        local needleExact = term
+        return function(d)
+            local r = kw(d)
+            if r == true then return true end
+            local n = (d.name ~= nil) and (Fold(d.name):find(needleExact, 1, true) ~= nil) or nil
+            return triOr(r, n)
+        end
     end
     local prefixChecks
     for kw, fn in pairs(KEYWORDS) do
@@ -130,7 +233,7 @@ local function CompileUncached(query)
         local andMatchers = {}
         for token in orPart:gmatch("[^&%s]+") do
             local negate = false
-            while token:sub(1, 1) == "~" do
+            while token:sub(1, 1) == "~" or token:sub(1, 1) == "!" do
                 negate = not negate
                 token = token:sub(2)
             end

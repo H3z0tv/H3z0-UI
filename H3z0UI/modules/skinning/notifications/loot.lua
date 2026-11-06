@@ -1086,7 +1086,7 @@ function Loot:Initialize()
     eventFrame:RegisterEvent("LOOT_CLOSED")
     eventFrame:RegisterEvent("START_LOOT_ROLL")
     eventFrame:RegisterEvent("CANCEL_LOOT_ROLL")
-    eventFrame:RegisterEvent("CANCEL_ALL_LOOT_ROLLS")
+    H3z0UI_SafeRegisterEvent(eventFrame, "CANCEL_ALL_LOOT_ROLLS")
     eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
     eventFrame:SetScript("OnEvent", function(self, event, ...)

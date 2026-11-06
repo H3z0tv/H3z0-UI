@@ -676,6 +676,27 @@ M._FrameRegistryData = {
 			defaultEnabled = true,
 		},
 		{
+			id = "ItemTextFrame",
+			label = ns.L["Books and Letters"],
+			group = "world",
+			names = { "ItemTextFrame" },
+			defaultEnabled = true,
+		},
+		{
+			id = "GuildRegistrarFrame",
+			label = ns.L["Guild Registrar"],
+			group = "world",
+			names = { "GuildRegistrarFrame", "TabardFrame" },
+			defaultEnabled = true,
+		},
+		{
+			id = "GuildInviteFrame",
+			label = ns.L["Guild Invite"],
+			group = "world",
+			names = { "GuildInviteFrame" },
+			defaultEnabled = true,
+		},
+		{
 			id = "StaticPopup",
 			label = ns.L["Static Popups"],
 			group = "system",

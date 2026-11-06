@@ -162,15 +162,17 @@ function Helpers.GetWindowColors(moduleSettings, prefix)
         or moduleSettings.borderUseClassColor or moduleSettings.useAccentColorBorder)
     if (source == nil or source == "theme") and not localColor
         and (localSource == nil or localSource == "inherit") then
-        r, g, b = 0.2824, 0.3294, 0.3098
+        -- slate border, same as the bags
+        r, g, b = 0.25, 0.29, 0.33
     end
     local p = type(prefix) == "string" and prefix or ""
     local overrideKey = p ~= "" and (p .. "BgOverride") or "bgOverride"
     local backgroundOverride = moduleSettings and moduleSettings[overrideKey]
     local configured = general and general.skinBgColor
-    if not backgroundOverride and (not configured
-        or (configured[1] == 0.05 and configured[2] == 0.05 and configured[3] == 0.05)) then
-        br, bg, bb = 0.0745, 0.1059, 0.1176
+    -- the old black defaults: slate background, same as the bags
+    local function isOld(c, v) return c and math.abs((c[1] or 0) - v) < 0.002 and math.abs((c[2] or 0) - v) < 0.002 and math.abs((c[3] or 0) - v) < 0.002 end
+    if not backgroundOverride and (not configured or isOld(configured, 0.05) or isOld(configured, 0.008)) then
+        br, bg, bb, ba = 0.105, 0.125, 0.16, 0.97
     end
     return r, g, b, a, br, bg, bb, ba
 end

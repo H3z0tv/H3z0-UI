@@ -17,6 +17,9 @@ function S.ApplyElementPass(host, elements, opts)
     if type(host) ~= "table" or type(elements) ~= "table" or type(opts) ~= "table" then
         return false
     end
+    -- the Classic games have no aura containers: nothing to build, and nothing
+    -- to try again later
+    if ns.Client and ns.Client.hasAuraContainers == false then return true end
     local unit = opts.unit
     if type(unit) ~= "string" then return false end
     if type(opts.profileFor) ~= "function" or type(opts.anchorContainer) ~= "function" then
@@ -38,7 +41,7 @@ function S.ApplyElementPass(host, elements, opts)
         local element = elements[i]
         local container = pool[i]
         if not container then
-            if allowCreate and CreateFrame then
+            if allowCreate and CreateFrame and not (ns.Client and ns.Client.hasAuraContainers == false) then
                 container = CreateFrame("AuraContainer", nil, host, "CustomAuraContainerTemplate")
                 if container then
                     container:SetSize(1, 1)

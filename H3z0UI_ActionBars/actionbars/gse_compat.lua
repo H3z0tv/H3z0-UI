@@ -26,6 +26,34 @@ local function IsH3z0UIButtonName(name)
     return false
 end
 
+-- GSE's Actionbar Overrides list Blizzard's button names (ActionButton1,
+-- MultiBarBottomLeftButton3, ...). Those buttons are hidden while H3z0 UI draws
+-- the bars, so an override there never showed up: point it at the H3z0 UI
+-- button in the same place instead.
+local BLIZZ_TO_BAR = {
+    { "^ActionButton(%d+)$", 1 },
+    { "^MultiBarBottomLeftButton(%d+)$", 2 },
+    { "^MultiBarBottomRightButton(%d+)$", 3 },
+    { "^MultiBarRightButton(%d+)$", 4 },
+    { "^MultiBarLeftButton(%d+)$", 5 },
+    { "^MultiBar5Button(%d+)$", 6 },
+    { "^MultiBar6Button(%d+)$", 7 },
+    { "^MultiBar7Button(%d+)$", 8 },
+}
+
+local function ToH3z0UIButtonName(name)
+    if type(name) ~= "string" then return name end
+    for _, m in ipairs(BLIZZ_TO_BAR) do
+        local slot = name:match(m[1])
+        if slot then
+            local mapped = "H3z0UI_Bar" .. m[2] .. "Button" .. slot
+            if _G[mapped] then return mapped end
+            return name
+        end
+    end
+    return name
+end
+
 local function GetConfiguredUseOnKeyDown()
     local db = GetActionBarsDB and GetActionBarsDB()
     return db and db.global and db.global.useOnKeyDown == true
@@ -591,6 +619,7 @@ local function InstallGSEHooks()
 
     local origCreate = GSE.CreateActionBarOverride
     GSE.CreateActionBarOverride = function(buttonName, sequenceName)
+        buttonName = ToH3z0UIButtonName(buttonName)
         if IsH3z0UIButtonName(buttonName) then
             if InCombatLockdown() then return end
             SaveBinding(buttonName, sequenceName)
@@ -606,6 +635,7 @@ local function InstallGSEHooks()
 
     local origRemove = GSE.RemoveActionBarOverride
     GSE.RemoveActionBarOverride = function(buttonName)
+        buttonName = ToH3z0UIButtonName(buttonName)
         if IsH3z0UIButtonName(buttonName) then
             if InCombatLockdown() then return end
             ClearBinding(buttonName)
@@ -796,6 +826,13 @@ eventFrame:SetScript("OnEvent", function(self, event)
             InstallGSEHooks()
             ReapplyAll()
             HookRightClickAllH3z0UIButtons()
+        end)
+        -- overrides GSE set up before these hooks (on Blizzard's button names)
+        -- go through them once more, so they land on the H3z0 UI buttons
+        C_Timer.After(2, function()
+            if not InCombatLockdown() and _G.GSE and type(_G.GSE.ReloadOverrides) == "function" then
+                ns.SafeCall("bulkhead", _G.GSE.ReloadOverrides)
+            end
         end)
     elseif event == "PLAYER_ENTERING_WORLD" then
         InstallGSEHooks()

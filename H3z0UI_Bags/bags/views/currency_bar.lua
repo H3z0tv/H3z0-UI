@@ -143,13 +143,28 @@ local function Update(bar, record, live)
         return 0
     end
     bar:Show()
+    if bar._inFooter then
+        -- next to the gold in the footer: no extra row above it
+        bar:SetWidth(math.max(1, x - SEG_GAP))
+        return 0
+    end
     return BAR_H
 end
 
 function CurrencyBar.Attach(win)
-    local bar = CreateFrame("Frame", nil, win)
-    bar:SetPoint("BOTTOMLEFT", win._footer, "TOPLEFT", 8, 0)
-    bar:SetPoint("BOTTOMRIGHT", win._footer, "TOPRIGHT", -8, 0)
+    local bar
+    if win._money and win._footer then
+        -- crests / currencies sit in the footer, right before the gold
+        bar = CreateFrame("Frame", nil, win._footer)
+        bar:SetPoint("RIGHT", win._money, "LEFT", -14, 0)
+        bar:SetHeight(BAR_H)
+        bar:SetWidth(1)
+        bar._inFooter = true
+    else
+        bar = CreateFrame("Frame", nil, win)
+        bar:SetPoint("BOTTOMLEFT", win._footer, "TOPLEFT", 8, 0)
+        bar:SetPoint("BOTTOMRIGHT", win._footer, "TOPRIGHT", -8, 0)
+    end
     bar:SetHeight(BAR_H)
     bar:Hide()
     bar._segments = {}

@@ -53,10 +53,16 @@ local function EnsureReloadEventFrame(self)
 end
 
 local function ReloadClientUI()
-    if ns.Client and ns.Client.isForever and type(_G.UIReload) == "function" then
-        _G.UIReload()
-    else
-        ReloadUI()
+    -- ReloadUI / C_UI.Reload are allowed from our code; UIReload is protected on Forever
+    -- (calling it from here is reported as a blocked action), so it is only the last resort
+    local tries = {
+        type(_G.ReloadUI) == "function" and _G.ReloadUI,
+        _G.C_UI and type(_G.C_UI.Reload) == "function" and _G.C_UI.Reload,
+        type(_G.UIReload) == "function" and _G.UIReload,
+    }
+    for i = 1, 3 do
+        local fn = tries[i]
+        if fn and pcall(fn) then return end
     end
 end
 
@@ -165,6 +171,19 @@ function H3z0UICore:SeedNewProfile(event, db, profileKey)
     end
 end
 
+-- Reset Profile: back to the full H3z0 UI setup (same as a new profile), with
+-- the H3z0 UI Blizzard Edit Mode layout
+function H3z0UICore:OnProfileResetSeed(event, db, profileKey)
+    self:SeedNewProfile(event, db, profileKey)
+    local em = ns.GetH3z0DefaultEditMode and ns.GetH3z0DefaultEditMode()
+    local ES = ns.H3z0EditModeShare
+    if em and ES and ES.Import then
+        local ok, err = ES.Import(em)
+        if not ok and err then print("|cff60A5FAH3z0UI:|r Edit Mode layout not applied: " .. tostring(err)) end
+    end
+    return self:OnProfileChanged(event, db, profileKey)
+end
+
 function H3z0UICore:OnInitialize()
     ns._freshInstall = rawget(_G, "H3z0UIDB") == nil
 
@@ -198,7 +217,7 @@ function H3z0UICore:OnInitialize()
 
     self.db.RegisterCallback(self, "OnProfileChanged", "OnProfileChanged")
     self.db.RegisterCallback(self, "OnProfileCopied",  "OnProfileChanged")
-    self.db.RegisterCallback(self, "OnProfileReset",   "OnProfileChanged")
+    self.db.RegisterCallback(self, "OnProfileReset",   "OnProfileResetSeed")
 
     if LibDualSpec then
         LibDualSpec:EnhanceDatabase(self.db, ADDON_NAME)
@@ -950,7 +969,15 @@ function H3z0UI:GetSkinBgColor()
         return 0.05, 0.05, 0.05, 0.95
     end
 
-    local c = db.general.skinBgColor or { 0.05, 0.05, 0.05, 0.95 }
+    local c = db.general.skinBgColor or { 0.105, 0.125, 0.16, 0.97 }
+    if ns.Round and ns.Round.ApplyUiColor then ns.Round.ApplyUiColor() end
+    -- the old black defaults show as slate (same as the bags)
+    local function isOld(v) return math.abs((c[1] or 0) - v) < 0.002 and math.abs((c[2] or 0) - v) < 0.002 and math.abs((c[3] or 0) - v) < 0.002 end
+    if isOld(0.05) or isOld(0.008) then return 0.105, 0.125, 0.16, 0.97 end
+    if ns.Round and ns.Round.DarkBg then
+        local r, g, b = ns.Round.DarkBg(c[1], c[2], c[3])
+        return r, g, b, c[4] or 0.95
+    end
     return c[1], c[2], c[3], c[4] or 0.95
 end
 

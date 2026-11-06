@@ -129,7 +129,7 @@ end
 local FEATURES = {
     {
         id = "bottombar", label = "Bottom Bar",
-        desc = "Full-width info bar: menu icons, clock, gold, bags, location.",
+        desc = "Full-width bar at the bottom: menu icons, clock, gold, bags, location.",
         get = function()
             local p = Profile()
             return p and p.infobar and p.infobar.enabled ~= false or false
@@ -172,10 +172,8 @@ for _, f in ipairs(FEATURES) do
 end
 
 -- Step 4: extras and helpers (path = profile table + key, so each is one switch)
-local IS_FOREVER = ns.Client and ns.Client.isForever
+local IS_FOREVER = ns.Client and ns.Client.isLegacy
 local EXTRAS = {
-    { id = "coords",     label = "Map coordinates",   desc = "Your X,Y position on the minimap (toggle any time with the XY button on the minimap).",
-      path = { "minimap", "showCoords" }, refresh = "H3z0UI_RefreshMinimap" },
     { id = "party",      label = "H3z0 party frames", desc = "Round-portrait party frames with ready check, auras and the Raid Control tab.",
       path = { "partyFrames", "enabled" }, refresh = "H3z0UI_RefreshPartyFrames" },
     { id = "combattimer",label = "Combat timer",      desc = "Small timer that counts how long you have been in combat.",
@@ -423,16 +421,31 @@ local function ApplyStartFrom(result)
     end
 end
 
+-- screen size presets: the UI scale that reads well on each
+local SCREEN_PRESETS = {
+    p1080 = { scale = 0.71, label = "1080p (Full HD)" },
+    p1440 = { scale = 0.64, label = "1440p (2K / QHD)" },
+    p1440plus = { scale = 0.57, label = "1440p+ (Ultrawide / 4K)" },
+}
+
+local function ScaleForChoice(choice)
+    if choice == "recommended" then return RecommendedScale() end
+    local preset = SCREEN_PRESETS[choice]
+    return preset and preset.scale or nil
+end
+
 local function ApplyUIScale(result)
-    if state.uiScale ~= "recommended" then return end
+    local v = ScaleForChoice(state.uiScale)
+    if not v then return end
     local c = Core()
     local p = Profile()
     if not (c and p) then return end
-    local v = RecommendedScale()
     p.general = p.general or {}
     p.general.uiScale = v
     if c.ApplyUIScale then pcall(c.ApplyUIScale, c) end
-    result.lines[#result.lines + 1] = string.format("UI scale: %.2f (recommended for your screen)", v)
+    local preset = SCREEN_PRESETS[state.uiScale]
+    result.lines[#result.lines + 1] = string.format("UI scale: %.2f (%s)", v,
+        preset and preset.label or "matches your screen")
 end
 
 local function ApplyEditLayout(result)
@@ -458,6 +471,21 @@ local ApplyChoices
 function Setup.Apply()
     local pre = { lines = {}, needReload = false }
     pcall(ApplyStartFrom, pre)
+    if state.profile == "fresh" then
+        -- the full H3z0 UI setup as it is, with its Edit Mode layout; nothing else changed
+        state.editLayout = "h3z0"
+        pcall(ApplyEditLayout, pre)
+        local s = SetupTable()
+        if s then s.completed = true; s.skipped = nil end
+        local c = Core()
+        local g = c and c.db and c.db.global
+        if g then
+            g.setupWizard = g.setupWizard or {}
+            g.setupWizard.completedAt = g.setupWizard.completedAt or time()
+        end
+        pre.needReload = true
+        return pre
+    end
     local result = ApplyChoices()
     for i = #pre.lines, 1, -1 do table.insert(result.lines, 1, pre.lines[i]) end
     if pre.needReload then result.needReload = true end
@@ -498,6 +526,18 @@ ApplyChoices = function()
         result.lines[#result.lines + 1] = hc.pcController
             and "PC layout with a controller (ConsolePort on, Action Combat Mode off)"
             or "PC layout (Handheld Mode OFF)"
+    end
+
+    -- the H3z0 UI layout: every H3z0 UI frame goes to its place in the H3z0 UI default setup, whatever
+    -- else was chosen (a pasted profile keeps its own positions, and so does the Handheld layout)
+    local forever = ns.Client and ns.Client.isForever
+    if (state.editLayout == "h3z0" or forever) and state.device ~= "handheld" and state.profile ~= "import" then
+        local LSets = ns.LayoutSets
+        if LSets and LSets.ApplyDefaults and LSets.ApplyDefaults() then
+            if LSets.Save then LSets.Save("pc") end
+            result.needReload = true
+            result.lines[#result.lines + 1] = "Frame positions: H3z0 UI default places"
+        end
     end
 
     -- 3. Features (done before the unit-frame layout re-run so the preset sees the final state)
@@ -590,6 +630,16 @@ function Setup.Skip()
         s.completed = true
         s.skipped = true
         s.version = WIZARD_VERSION
+    end
+    -- first install: the H3z0 UI Edit Mode layout goes with the H3z0 UI settings
+    if ns._freshInstall and ns.Client and ns.Client.isForever then
+        local LSets = ns.LayoutSets
+        if LSets and LSets.ApplyDefaults and LSets.ApplyDefaults() and LSets.Save then LSets.Save("pc") end
+    elseif ns._freshInstall and ns.HasH3z0DefaultProfile and ns.HasH3z0DefaultProfile() then
+        state.editLayout = "h3z0"
+        pcall(ApplyEditLayout, { lines = {} })
+        local LSets = ns.LayoutSets
+        if LSets and LSets.ApplyDefaults and LSets.ApplyDefaults() and LSets.Save then LSets.Save("pc") end
     end
     local g = Global()
     if g then
@@ -1022,12 +1072,19 @@ local function RefreshProfilePage(f)
     local c = Core()
     local cur = c and c.db and c.db.GetCurrentProfile and c.db:GetCurrentProfile()
     f.profileCards.keep.status:SetText(cur and ("|cff33ee88" .. cur .. "|r") or "")
+    -- the full H3z0 UI setup is applied as it is: no further steps
+    if f.step == 1 and f.next and f.next.label then
+        f.next.label:SetText(state.profile == "fresh" and "Apply & finish" or "Next")
+    end
 end
 
 local function RefreshScalePage(f)
     for value, card in pairs(f.scaleCards) do card:SetSelected(state.uiScale == value) end
     f.scaleCards.keep.status:SetText(string.format("%.2f", CurrentScale()))
     f.scaleCards.recommended.status:SetText(string.format("|cff33ee88%.2f|r", RecommendedScale()))
+    for key, preset in pairs(SCREEN_PRESETS) do
+        if f.scaleCards[key] then f.scaleCards[key].status:SetText(string.format("%.2f", preset.scale)) end
+    end
     f.scaleNote:SetText(state.device == "handheld"
         and "Steam Deck / Handheld uses its own scale (step 4) - this one is for PC play."
         or "Fine-tune it later in General > UI Scale.")
@@ -1132,8 +1189,9 @@ local function ShowStep(f, step)
         f.stepCount:SetText("DONE")
     end
     for i, dotTex in ipairs(f.dots) do
-        if i == step then dotTex:SetColorTexture(f.ar, f.ag, f.ab, 1)
-        else dotTex:SetColorTexture(0.25, 0.3, 0.35, 1) end
+        if i == step then dotTex:SetVertexColor(f.ar, f.ag, f.ab, 1)
+        elseif i < step then dotTex:SetVertexColor(f.ar, f.ag, f.ab, 0.4)   -- done
+        else dotTex:SetVertexColor(0.25, 0.3, 0.35, 1) end
     end
 
     local onDone = step > TOTAL_STEPS
@@ -1147,6 +1205,53 @@ local function ShowStep(f, step)
     local refresh = ({ RefreshProfilePage, RefreshLookPage, RefreshFontPage, RefreshDevicePage, RefreshScalePage,
         RefreshNameplatePage, RefreshFeaturePage, RefreshExtrasPage, RefreshLayoutPage })[step]
     if refresh then refresh(f) end
+end
+
+---------------------------------------------------------------------------
+-- 0.25.5 look: every boxed piece of the wizard (window, cards, buttons,
+-- boxes, radio dots, check boxes) gets rounded corners. The pieces keep
+-- their own colour calls (SetBackdropColor / SetBackdropBorderColor), which
+-- now paint the rounded shape instead of the square backdrop.
+---------------------------------------------------------------------------
+local function Roundify(fr, radius)
+    if fr._h3zRound or not (fr.GetBackdrop and fr:GetBackdrop()) then return end
+    local R = ns.Round
+    if not (R and R.Panel) then return end
+    fr._h3zRound = true
+    local cr, cg, cb, ca = fr:GetBackdropColor()
+    local br, bg, bb, ba = fr:GetBackdropBorderColor()
+    local origC, origB = fr.SetBackdropColor, fr.SetBackdropBorderColor
+    origC(fr, 0, 0, 0, 0)
+    origB(fr, 0, 0, 0, 0)
+    local p = R.Panel(fr, radius)
+    p:SetAllPoints(fr)
+    -- draw the rounded pieces on the frame itself (under its own text / children)
+    for _, t in pairs(p.fill) do t:SetParent(fr) end
+    for _, t in pairs(p.edge) do t:SetParent(fr) end
+    fr._h3zPanel = p
+    fr.SetBackdropColor = function(_, r, g, b, a) p:SetFillColor(r or 0, g or 0, b or 0, a or 1) end
+    fr.SetBackdropBorderColor = function(_, r, g, b, a) p:SetBorderColor(r or 0, g or 0, b or 0, a or 1) end
+    p:SetFillColor(cr or 0, cg or 0, cb or 0, ca or 1)
+    p:SetBorderColor(br or 0, bg or 0, bb or 0, ba or 1)
+end
+
+local function RoundifyAll(root)
+    local function walk(fr)
+        for _, c in ipairs({ fr:GetChildren() }) do
+            if c.GetBackdrop and c:GetBackdrop() then
+                local w, h = c:GetWidth() or 0, c:GetHeight() or 0
+                local m = math.min(w > 0 and w or 999, h > 0 and h or 999)
+                local radius
+                if m <= 14 then radius = math.floor(m / 2)          -- radio dots: circles
+                elseif m <= 18 then radius = 4                      -- check boxes
+                elseif m <= 36 then radius = 8                      -- buttons
+                else radius = 10 end                                -- cards, boxes
+                pcall(Roundify, c, radius)
+            end
+            walk(c)
+        end
+    end
+    walk(root)
 end
 
 local function CreateWizard()
@@ -1167,21 +1272,27 @@ local function CreateWizard()
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     f:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
-    f:SetBackdropColor(0.067, 0.094, 0.153, 0.98)
-    f:SetBackdropBorderColor(ar, ag, ab, 1)
+    f:SetBackdropColor(0.07, 0.085, 0.11, 0.98)
+    f:SetBackdropBorderColor(ar, ag, ab, 0.45)
+    -- one big faint H3z0 logo behind the pages
+    local mark = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+    mark:SetTexture("Interface\\AddOns\\H3z0UI\\assets\\h3z0ui_logo_bg.png")
+    mark:SetSize(500, 250)
+    mark:SetPoint("CENTER", f, "CENTER", 0, -30)
+    mark:SetAlpha(0.05)
     tinsert(UISpecialFrames, "H3z0UI_SetupWizard")   -- Esc closes (nothing is saved, it comes back next login on a new install)
 
     -- Header: accent glow + line, logo badge, title
     local glow = f:CreateTexture(nil, "BACKGROUND", nil, 2)
-    glow:SetPoint("TOPLEFT", 1, -1)
-    glow:SetPoint("TOPRIGHT", -1, -1)
-    glow:SetHeight(78)
+    glow:SetPoint("TOPLEFT", 8, -6)
+    glow:SetPoint("TOPRIGHT", -8, -6)
+    glow:SetHeight(72)
     glow:SetColorTexture(1, 1, 1, 1)
     glow:SetGradient("HORIZONTAL", CreateColor(ar, ag, ab, 0.22), CreateColor(ar, ag, ab, 0.02))
     local line = f:CreateTexture(nil, "ARTWORK")
-    line:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -78)
-    line:SetPoint("TOPRIGHT", f, "TOPRIGHT", -1, -78)
-    line:SetHeight(2)
+    line:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -78)
+    line:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -78)
+    line:SetHeight(1)
     line:SetColorTexture(1, 1, 1, 1)
     line:SetGradient("HORIZONTAL", CreateColor(ar, ag, ab, 1), CreateColor(ar, ag, ab, 0.08))
 
@@ -1192,11 +1303,9 @@ local function CreateWizard()
     badge:SetBackdropColor(0.03, 0.045, 0.08, 1)
     badge:SetBackdropBorderColor(ar, ag, ab, 1)
     local icon = badge:CreateTexture(nil, "ARTWORK")
-    icon:SetTexture("Interface\\AddOns\\H3z0UI\\assets\\icon.tga")
-    icon:SetSize(48, 48)
+    icon:SetTexture("Interface\\AddOns\\H3z0UI\\assets\\h3z0ui_logo_bg.png")
+    icon:SetSize(44, 22)
     icon:SetPoint("CENTER")
-    icon:SetDesaturated(true)
-    icon:SetVertexColor(lr, lg, lb, 1)
 
     f.stepCount = MakeText(f, 18, lr, lg, lb, "OUTLINE")
     f.stepCount:SetPoint("TOPLEFT", badge, "TOPRIGHT", 13, -5)
@@ -1207,7 +1316,8 @@ local function CreateWizard()
     f.dots = {}
     for i = 1, TOTAL_STEPS + 1 do
         local d = f:CreateTexture(nil, "OVERLAY")
-        d:SetSize(22, 4)
+        d:SetSize(22, 5)
+        d:SetTexture((ns.Round and ns.Round.ROUND_SQUARE) or WHITE)
         d:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18 - (TOTAL_STEPS + 1 - i) * 26, -30)
         f.dots[i] = d
     end
@@ -1239,10 +1349,10 @@ local function CreateWizard()
         f.profileCards.keep = MakeCard(page, PAGE_W, 52, "Keep my current settings",
             "Nothing is reset - the next steps change only what you pick.", ar, ag, ab, function() Pick("keep") end)
         f.profileCards.keep:SetPoint("TOPLEFT", 0, -36)
-        f.profileCards.fresh = MakeCard(page, PAGE_W, 52, "Fresh H3z0 UI defaults",
-            "Switches to a clean \"" .. FRESH_PROFILE .. "\" profile. Your current profile stays saved.", ar, ag, ab, function() Pick("fresh") end)
+        f.profileCards.fresh = MakeCard(page, PAGE_W, 66, "The full H3z0 UI setup",
+            "Everything exactly like H3z0's own screen (all settings, positions and the Edit Mode layout) in a \"" .. FRESH_PROFILE .. "\" profile. Finishes right away; your current profile stays saved.", ar, ag, ab, function() Pick("fresh") end)
         f.profileCards.fresh:SetPoint("TOPLEFT", f.profileCards.keep, "BOTTOMLEFT", 0, -8)
-        f.profileCards.import = MakeCard(page, PAGE_W, 52, "Import a profile string",
+        f.profileCards.import = MakeCard(page, PAGE_W, 58, "Import a profile string",
             "Paste an H3z0 UI profile string below. It is loaded as a new profile named \"Imported\".", ar, ag, ab, function() Pick("import") end)
         f.profileCards.import:SetPoint("TOPLEFT", f.profileCards.fresh, "BOTTOMLEFT", 0, -8)
 
@@ -1276,15 +1386,29 @@ local function CreateWizard()
         local intro = MakeText(page, 11, 0.85, 0.88, 0.92)
         intro:SetPoint("TOPLEFT", 0, 0)
         intro:SetWidth(PAGE_W)
-        intro:SetText("H3z0 UI can set a pixel-perfect UI scale for your screen resolution, so borders and text stay crisp.")
+        intro:SetText("Which screen do you play on? H3z0 UI sets a UI size that reads well on it.")
         f.scaleCards = {}
         local function Pick(v) state.uiScale = v; RefreshScalePage(f) end
-        f.scaleCards.keep = MakeCard(page, PAGE_W, 52, "Keep my current scale",
-            "The UI stays the size it is now.", ar, ag, ab, function() Pick("keep") end)
-        f.scaleCards.keep:SetPoint("TOPLEFT", 0, -36)
-        f.scaleCards.recommended = MakeCard(page, PAGE_W, 52, "Recommended scale",
-            "Pixel-perfect for your resolution.", ar, ag, ab, function() Pick("recommended") end)
-        f.scaleCards.recommended:SetPoint("TOPLEFT", f.scaleCards.keep, "BOTTOMLEFT", 0, -8)
+        local CARD_H, CARD_GAP = 40, 6
+        local cards = {
+            { key = "keep", title = "Keep my current size", desc = "The UI stays the size it is now." },
+            { key = "p1080", title = "1080p (Full HD)", desc = "1920 x 1080 screens." },
+            { key = "p1440", title = "1440p (2K / QHD)", desc = "2560 x 1440 screens." },
+            { key = "p1440plus", title = "1440p+ (Ultrawide / 4K)", desc = "3440 x 1440 ultrawide and 3840 x 2160 (4K) screens." },
+            { key = "recommended", title = "Match my screen", desc = "Worked out from your current resolution." },
+        }
+        local prev
+        for _, c in ipairs(cards) do
+            local key = c.key
+            local card = MakeCard(page, PAGE_W, CARD_H, c.title, c.desc, ar, ag, ab, function() Pick(key) end)
+            if prev then
+                card:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -CARD_GAP)
+            else
+                card:SetPoint("TOPLEFT", 0, -30)
+            end
+            f.scaleCards[key] = card
+            prev = card
+        end
         f.scaleNote = MakeText(page, 10, 0.6, 0.65, 0.7)
         f.scaleNote:SetPoint("BOTTOMLEFT", 0, 0)
         f.scaleNote:SetWidth(PAGE_W)
@@ -1303,7 +1427,7 @@ local function CreateWizard()
             "Blizzard's frames stay where they are.", ar, ag, ab, function() Pick("keep") end)
         f.layoutCards.keep:SetPoint("TOPLEFT", 0, -50)
         f.layoutCards.h3z0 = MakeCard(page, PAGE_W, 52, "Use the H3z0 UI Edit Mode layout",
-            "Adds (or updates) the \"H3z0UI\" layout in Blizzard's Edit Mode and switches to it.", ar, ag, ab, function() Pick("h3z0") end)
+            "Adds (or updates) the \"H3z0UI\" layout in Blizzard's Edit Mode and switches to it, and puts every H3z0 UI frame in its default place.", ar, ag, ab, function() Pick("h3z0") end)
         f.layoutCards.h3z0:SetPoint("TOPLEFT", f.layoutCards.keep, "BOTTOMLEFT", 0, -8)
         local note = MakeText(page, 10, 0.6, 0.65, 0.7)
         note:SetPoint("BOTTOMLEFT", 0, 0)
@@ -1529,6 +1653,12 @@ local function CreateWizard()
     f.skip:SetPoint("LEFT", f.back, "RIGHT", 8, 0)
 
     f.next = MakeButton(f, "Next", 150, 32, true, ar, ag, ab, function()
+        if f.step == 1 and state.profile == "fresh" then
+            local result = Setup.Apply()
+            BuildDoneText(f, result)
+            ShowStep(f, TOTAL_STEPS + 1)
+            return
+        end
         if f.step < TOTAL_STEPS then
             ShowStep(f, f.step + 1)
         else
@@ -1546,6 +1676,8 @@ local function CreateWizard()
     hint:SetPoint("BOTTOM", 0, 4)
     hint:SetText("Open this window any time with /h3z0ui setup")
 
+    pcall(Roundify, f, 14)
+    pcall(RoundifyAll, f)
     return f
 end
 

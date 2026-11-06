@@ -60,12 +60,11 @@ function Tiles.RegisterFeatures(frame)
         subtitle = "UI Look · Steam Deck · Combat Mode · Hover Name",
         subPages = Pages({
             { id = "look", name = "UI Look", build = F.BuildLook },
-            { id = "combatMode", name = "Combat Mode", build = Call("H3z0UI_CombatModeOptions", "BuildCombatModeTab") },
+            { id = "combatMode", name = "True Reticle", build = Call("H3z0UI_CombatModeOptions", "BuildCombatModeTab") },
             { id = "handheld", name = "Steam Deck + PC Controller", build = Call("H3z0UI_HandheldOptions", "BuildHandheldTab") },
             { id = "layout", name = "Layout & Bars", build = F.BuildLayout },
             { id = "streamer", name = "Streamer Mode", build = F.BuildStreamer },
             { id = "quickAccess", name = "Quick Access (Dungeons)", build = Call("H3z0UI_QuickAccessOptions", "BuildQuickAccessTab") },
-            { id = "map", name = "Map", build = F.BuildMap },
             { id = "hoverName", name = "Hover Name", build = Call("H3z0UI_HoverNameOptions", "BuildHoverNameTab") },
             { id = "extras", name = "Extras", build = F.BuildExtras },
             { id = "setup", name = "Setup Wizard", build = Call("H3z0UI_SetupOptions", "BuildSetupTab") },
@@ -163,10 +162,144 @@ function Tiles.RegisterChat(frame)
     })
 end
 
+-- On / off switch in the sidebar (like the Bottom Bar): the feature's own
+-- "enabled" setting, so the switch and the Enable checkbox on the page are the same
+local function ProfileTable(key)
+    local core = ns.Addon or _G.H3z0UI
+    local p = core and core.db and core.db.profile
+    return p and p[key]
+end
+
+local function ReloadPrompt(message)
+    local Q = _G.H3z0UI
+    if Q and Q.GUI and Q.GUI.ShowConfirmation then
+        Q.GUI:ShowConfirmation({
+            reload = true,
+            title = "Reload UI?",
+            message = message,
+            acceptText = "Reload", cancelText = "Later",
+            onAccept = function() if Q.SafeReload then Q:SafeReload() end end,
+        })
+    end
+end
+
+local function RegisterSwitch(featureId, dbKey, label, refreshName, reloadMessage)
+    local Settings = ns.Settings
+    local Registry = Settings and Settings.Registry
+    local Schema = Settings and Settings.Schema
+    if not (Registry and Schema and Registry.RegisterFeature and Schema.Feature) then return nil end
+    if Registry.GetFeature and Registry:GetFeature(featureId) then return featureId end
+    local entry = {
+        group = "Interface",
+        label = label,
+        caption = "",
+        combatLocked = false,
+        isEnabled = function()
+            local t = ProfileTable(dbKey)
+            return t and t.enabled and true or false
+        end,
+        setEnabled = function(val, options)
+            local t = ProfileTable(dbKey)
+            if not t then return end
+            t.enabled = val and true or false
+            local fn = refreshName and _G[refreshName]
+            if fn then pcall(fn) end
+            if reloadMessage and not (options and options.suppressReloadPrompt) then ReloadPrompt(reloadMessage) end
+        end,
+    }
+    local ok = pcall(Registry.RegisterFeature, Registry, Schema.Feature({
+        id = featureId,
+        category = "global",
+        moduleEntry = entry,
+    }))
+    return ok and featureId or nil
+end
+_G.H3z0UI_NotifySwitch = function(featureId)
+    if ns.H3z0UI_Modules and ns.H3z0UI_Modules.NotifyChanged then pcall(ns.H3z0UI_Modules.NotifyChanged, ns.H3z0UI_Modules, featureId) end
+end
+
+-- Interface: Herald (cinematic banners) and Arcanum (loot toasts and helpers)
+function Tiles.RegisterHerald(frame)
+    local GUI = H3z0UI and H3z0UI.GUI
+    if not (GUI and GUI.AddFeatureTile) then return end
+    Add(frame, GUI, {
+        id = "h3z_herald",
+        name = "Herald",
+        moduleFeatureId = RegisterSwitch("moduleFlag_h3zHerald", "herald", "Herald", "H3z0UI_RefreshHerald", nil),
+        subtitle = "Zone, level up, achievement, quest and boss banners",
+        subPages = Pages({
+            { id = "herald", name = "Herald", build = Call("H3z0UI_HeraldOptions", "BuildHeraldTab") },
+        }),
+    })
+end
+
+function Tiles.RegisterArcanum(frame)
+    local GUI = H3z0UI and H3z0UI.GUI
+    if not (GUI and GUI.AddFeatureTile) then return end
+    Add(frame, GUI, {
+        id = "h3z_arcanum",
+        name = "Arcanum",
+        moduleFeatureId = RegisterSwitch("moduleFlag_h3zArcanum", "arcanum", "Arcanum", "H3z0UI_RefreshArcanum", nil),
+        subtitle = "Loot toasts, alerts, auto vendor, self highlight",
+        subPages = Pages({
+            { id = "arcanum", name = "Arcanum", build = Call("H3z0UI_ArcanumOptions", "BuildArcanumTab") },
+        }),
+    })
+end
+
+function Tiles.RegisterLorekeeper(frame)
+    local GUI = H3z0UI and H3z0UI.GUI
+    if not (GUI and GUI.AddFeatureTile) then return end
+    Add(frame, GUI, {
+        id = "h3z_lorekeeper",
+        name = "Lorekeeper",
+        moduleFeatureId = RegisterSwitch("moduleFlag_h3zLorekeeper", "lorekeeper", "Lorekeeper", "H3z0UI_RefreshLorekeeper", nil),
+        subtitle = "NPC talk and quests on a parchment scroll",
+        subPages = Pages({
+            { id = "lorekeeper", name = "Lorekeeper", build = Call("H3z0UI_LorekeeperOptions", "BuildLorekeeperTab") },
+        }),
+    })
+end
+
+function Tiles.RegisterOracle(frame)
+    local GUI = H3z0UI and H3z0UI.GUI
+    if not (GUI and GUI.AddFeatureTile) then return end
+    if ns.Client and (ns.Client.isClassic or ns.Client.isForever) then return end
+    Add(frame, GUI, {
+        id = "h3z_oracle",
+        name = "Oracle",
+        moduleFeatureId = RegisterSwitch("moduleFlag_h3zOracle", "h3zOracle", "Oracle", "H3z0UI_RefreshOracle", nil),
+        subtitle = "Spoken boss warnings: soak, spread, interrupt...",
+        subPages = Pages({
+            { id = "oracle", name = "Oracle", build = Call("H3z0UI_OracleOptions", "BuildOracleTab") },
+        }),
+    })
+end
+
+function Tiles.RegisterInterrupts(frame)
+    local GUI = H3z0UI and H3z0UI.GUI
+    if not (GUI and GUI.AddFeatureTile) then return end
+    if ns.Client and (ns.Client.isClassic or ns.Client.isForever) then return end
+    Add(frame, GUI, {
+        id = "h3z_interrupts",
+        name = "Interrupts",
+        moduleFeatureId = RegisterSwitch("moduleFlag_h3zInterrupts", "h3zInterrupts", "Interrupts", "H3z0UI_RefreshInterrupts", nil),
+        subtitle = "Interrupt cooldowns of your group and your own",
+        subPages = Pages({
+            { id = "interrupts", name = "Interrupts", build = Call("H3z0UI_InterruptOptions", "BuildInterruptsTab") },
+        }),
+    })
+end
+
 function Tiles.RegisterAll(frame)
     Tiles.RegisterFeatures(frame)
     Tiles.RegisterUnitFrames(frame)
     Tiles.RegisterPartyFrames(frame)
     Tiles.RegisterNameplates(frame)
     Tiles.RegisterChat(frame)
+    Tiles.RegisterHerald(frame)
+    Tiles.RegisterArcanum(frame)
+    Tiles.RegisterLorekeeper(frame)
+    Tiles.RegisterOracle(frame)
+    Tiles.RegisterInterrupts(frame)
 end

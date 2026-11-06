@@ -28,10 +28,11 @@ local DEFAULTS = {
     fitOptionsWindow = true,  -- Shrink the settings window so it fits the screen
     setupPrompted = false,    -- Steam Deck setup popup: answered (Apply / Don't ask again)
     deckUnitFrames = true,    -- Use the Steam Deck unit frame layout (handheld_layout.lua) while enabled
-    pcController = false,     -- PC Controller: PC layout, but ConsolePort on / Action Combat Mode off
+    pcController = false,     -- PC Controller: PC layout, but ConsolePort on / True Reticle off
     pcHandheld = false,       -- PC Handheld: Steam Deck HUD + Deck layout + ConsolePort, but your PC UI scale
     deckChoice = false,       -- menu mirror: Steam Deck (Handheld Mode with the handheld scale) is on
     targetRing = true,        -- keep the game's ring under the target on in the controller modes
+    hideBarsWithConsolePort = true, -- controller modes + ConsolePort bars: H3z0 UI action bars 1-3 hidden
 }
 
 local Handheld = {}
@@ -549,7 +550,7 @@ function Handheld.ShowSetupPopup()
 end
 
 ---------------------------------------------------------------------------
--- Deck switch: Action Combat Mode off, ConsolePort on, Edit Mode layout "H3z0 Deck"
+-- Deck switch: True Reticle off, ConsolePort on, Edit Mode layout "H3z0 Deck"
 -- What was active before is saved in c.deckSwap and put back when Handheld
 -- Mode is turned off again.
 ---------------------------------------------------------------------------
@@ -561,8 +562,8 @@ local function Clean(str)
     return str:lower():gsub("[%s_%-%.]", "")
 end
 
--- Every name the Combat Mode addon has had (folder "CombatMode", now titled "Action Combat Mode")
-local COMBAT_MODE_KEYS = { combatmode = true, actioncombat = true, actioncombatmode = true }
+-- True Reticle (folder "TrueReticle") is the action-camera addon H3z0 UI works with
+local TRUE_RETICLE_KEYS = { truereticle = true }
 
 -- Folder names of installed addons matching a key ("actioncombat", "consoleport")
 local function FindAddOns(key, exactOnly)
@@ -574,7 +575,9 @@ local function FindAddOns(key, exactOnly)
             if C_AddOns and C_AddOns.GetAddOnInfo then name, title = C_AddOns.GetAddOnInfo(i) else name, title = GetAddOnInfo(i) end
             if name then
                 local n, t = Clean(name), Clean(title)
-                if COMBAT_MODE_KEYS[n] or COMBAT_MODE_KEYS[t] then found[#found + 1] = name end
+                if TRUE_RETICLE_KEYS[n] or TRUE_RETICLE_KEYS[t] then
+                    found[#found + 1] = name
+                end
             end
         end
         return found
@@ -609,6 +612,8 @@ function Handheld._FindAddOnsByKey(key, exactOnly)
 end
 
 function Handheld.FindCombatModeAddOns() return FindAddOns("actioncombat") end
+
+function Handheld.FindReticleAddOns() return FindAddOns("actioncombat") end
 
 -- Is the addon loaded right now? (reliable on Midnight and WoW: Forever)
 local function IsLoaded(name)
@@ -688,8 +693,8 @@ end
 
 local function Say(msg) print("|cff34D399H3z0 UI:|r " .. msg) end
 
--- Controller addons: ConsolePort on + Action Combat Mode off (controller = true),
--- or the mouse / keyboard set (Action Combat Mode on + ConsolePort off).
+-- Controller addons: ConsolePort on + True Reticle off (controller = true),
+-- or the mouse / keyboard set (True Reticle on + ConsolePort off).
 -- Returns true when an addon was switched (needs a reload).
 local function ApplyAddonSet(controller)
     local changed, switched = false, {}
@@ -700,7 +705,7 @@ local function ApplyAddonSet(controller)
         SetAddOn(name, on)
         if IsLoaded(name) ~= on then changed = true end
     end
-    for _, name in ipairs(FindAddOns("actioncombat")) do Want(name, not controller) end
+    for _, name in ipairs(Handheld.FindReticleAddOns()) do Want(name, not controller) end
     -- ConsolePort and all its modules (ConsolePort_Bar, ConsolePort_Menu, ...)
     local cp = FindAddOns("consoleport")
     if controller and #cp == 0 then Say("ConsolePort is not installed.") end
@@ -813,6 +818,26 @@ end
 function Handheld.Apply()
     Handheld.ApplyScale()   -- also runs ApplyUnitFrames + ApplyProfileLayout
     Handheld.ApplyBars()
+    if not Handheld._dataOnly and _G.H3z0UI_ApplyConsoleBarHide then pcall(_G.H3z0UI_ApplyConsoleBarHide) end
+end
+
+-- ConsolePort's own action bar is in use (ConsolePort_Bar, or ConsolePort
+-- versions that have the bar built in)
+function Handheld.ConsolePortBarsActive()
+    local loaded = C_AddOns and C_AddOns.IsAddOnLoaded
+    if not loaded then return false end
+    if loaded("ConsolePort_Bar") then return true end
+    local exists = C_AddOns.DoesAddOnExist and C_AddOns.DoesAddOnExist("ConsolePort_Bar")
+    return loaded("ConsolePort") and not exists or false
+end
+
+-- Steam Deck / PC Handheld / PC Controller with ConsolePort's bars: H3z0 UI's
+-- action bars 1-3 step aside (ConsolePort's bar replaces them)
+_G.H3z0UI_ShouldHideBarsForConsole = function()
+    local c = Cfg()
+    if not c or c.hideBarsWithConsolePort == false then return false end
+    if not (c.enabled or c.pcHandheld or c.pcController) then return false end
+    return Handheld.ConsolePortBarsActive()
 end
 
 -- Save every handheld setting without refreshing anything on screen
@@ -886,7 +911,7 @@ function Handheld.SetEnabled(on, silent, auto)
 end
 
 -- PC Controller: keeps the PC layout, only swaps the addons (ConsolePort on,
--- Action Combat Mode off) and reloads. While Handheld Mode is on the controller
+-- True Reticle off) and reloads. While Handheld Mode is on the controller
 -- addons are used anyway; the choice applies when Handheld Mode goes off.
 function Handheld.SetPCController(on, silent)
     local c = Cfg()
@@ -907,7 +932,7 @@ function Handheld.SetPCController(on, silent)
     end
     local changed = ApplyAddonSet(c.pcController)
     if not silent then
-        Say("PC Controller " .. (c.pcController and "|cff00ff00ON|r - ConsolePort on, Action Combat Mode off." or "|cffff5555OFF|r - Action Combat Mode on, ConsolePort off."))
+        Say("PC Controller " .. (c.pcController and "|cff00ff00ON|r - ConsolePort on, True Reticle off." or "|cffff5555OFF|r - True Reticle on, ConsolePort off."))
         if changed then ReloadUI() end
     end
     return changed

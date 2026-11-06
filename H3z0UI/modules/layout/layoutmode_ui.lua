@@ -777,6 +777,21 @@ CreateNudgeHandler = function(ui)
             return
         end
 
+        if IsControlKeyDown() and not InCombatLockdown() then
+            local focus = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus() or nil
+            if not (focus and focus:IsObjectType("EditBox")) then
+                if key == "Z" and not IsShiftKeyDown() then
+                    self:SetPropagateKeyboardInput(false)
+                    um:Undo()
+                    return
+                elseif key == "Y" or (key == "Z" and IsShiftKeyDown()) then
+                    self:SetPropagateKeyboardInput(false)
+                    um:Redo()
+                    return
+                end
+            end
+        end
+
         if not um._selectedKey then
             self:SetPropagateKeyboardInput(true)
             return
@@ -861,6 +876,7 @@ CreateNudgeHandler = function(ui)
 end
 
 function H3z0UI_LayoutMode_UI:OnSelectionChanged(key)
+    if self.UpdateUndoButtons then self:UpdateUndoButtons() end
 end
 
 CreateToolbar = function(ui)
@@ -1049,6 +1065,37 @@ CreateToolbar = function(ui)
             if ui._collapseToolbar then ui._collapseToolbar() end
         end
     end, 0.15, 0.25, 0.4)
+
+    ui._undoBtn = AddButton("Undo  (Ctrl+Z)", function()
+        local um = ns.H3z0UI_LayoutMode
+        if um then um:Undo() end
+    end)
+    ui._redoBtn = AddButton("Redo  (Ctrl+Y)", function()
+        local um = ns.H3z0UI_LayoutMode
+        if um then um:Redo() end
+    end)
+
+    ui._lockBtn = AddButton("Lock Selected", function()
+        local um = ns.H3z0UI_LayoutMode
+        if um then um:ToggleLock() end
+    end)
+    ui._copyBtn = AddButton("Copy Position", function()
+        local um = ns.H3z0UI_LayoutMode
+        if um then um:CopyPosition() end
+    end)
+    ui._pasteBtn = AddButton("Paste Position", function()
+        local um = ns.H3z0UI_LayoutMode
+        if um then um:PastePosition() end
+    end)
+
+    ui._matchWBtn = AddButton("Match Width", function()
+        local um = ns.H3z0UI_LayoutMode
+        if um then um:MatchSize("width") end
+    end)
+    ui._matchHBtn = AddButton("Match Height", function()
+        local um = ns.H3z0UI_LayoutMode
+        if um then um:MatchSize("height") end
+    end)
 
     ui._saveBtn = AddButton(ns.L["Save & Close"], function()
         local um = ns.H3z0UI_LayoutMode
@@ -1303,6 +1350,23 @@ CreateToolbar = function(ui)
     ui._collapseToolbar = Collapse
     ui._resetToolbarState = function() expanded = false end
     ui:ApplyConfigPanelScale(panel)
+end
+
+function H3z0UI_LayoutMode_UI:UpdateUndoButtons()
+    local um = ns.H3z0UI_LayoutMode
+    if not um then return end
+    if self._undoBtn then self._undoBtn:SetAlpha(um:CanUndo() and 1 or 0.4) end
+    if self._redoBtn then self._redoBtn:SetAlpha(um:CanRedo() and 1 or 0.4) end
+    local sel = um._selectedKey
+    if self._lockBtn then
+        self._lockBtn._text:SetText(sel and um:IsLocked(sel) and "Unlock Selected" or "Lock Selected")
+        self._lockBtn:SetAlpha(sel and 1 or 0.4)
+    end
+    if self._copyBtn then self._copyBtn:SetAlpha(sel and 1 or 0.4) end
+    local canMatch = sel and um._clipboard and um._clipboard.w and um._elements[sel] and um._elements[sel].matchSize
+    if self._matchWBtn then self._matchWBtn:SetAlpha(canMatch and 1 or 0.4) end
+    if self._matchHBtn then self._matchHBtn:SetAlpha(canMatch and 1 or 0.4) end
+    if self._pasteBtn then self._pasteBtn:SetAlpha((sel and um._clipboard) and 1 or 0.4) end
 end
 
 function H3z0UI_LayoutMode_UI:_UpdateToolbarButtons()

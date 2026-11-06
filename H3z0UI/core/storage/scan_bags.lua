@@ -4,7 +4,8 @@ local Storage = ns.Storage or {}; ns.Storage = Storage
 local ScanBags = {}
 Storage.ScanBags = ScanBags
 
-local TRACKED = { [0] = true, [1] = true, [2] = true, [3] = true, [4] = true, [5] = true }
+local TRACKED = {}
+for i = 0, (ns.Client and ns.Client.LAST_BAG) or 5 do TRACKED[i] = true end
 
 local dirty = {}
 local hasDirty = false

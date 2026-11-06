@@ -18,6 +18,7 @@ local function TypeToKey()
         [T.TradePartner or -4] = "trade",
         [T.ScrappingMachine or -5] = "scrappingMachine",
         [T.ItemUpgrade or -6] = "itemUpgrade",
+        [T.ItemInteraction or -7] = "catalyst",
     }
     return typeToKey
 end
@@ -30,6 +31,7 @@ local FRAME_TO_KEY = {
     ScrappingMachineFrame = "scrappingMachine",
     ItemUpgradeFrame = "itemUpgrade",
     ItemSocketingFrame = "socket",
+    ItemInteractionFrame = "catalyst",
     H3z0UI_BankWindow = "bank",
     BankFrame = "bank",
     H3z0UI_GuildBankWindow = "guildBank",
@@ -68,3 +70,38 @@ function AutoOpen.ShouldOpenFor(frame)
     if not key then return true end
     return IsKeyEnabled(key)
 end
+
+---------------------------------------------------------------------------
+-- Crafting window and Character panel: open the bags with them (off by default)
+---------------------------------------------------------------------------
+local openedBy = nil
+local function OpenFor(key, shown)
+    if not (Bags.IsActive and Bags.IsActive()) then return end
+    if shown then
+        if IsKeyEnabled(key) and not Bags.BagWindow.IsShown() then
+            openedBy = key
+            Bags.BagWindow.Show()
+        end
+    elseif openedBy == key then
+        openedBy = nil
+        Bags.BagWindow.Hide()
+    end
+end
+
+local extra = CreateFrame("Frame")
+extra:RegisterEvent("TRADE_SKILL_SHOW")
+extra:RegisterEvent("TRADE_SKILL_CLOSE")
+extra:RegisterEvent("PLAYER_LOGIN")
+extra:SetScript("OnEvent", function(_, event)
+    if event == "TRADE_SKILL_SHOW" then
+        OpenFor("craftingWindow", true)
+    elseif event == "TRADE_SKILL_CLOSE" then
+        OpenFor("craftingWindow", false)
+    elseif event == "PLAYER_LOGIN" then
+        local cf = _G.CharacterFrame
+        if cf then
+            cf:HookScript("OnShow", function() OpenFor("characterPanel", true) end)
+            cf:HookScript("OnHide", function() OpenFor("characterPanel", false) end)
+        end
+    end
+end)

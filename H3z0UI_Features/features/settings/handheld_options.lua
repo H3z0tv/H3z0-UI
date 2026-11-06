@@ -143,6 +143,11 @@ Build = function(tabContent)
         handheld.ApplyBars()
     end))
     Info("A controller has no mouse hover, so faded bars would stay invisible. Your previous fade setting is restored when Handheld Mode is turned off.", 32)
+    if cfg.hideBarsWithConsolePort == nil then cfg.hideBarsWithConsolePort = true end
+    Place(GUI:CreateFormCheckbox(tabContent, "Hide action bars 1-3 when ConsolePort's bars are used", "hideBarsWithConsolePort", cfg, function()
+        if _G.H3z0UI_ApplyConsoleBarHide then _G.H3z0UI_ApplyConsoleBarHide() end
+    end))
+    Info("Steam Deck, PC Handheld and PC Controller: ConsolePort shows its own action bar, so H3z0 UI's bars 1-3 step aside. They come back when you leave the mode or turn this off.", 32)
     Place(GUI:CreateFormCheckbox(tabContent, "Fit this settings window to the screen", "fitOptionsWindow", cfg, function()
         handheld.FitOptionsWindow()
     end))

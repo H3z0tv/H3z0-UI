@@ -25,8 +25,15 @@ local function fieldValue(cell, field)
     return cell.entry[field]
 end
 
+-- gear in the bag window: highest item level first (the number on the icon),
+-- then quality, slot type and name
+CHAINS.gear = { { "ilvl", true }, { "quality", true }, { "sortClass" }, { "sortSubClass" },
+                { "name" }, { "itemID" } }
+
 function SortPlanner.MakeComparator(opts)
-    local chain = CHAINS[SortPlanner.ResolveKey(opts and opts.key)]
+    local key = SortPlanner.ResolveKey(opts and opts.key)
+    if opts and opts.gear and key == "quality" then key = "gear" end
+    local chain = CHAINS[key]
     local reverse = (opts and opts.reverse) and true or false
     return function(a, b)
         for i = 1, #chain do
@@ -76,12 +83,17 @@ function SortPlanner.Plan(containers, opts)
     local virtual = {}
     local active = {}
     local cells = {}
+    local FIXED = { fixed = true }
     for _, container in ipairs(containers) do
         if not container.ignored then
             local slots = {}
+            local ignoredSlots = container.ignoredSlots
             for slot = 1, container.size do
                 local entry = container.slots[slot]
-                if entry then
+                if ignoredSlots and ignoredSlots[slot] then
+                    -- an ignored slot: its item stays, nothing is moved in
+                    slots[slot] = FIXED
+                elseif entry then
                     local cell = {
                         entry = entry,
                         count = entry.count or 1,
@@ -161,9 +173,12 @@ function SortPlanner.Plan(containers, opts)
         familyOf[container.bagID] = family
         reagentOf[container.bagID] = reagent
         local list = (family ~= 0 or reagent) and specialtyTargets or regularTargets
+        local ignoredSlots = container.ignoredSlots
         for slot = 1, container.size do
-            list[#list + 1] = { bag = container.bagID, slot = slot,
-                family = family, reagent = reagent }
+            if not (ignoredSlots and ignoredSlots[slot]) then
+                list[#list + 1] = { bag = container.bagID, slot = slot,
+                    family = family, reagent = reagent }
+            end
         end
     end
 

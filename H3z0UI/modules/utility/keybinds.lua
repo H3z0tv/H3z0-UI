@@ -1223,7 +1223,7 @@ local function ApplyKeybindToIcon(icon, viewerName)
         iks.r, iks.g, iks.b, iks.a = nil, nil, nil, nil
     end
     if not iks.textLayer then
-        local template = icon._h3z0uiLayoutRestricted and "DisableUntrustedLayoutScriptsTemplate" or nil
+        local template = icon._h3z0uiLayoutRestricted and H3z0UI_TemplateExists("DisableUntrustedLayoutScriptsTemplate") and "DisableUntrustedLayoutScriptsTemplate" or nil
         local layer = CreateFrame("Frame", nil, textLayerParent, template)
         layer:SetAllPoints(textLayerParent)
         iks.textLayer = layer
@@ -1650,7 +1650,7 @@ local function GetRotationHelperOverlay(icon)
         return iks.overlay
     end
 
-    local template = icon._h3z0uiLayoutRestricted and "DisableUntrustedLayoutScriptsTemplate" or nil
+    local template = icon._h3z0uiLayoutRestricted and H3z0UI_TemplateExists("DisableUntrustedLayoutScriptsTemplate") and "DisableUntrustedLayoutScriptsTemplate" or nil
     local overlay = CreateFrame("Frame", nil, icon, template)
     overlay:SetAllPoints(icon)
     overlay:SetFrameLevel(icon:GetFrameLevel() + 15)
@@ -1725,11 +1725,19 @@ local function ApplyRotationHelperToIcon(icon, settings, nextSpellID, nextBaseSp
         if resolvedEntry then
             return resolvedEntry.overrideSpellID or resolvedEntry.spellID or resolvedEntry.id
         end
+        -- Blizzard's Cooldown Manager icons: the spell, not the cooldown ID
+        -- (cooldownID is the viewer's own number and never matches a spell)
+        if icon.GetSpellID then
+            local sid = icon:GetSpellID()
+            if sid and not (issecretvalue and issecretvalue(sid)) then return sid end
+        end
+        local info = icon.cooldownInfo or (icon.GetCooldownInfo and icon:GetCooldownInfo())
+        if info then
+            local sid = info.overrideSpellID or info.spellID
+            if sid and not (issecretvalue and issecretvalue(sid)) then return sid end
+        end
         if icon.cooldownID then
             return icon.cooldownID
-        end
-        if icon.cooldownInfo and icon.cooldownInfo.spellID then
-            return icon.cooldownInfo.spellID
         end
         if icon.spellID then
             return icon.spellID

@@ -1131,6 +1131,7 @@ local function OnGossipShow()
 
     for _, option in ipairs(options) do
         local name = option.name or ""
+        if (issecretvalue and issecretvalue(name)) or type(name) ~= "string" then name = "" end
         if name:lower():find("hunt") or name:lower():find("prey") or name:lower():find("track") then
             State.isAtHuntTable = true
             table.insert(State.availableHunts, {

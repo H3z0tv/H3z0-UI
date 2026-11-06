@@ -596,7 +596,7 @@ local SafeNumberOrNil = Helpers.SafeNumberOrNil
 
 local function ReadPlayerPowerPair(resource, unmodified)
     local current
-    if ns.Client and ns.Client.isForever and resource == Enum.PowerType.ComboPoints then
+    if ns.Client and ns.Client.isLegacy and resource == Enum.PowerType.ComboPoints then
         current = GetComboPoints("player", "target")
     else
         current = UnitPower("player", resource, unmodified)
@@ -1448,7 +1448,7 @@ local primaryResources = {
 }
 
 local function GetPrimaryResource()
-    if ns.Client and ns.Client.isForever then
+    if ns.Client and ns.Client.isLegacy then
         return UnitPowerType("player") or Enum.PowerType.Mana
     end
     local _, playerClass = UnitClass("player")
@@ -1518,7 +1518,7 @@ local function GetSecondaryResource()
     -- @secret-policy: collapse-only — secret class shows no secondary bar (matches
     if issecretvalue and issecretvalue(playerClass) then playerClass = nil end
     if not playerClass then return nil end
-    if ns.Client and ns.Client.isForever then
+    if ns.Client and ns.Client.isLegacy then
         if playerClass == "ROGUE" then return Enum.PowerType.ComboPoints end
         if playerClass == "DRUID" then
             local primary = UnitPowerType("player")
@@ -4054,7 +4054,7 @@ local function InitializeResourceBars(self)
     powerEventFrame:RegisterUnitEvent("UNIT_MAXPOWER", "player")
     powerEventFrame:RegisterUnitEvent("UNIT_DISPLAYPOWER", "player")
     powerEventFrame:RegisterUnitEvent("UNIT_AURA", "player")
-    powerEventFrame:RegisterEvent("UNIT_POWER_POINT_CHARGE")
+    H3z0UI_SafeRegisterEvent(powerEventFrame, "UNIT_POWER_POINT_CHARGE")
     powerEventFrame:RegisterEvent("SPELL_UPDATE_CHARGES")
     powerEventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
     powerEventFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")

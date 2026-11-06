@@ -636,7 +636,7 @@ UpdateAuraDisplaysVisibility = function()
         targetAlpha = 1
     else
         local vis = GetAuraDisplaysVisibilitySettings()
-        targetAlpha = AuraDisplaysVisibility:ShouldBeVisible() and 1 or (vis and vis.fadeOutAlpha or 0)
+        targetAlpha = AuraDisplaysVisibility:ShouldBeVisible() and 1 or vis and vis.fadeOutAlpha or 0
     end
 
     local frames = GetAuraDisplayFrames()
@@ -804,7 +804,7 @@ UpdateUnitframesVisibility = function()
         if vis and vis.alwaysShowCastbars then
             targetAlpha = 1
         else
-            targetAlpha = shouldShow and 1 or (vis and vis.fadeOutAlpha or 0)
+            targetAlpha = shouldShow and 1 or vis and vis.fadeOutAlpha or 0
         end
 
         for _, castbar in pairs(_G.H3z0UI_Castbars) do
@@ -1163,14 +1163,12 @@ if ns.Registry then
     ns.Registry:Register("cdmVisibility", {
         refresh = _G.H3z0UI_RefreshCDMVisibility,
         priority = 10,
-        group = "cooldowns",
-        importCategories = { "cdm" },
+            importCategories = { "cdm" },
     })
     ns.Registry:Register("customTrackersVisibility", {
         refresh = _G.H3z0UI_RefreshCustomTrackersVisibility,
         priority = 10,
-        group = "cooldowns",
-        importCategories = { "customTrackers" },
+            importCategories = { "customTrackers" },
     })
     ns.Registry:Register("auraDisplaysVisibility", {
         refresh = function()
@@ -1178,8 +1176,7 @@ if ns.Registry then
             UpdateAuraDisplaysVisibility()
         end,
         priority = 10,
-        group = "ui",
-        importCategories = { "auraDisplays" },
+            importCategories = { "auraDisplays" },
     })
 end
 

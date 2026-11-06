@@ -71,12 +71,7 @@ local function PlaceManually(menu, last, list)
         b:SetPoint("TOP", prev, "BOTTOM", 0, i == 1 and -SECTION_GAP or -2)
         prev = b
     end
-    C_Timer.After(0, function()
-        local top, bottom = menu:GetTop(), prev:GetBottom()
-        if top and bottom and menu:GetBottom() and bottom < menu:GetBottom() + 16 then
-            menu:SetHeight(top - bottom + 24)
-        end
-    end)
+    -- (the menu's own size is left to Blizzard)
 end
 
 local function OnInitButtons(menu)
@@ -107,9 +102,12 @@ local function OnInitButtons(menu)
             btn.topPadding = (i == 1) and SECTION_GAP or nil
             btn.align = "center"
         end
-        menu:MarkDirty()
+        -- 0.25.6: no menu:MarkDirty() from here. Blizzard's InitButtons already
+        -- asks for a layout; calling it ourselves made the menu's layout run as
+        -- H3z0 UI code, and pressing Escape then showed "... has been blocked from
+        -- an action only available to the Blizzard UI".
         -- check that the layout picked them up; otherwise place them by hand
-        C_Timer.After(0, function()
+        C_Timer.After(0.05, function()
             local first = list[1]
             local fTop, lBottom = first:GetTop(), last:GetBottom()
             if not (first:GetNumPoints() > 0 and fTop and lBottom and fTop <= lBottom + 1) then

@@ -31,8 +31,11 @@ local function RegisterBankInteractions(custom)
     end
 end
 
+-- the Classic games keep Blizzard's own bank window (their bank works differently)
+local function ClassicBank() return ns.Client and ns.Client.isClassic end
+
 function BankTakeover.Suppress()
-    if suppressed then return end
+    if suppressed or ClassicBank() then return end
     local bankFrame = BankFrame
     if not bankFrame then return end
     suppressed = true
@@ -53,7 +56,7 @@ function BankTakeover.Suppress()
 end
 
 function BankTakeover.OnBankOpened()
-    if live then return end
+    if live or ClassicBank() then return end
     live = true
     Bags.BankWindow.ShowLive()
     Bags.Takeover.OpenForFrame(BANK_OPENER)

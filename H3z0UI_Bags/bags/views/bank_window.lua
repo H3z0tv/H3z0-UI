@@ -44,6 +44,14 @@ local bagButtons = {}
 local page = 1
 local PAGE_SIZE = 88
 
+-- the bank can use the same sidebar + category sections as the Inventory bag layout
+local bankLayout   -- the last layout of the inventory view: { sig, inv, win }
+local BANK_CTX = { key = "bankInventory", keepTitle = true, oneName = "Whole Bank", top = 0 }
+local bankInvOn = false   -- the bank shows the Inventory layout right now
+BANK_CTX.refresh = function() if BankWindow.Refresh then BankWindow.Refresh() end end
+BANK_CTX.active = function() return bankInvOn end
+BANK_CTX.focus = function(itemID) if BankWindow.FocusItem then BankWindow.FocusItem(itemID) end end
+
 local function UsesPlayerBags()
     return C_Bank.ShouldUsePlayerBagsInBank and C_Bank.ShouldUsePlayerBagsInBank()
 end
@@ -209,38 +217,19 @@ local function ShowRenamePopup(entry)
     local tab = GetTabRecord(entry.bagID)
     if not tab then return end
     local bankType, tabID = entry.bankType, entry.bagID
-    StaticPopupDialogs["H3z0UI_BANK_RENAME_TAB"] = {
+    H3z0UI_ShowPopup({
         text = ns.L["Rename bank tab:"],
         button1 = ACCEPT,
         button2 = CANCEL,
         hasEditBox = true,
         maxLetters = 31,
-        OnShow = function(self)
-            local box = self.editBox or self.EditBox
-            if box then
-                box:SetText(tab.name or "")
-                box:HighlightText()
-            end
-        end,
-        OnAccept = function(self)
-            local box = self.editBox or self.EditBox
-            local text = box and box:GetText()
+        editText = tab.name or "",
+        OnAccept = function(_, _, text)
             if not text or text == "" then return end
             C_Bank.UpdateBankTabSettings(bankType, tabID,
                 BankWindow.TabSettingsArgs(tab, text))
         end,
-        EditBoxOnEnterPressed = function(box)
-            StaticPopup_OnClick(box:GetParent(), 1)
-        end,
-        EditBoxOnEscapePressed = function(box)
-            box:GetParent():Hide()
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-    StaticPopup_Show("H3z0UI_BANK_RENAME_TAB")
+    })
 end
 
 local function ShowTabSettingsMenu(anchor, entry)
@@ -296,7 +285,7 @@ local function ShowMoneyPopup(kind, bankType)
 end
 
 local function HideMoneyPopup()
-    StaticPopup_Hide("H3z0UI_BANK_MONEY")
+    if H3z0UI_HidePopup then H3z0UI_HidePopup() end
 end
 
 local function ApplyTabHover(bagID)
@@ -603,6 +592,7 @@ local function EnsureWindow()
     sort:SetScript("OnLeave", function() GameTooltip:Hide() end)
     sort:Hide()
     win._sortBtn = sort
+    Bags.Chassis.RegisterAltButton(sort)
 
     win._ownerSelect = Bags.OwnerSelect.Attach(win, {
         title = ns.L["Characters"],
@@ -682,12 +672,18 @@ local function RenderBankTypeSegment()
     return totalW + SEGMENT_GAP
 end
 
-local function HideAllGridButtons()
-    for _, byBag in pairs(liveButtons) do
-        for _, btn in pairs(byBag) do btn:Hide() end
-    end
-    for _, byBag in pairs(cachedButtons) do
-        for _, btn in pairs(byBag) do btn:Hide() end
+-- Each refresh marks the buttons it places; only the ones it didn't place are
+-- hidden afterwards. (Hiding every button and showing it again on each refresh
+-- cancelled a click that was in progress, so items couldn't be picked up while
+-- the bank kept refreshing.)
+local placePass = 0
+local function HideUnplacedGridButtons()
+    for _, pool in ipairs({ liveButtons, cachedButtons }) do
+        for _, byBag in pairs(pool) do
+            for _, btn in pairs(byBag) do
+                if btn._h3zPass ~= placePass and btn:IsShown() then btn:Hide() end
+            end
+        end
     end
 end
 
@@ -718,11 +714,24 @@ local function AcquireGridButton(bagID, slot)
     return btn
 end
 
-local function PlaceGridButton(bagID, slot, entry, x, y, snappedSize)
+local function PlaceGridButton(bagID, slot, entry, x, y, snappedSize, anchor, cell)
     local btn = AcquireGridButton(bagID, slot)
-    btn:SetSize(snappedSize, snappedSize)
-    btn:ClearAllPoints()
-    btn:SetPoint("TOPLEFT", win._body, "TOPLEFT", x, y)
+    anchor = anchor or win._body
+    if not liveMode and btn:GetParent() ~= anchor then btn:SetParent(anchor) end
+    if btn._h3zAnchor ~= anchor then btn._h3zAnchor = anchor; btn._h3zX = nil end
+    if liveMode and anchor ~= win._body and not btn._h3zPinHooked and Bags.InventoryView and Bags.InventoryView.HookButton then
+        Bags.InventoryView.HookButton(btn, BANK_CTX)
+    end
+    btn._h3zPass = placePass
+    if btn._h3zSize ~= snappedSize then
+        btn._h3zSize = snappedSize
+        btn:SetSize(snappedSize, snappedSize)
+    end
+    if btn._h3zX ~= x or btn._h3zY ~= y then
+        btn._h3zX, btn._h3zY = x, y
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", anchor, "TOPLEFT", x, y)
+    end
     local result = nil
     if matcher then
         local details = Bags.Details.Build(entry)
@@ -733,11 +742,20 @@ local function PlaceGridButton(bagID, slot, entry, x, y, snappedSize)
             result = false
         end
     end
+    -- category layout: identical items share one button (show the total) and the free
+    -- slots are one button with their number
+    if entry and cell and cell._groupCount then
+        local copy = {}
+        for k, v in pairs(entry) do copy[k] = v end
+        copy.count = cell._groupCount
+        entry = copy
+    end
     if liveMode then
         Bags.ItemButtons.Dress(btn, entry, result)
     else
         Bags.ItemButtons.DressCached(btn, entry, result)
     end
+    if cell and cell._freeCount then Bags.ItemButtons.SetFreeCount(btn, cell._freeCount) end
     Bags.ItemButtons.SetFocusFlash(btn,
         focusItemID ~= nil and entry ~= nil and entry.itemID == focusItemID)
     Bags.ItemButtons.SetBagHighlight(btn,
@@ -886,11 +904,15 @@ function BankWindow.Refresh()
     end
     local stripW = RenderTabStrip(tabs)
 
-    if liveMode then
+    local bs = GetSettings and GetSettings()
+    local wantSort = not (bs and bs.behavior and bs.behavior.showSortButton == false)
+    if liveMode and wantSort then
         local sr, sg, sb, sa = Helpers.GetWindowColors()
         UIKit.UpdateBorderLines(win._sortBtn, 1, sr, sg, sb, 0.35 * sa)
+        win._sortBtn:SetWidth(18)
         win._sortBtn:Show()
     else
+        win._sortBtn:SetWidth(0.1)
         win._sortBtn:Hide()
     end
     win._ownerSelect:Update()
@@ -907,11 +929,64 @@ function BankWindow.Refresh()
     end
 
     local selectedBagID = GetSelectedBagID()
-    HideAllGridButtons()
+    placePass = placePass + 1
     local cols = appearance.bankColumns or appearance.columns
     local pending = {}
     local gridW, gridH
-    if selectedBagID == "all" then
+    local invMode = appearance.layoutMode == "inventory" and appearance.bankInventory ~= false
+        and Bags.InventoryView ~= nil and not UsesPlayerBags()
+    local inv
+    bankInvOn = invMode
+    if invMode then
+        local cells = {}
+        for _, entry in ipairs(tabs) do
+            if not entry.purchase and not entry.all and (selectedBagID == "all" or entry.bagID == selectedBagID) then
+                local tr = GetTabRecord(entry.bagID)
+                for slot = 1, (tr and tr.size or 0) do
+                    cells[#cells + 1] = { bagID = entry.bagID, slot = slot, entry = tr.slots and tr.slots[slot] or nil }
+                end
+            end
+        end
+        local behavior = bs and bs.behavior
+        BANK_CTX.top = gridTop
+        -- Same items in the same slots with the same settings: the layout does not change, so
+        -- it is not worked out again (an item moving out of the bank changes it; counts, locks
+        -- and cooldowns do not). Only the buttons are redrawn.
+        local Cat = Bags.Categories
+        local sig = Bags.RefreshScope.LayoutSignature(cells, {
+            layoutMode = "inventory", withCounts = true, sortKey = behavior and behavior.sortKey,
+            sortReverse = behavior and behavior.sortReverse,
+            extra = table.concat({ Bags.InventoryView.Signature(BANK_CTX), Cat and Cat.Signature() or "",
+                tostring(activeBankType), tostring(selectedBagID), tostring(cols), tostring(snappedSize),
+                tostring(snappedGap), tostring(gridTop), liveMode and "L" or "C", tostring(viewedCharacter) }, ";"),
+        }, Bags.Details.Build)
+        local last = bankLayout
+        if last and last.sig == sig and last.win == win and last.inv then
+            inv = last.inv
+            local byKey = {}
+            for _, c in ipairs(cells) do byKey[c.bagID .. ":" .. c.slot] = c end
+            -- the new cells take the place of the old ones; merged totals and free-slot
+            -- numbers are still right (the counts are part of the signature)
+            local function swap(old)
+                local nc = byKey[old.bagID .. ":" .. old.slot]
+                if not nc then return old end
+                nc._groupCount, nc._freeCount = old._groupCount, old._freeCount
+                return nc
+            end
+            for _, p in ipairs(inv.placed) do p.cell = swap(p.cell) end
+            for _, p in ipairs(inv.mirrors) do p.cell = swap(p.cell) end
+            for _, sec in ipairs(inv.sections) do
+                for i, c in ipairs(sec.cells) do sec.cells[i] = swap(c) end
+            end
+        else
+            inv = Bags.InventoryView.Compute(win, cells,
+                { columns = cols, iconSize = snappedSize, spacing = snappedGap },
+                liveMode, { key = behavior and behavior.sortKey, reverse = behavior and behavior.sortReverse },
+                Bags.Details.Build, BANK_CTX)
+            bankLayout = { sig = sig, inv = inv, win = win }
+        end
+        gridW, gridH = inv.contentW, inv.contentH
+    elseif selectedBagID == "all" then
         local cells = {}
         for _, entry in ipairs(tabs) do
             if not entry.purchase and not entry.all then
@@ -971,12 +1046,48 @@ function BankWindow.Refresh()
 
     local finalW = math.max(gridW, stripW, segmentW, headerMinW, bagWidth)
     local xOff = 0
-    if finalW > gridW and gridW > 0 then
+    if finalW > gridW and gridW > 0 and not invMode then
         xOff = (finalW - gridW) / 2
         if px and px > 0 then xOff = math.floor(xOff / px + 0.5) * px end
     end
-    for _, pl in ipairs(pending) do
-        PlaceGridButton(pl.bagID, pl.slot, pl.entry, pl.x + xOff, pl.y, snappedSize)
+    local anchor = (invMode and inv and inv.anchor) or win._body
+    -- the live item holders move into the scrolling area (and back); the game does not allow
+    -- that in combat, so a bank opened in combat keeps what it shows until combat ends
+    local blocked = false
+    if liveMode then
+        for _, holder in pairs(liveHolders) do
+            if holder:GetParent() ~= anchor then
+                if InCombatLockdown() then blocked = true
+                else
+                    holder:SetParent(anchor)
+                    holder:ClearAllPoints()
+                    holder:SetAllPoints(anchor)
+                end
+            end
+        end
+    end
+    if blocked then return end
+    if invMode and inv then
+        for _, p in ipairs(inv.placed) do
+            local c = p.cell
+            -- the live holder of a bag that has no button yet is made on the first placement below
+            PlaceGridButton(c.bagID, c.slot, c.entry, p.x, p.y, snappedSize, anchor, c)
+        end
+    else
+        bankLayout = nil
+        if Bags.InventoryView and Bags.InventoryView.HideAll then Bags.InventoryView.HideAll(win) end
+        for _, pl in ipairs(pending) do
+            PlaceGridButton(pl.bagID, pl.slot, pl.entry, pl.x + xOff, pl.y, snappedSize, anchor)
+        end
+    end
+    HideUnplacedGridButtons()
+    if invMode and inv then
+        Bags.InventoryView.Finish(win, inv, liveMode, function(cell)
+            if not matcher or not cell or not cell.entry then return nil end
+            local details = Bags.Details.Build(cell.entry)
+            if not details then return false end
+            return matcher(details) ~= false
+        end)
     end
     win:SetContentSize(finalW, gridTop + gridH)
 

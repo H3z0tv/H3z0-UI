@@ -1,0 +1,10 @@
+## Interface: 11509
+## Title: |cFF30D1FFH3z0 UI|r Tidecaller
+## Notes: Helper for the Underlight Angler fishing rod. Retail only: it does nothing in the Classic games.
+## Author: H3z0
+## Version: 0.28.2
+## Category: User Interface
+## Group: H3z0UI
+## Dependencies: H3z0UI
+## IconTexture: Interface\AddOns\H3z0UI\assets\icon
+## LoadOnDemand: 1

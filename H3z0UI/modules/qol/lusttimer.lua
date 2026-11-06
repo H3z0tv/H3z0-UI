@@ -75,6 +75,7 @@ end
 
 local function CreateTimerFrame()
     if State.frame then return end
+    if ns.Client and ns.Client.hasAuraContainers == false then return end
 
     local frame = CreateFrame("Frame", "H3z0UI_LustTimer", UIParent)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, -120)
@@ -150,6 +151,7 @@ local function RefreshLustTimer()
     if not settings then return end
 
     local frame = State.frame
+    if not frame then return end
     frame:SetSize(settings.width or 160, settings.height or 22)
     if not (_G.H3z0UI_HasFrameAnchor and _G.H3z0UI_HasFrameAnchor("lustTimer")) then
         frame:ClearAllPoints()

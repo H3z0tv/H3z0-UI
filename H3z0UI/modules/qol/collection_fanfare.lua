@@ -1,6 +1,12 @@
 local ADDON_NAME, ns = ...
 local Helpers = ns.Helpers
 
+-- H3z0 UI: turned off. Clearing collection fanfares / the micro button alert
+-- from addon code makes the Collections window (Toy Box) run as H3z0 UI code,
+-- so Blizzard blocks toys ("H3z0UI tried to call the protected function UseToy()").
+ns.RefreshCollectionFanfare = function() end
+do return end
+
 local GetSettings = Helpers.CreateDBGetter("general")
 
 local function Enabled()

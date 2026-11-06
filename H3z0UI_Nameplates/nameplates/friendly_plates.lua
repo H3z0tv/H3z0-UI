@@ -14,6 +14,7 @@ ns.H3z0FriendlyPlates = FP
 
 local CVAR_NPC = "nameplateShowFriendlyNPCs"
 local CVAR_PLAYER = "nameplateShowFriendlyPlayers"
+local CVAR_FRIENDS = "nameplateShowFriends"
 
 local function Settings()
     local core = ns.Addon
@@ -65,6 +66,13 @@ function FP.Apply()
     if s.hideFriendlyPlayerNameplates ~= nil then
         Set(CVAR_PLAYER, s.hideFriendlyPlayerNameplates and "0" or "1")
     end
+    -- Forever / Classic: the game has one more switch in front of both ("show friendly nameplates",
+    -- Shift+V) and it is off by default there, so no friendly plate is shown at all. It is turned on
+    -- unless friendly players are hidden and friendly NPCs are off.
+    if ns.Client and ns.Client.isLegacy and Get(CVAR_FRIENDS) ~= nil then
+        local want = not (s.hideFriendlyPlayerNameplates == true and mode == "off")
+        Set(CVAR_FRIENDS, want and "1" or "0")
+    end
     applying = false
 end
 _G.H3z0UI_ApplyFriendlyPlates = FP.Apply
@@ -81,7 +89,7 @@ ev:SetScript("OnEvent", function(_, event, name)
     if event == "CVAR_UPDATE" then
         if applying or type(name) ~= "string" then return end
         local lower = name:lower()
-        if lower ~= CVAR_NPC:lower() and lower ~= CVAR_PLAYER:lower() then return end
+        if lower ~= CVAR_NPC:lower() and lower ~= CVAR_PLAYER:lower() and lower ~= CVAR_FRIENDS:lower() then return end
     end
     -- after the game and other addons have set theirs
     C_Timer.After(event == "PLAYER_ENTERING_WORLD" and 2 or 0.1, FP.Apply)

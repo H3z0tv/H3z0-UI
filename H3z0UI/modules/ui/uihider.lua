@@ -171,7 +171,21 @@ local function IsInDelveOrScenario()
     return false
 end
 
+-- the H3z0 M+ timer replaces the quest tracker in Mythic dungeons (option on the
+-- M+ timer page: Hide Quest Tracker in Mythic Dungeons, on by default)
+local function TimerTakesOverTracker()
+    local core = Helpers.GetCore and Helpers.GetCore()
+    local m = core and core.db and core.db.profile and core.db.profile.mplusTimer
+    if not (m and m.enabled and m.hideObjectiveTracker ~= false) then return false end
+    -- from the moment you enter a Mythic dungeon (Mythic 0 before the key, Mythic+ once it runs)
+    local _, instanceType, difficulty = GetInstanceInfo()
+    if instanceType ~= "party" then return false end
+    if difficulty == 8 or difficulty == 23 then return true end
+    return C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive() or false
+end
+
 local function ShouldHideObjectiveTracker(s)
+    if TimerTakesOverTracker() then return true end
     local wouldHide = s.hideObjectiveTrackerAlways
         or ShouldHideInCurrentInstance(s.hideObjectiveTrackerInstanceTypes)
 
@@ -213,7 +227,73 @@ local function SetMinimapBorderHidden(hidden)
     end
 end
 
+---------------------------------------------------------------------------
+-- Error / info messages (the red and yellow text in the middle of the
+-- screen). Kept off all the time while the option is on: also in combat,
+-- in Edit Mode and when something registers the events again. Messages
+-- added straight to the frame (not through the events) are cleared too.
+---------------------------------------------------------------------------
+local errFilterHooked = false
+local function MessagesOff()
+    local s = GetSettings()
+    return s and s.hideErrorMessages == true, s and s.hideInfoMessages == true
+end
+
+local function ApplyMessageFilter()
+    local f = UIErrorsFrame
+    if not f then return end
+    local hideErrors, hideInfo = MessagesOff()
+    if hideErrors then f:UnregisterEvent("UI_ERROR_MESSAGE") else f:RegisterEvent("UI_ERROR_MESSAGE") end
+    if hideInfo then f:UnregisterEvent("UI_INFO_MESSAGE") else f:RegisterEvent("UI_INFO_MESSAGE") end
+    if hideErrors and hideInfo then f:SetAlpha(0) else f:SetAlpha(1) end
+
+    if errFilterHooked then return end
+    errFilterHooked = true
+    -- something registers the events again: take them off again right away
+    hooksecurefunc(f, "RegisterEvent", function(self, event)
+        local he, hi = MessagesOff()
+        if (event == "UI_ERROR_MESSAGE" and he) or (event == "UI_INFO_MESSAGE" and hi) then
+            self:UnregisterEvent(event)
+        end
+    end)
+    -- a message still got through the event: clear it at once
+    f:HookScript("OnEvent", function(self, event)
+        local he, hi = MessagesOff()
+        if (event == "UI_ERROR_MESSAGE" and he) or (event == "UI_INFO_MESSAGE" and hi) then
+            self:Clear()
+        end
+    end)
+    -- any red text that still lands on the frame (whatever path it took): cleared at once.
+    -- Red = an error message; yellow / white info text is left alone unless that is off too.
+    hooksecurefunc(f, "AddMessage", function(self, _, r, g, b)
+        local he, hi = MessagesOff()
+        if not (he or hi) then return end
+        local okc, isRed = pcall(function()
+            return type(r) == "number" and type(g) == "number" and r > 0.8 and g < 0.4
+        end)
+        if not okc then isRed = he end -- colour can't be read: treat as an error message
+        if (isRed and he) or (not isRed and hi) then
+            self:Clear()
+        end
+    end)
+    -- errors added by other code (for example "You are in combat" from Blizzard's own UI)
+    if f.AddExternalErrorMessage then
+        hooksecurefunc(f, "AddExternalErrorMessage", function(self)
+            local he = MessagesOff()
+            if he then self:Clear() end
+        end)
+    end
+    if f.AddExternalWarningMessage then
+        hooksecurefunc(f, "AddExternalWarningMessage", function(self)
+            local he = MessagesOff()
+            if he then self:Clear() end
+        end)
+    end
+end
+_G.H3z0UI_ApplyMessageFilter = ApplyMessageFilter
+
 local function ApplyHideSettings()
+    pcall(ApplyMessageFilter)
     local settings = GetSettings()
     if not settings then
         return
@@ -558,30 +638,9 @@ local function ApplyHideSettings()
     end
 
     if UIErrorsFrame then
-        local hideErrors = settings.hideErrorMessages
-        local hideInfo = settings.hideInfoMessages
-
-        if hideErrors and hideInfo then
-            UIErrorsFrame:Hide()
-            UIErrorsFrame:EnableMouse(false)
-            UIErrorsFrame:UnregisterEvent("UI_ERROR_MESSAGE")
-            UIErrorsFrame:UnregisterEvent("UI_INFO_MESSAGE")
-        else
-            UIErrorsFrame:Show()
-            UIErrorsFrame:EnableMouse(false)
-
-            if hideErrors then
-                UIErrorsFrame:UnregisterEvent("UI_ERROR_MESSAGE")
-            else
-                UIErrorsFrame:RegisterEvent("UI_ERROR_MESSAGE")
-            end
-
-            if hideInfo then
-                UIErrorsFrame:UnregisterEvent("UI_INFO_MESSAGE")
-            else
-                UIErrorsFrame:RegisterEvent("UI_INFO_MESSAGE")
-            end
-        end
+        UIErrorsFrame:Show()
+        UIErrorsFrame:EnableMouse(false)
+        pcall(ApplyMessageFilter)
     end
 
     if WorldMapFrame and WorldMapFrame.BlackoutFrame and not InCombatLockdown() then
@@ -625,7 +684,7 @@ eventFrame:RegisterEvent("CHALLENGE_MODE_START")
 eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
 eventFrame:RegisterEvent("SCENARIO_UPDATE")
 eventFrame:RegisterEvent("SCENARIO_COMPLETED")
-eventFrame:RegisterEvent("ACTIVE_DELVE_DATA_UPDATE")
+H3z0UI_SafeRegisterEvent(eventFrame, "ACTIVE_DELVE_DATA_UPDATE")
 eventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
 eventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
 if C_PetBattles then
@@ -797,17 +856,6 @@ local function ShowAllHiddenForEditMode()
         end
     end
 
-    if UIErrorsFrame then
-        if settings.hideErrorMessages and settings.hideInfoMessages then
-            UIErrorsFrame:Show()
-        end
-        if settings.hideErrorMessages then
-            UIErrorsFrame:RegisterEvent("UI_ERROR_MESSAGE")
-        end
-        if settings.hideInfoMessages then
-            UIErrorsFrame:RegisterEvent("UI_INFO_MESSAGE")
-        end
-    end
 end
 
 C_Timer.After(1.5, function()

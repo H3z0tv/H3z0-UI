@@ -20,8 +20,24 @@ function ItemInfo.GetDerived(itemID)
     return rec
 end
 
+-- how often one item was asked for lately (an item whose slot never gets a
+-- quality, e.g. while it sits on the cursor, must not be loaded over and over:
+-- every load result re-scanned the bank, which re-asked, every frame)
+local recentLoads = {}
+local LOAD_WINDOW, LOAD_MAX = 10, 2
+
 function ItemInfo.RequestLoad(itemID, callback)
     if not itemID then return end
+    -- the data is already here: loading it again changes nothing
+    if C_Item.IsItemDataCachedByID and C_Item.IsItemDataCachedByID(itemID) then return end
+    local now = GetTime and GetTime() or 0
+    local r = recentLoads[itemID]
+    if r and now - r.t < LOAD_WINDOW then
+        if r.n >= LOAD_MAX and not pendingLoads[itemID] then return end
+        r.n = r.n + 1
+    else
+        recentLoads[itemID] = { t = now, n = 1 }
+    end
     local list = pendingLoads[itemID]
     if list then
         list[#list + 1] = callback

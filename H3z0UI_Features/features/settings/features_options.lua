@@ -160,7 +160,7 @@ local function RefreshAllLook()
     for _, name in ipairs({
         "H3z0UI_RefreshUnitFrames", "H3z0UI_RefreshModernLook", "H3z0UI_RefreshWindowSkins",
         "H3z0UI_ApplyModernButtons", "H3z0UI_RefreshMinimapShape", "H3z0UI_RefreshPartyFrames",
-        "H3z0UI_RefreshCharacterV2", "H3z0UI_RefreshPlates",
+        "H3z0UI_RefreshCharacterV2", "H3z0UI_RefreshPlates", "H3z0UI_RefreshGirly", "H3z0UI_RefreshInfoBar",
     }) do
         local fn = _G[name]
         if fn then pcall(fn) end
@@ -224,10 +224,60 @@ local function BuildLookInto(holder, firstBuild)
             if core and core.SetAllFonts then pcall(core.SetAllFonts, core, db.general.font) end
             if core and core.ApplyGlobalFont then pcall(core.ApplyGlobalFont, core) end
             RefreshAllLook()
-            if ns.ShowPopup and ns.Popups and ns.Popups["H3Z0UI_FONT_RELOAD"] then
-                ns.ShowPopup("H3Z0UI_FONT_RELOAD", db.general.font)
+            -- every module that draws text picks up the new font
+            for _, fn in ipairs({ "H3z0UI_RefreshUnitFrames", "H3z0UI_RefreshPartyFrames", "H3z0UI_RefreshRaidFrames",
+                "H3z0UI_RefreshNameplates", "H3z0UI_RefreshMinimap", "H3z0UI_RefreshInfoBar", "H3z0UI_RefreshActionBars",
+                "H3z0UI_RefreshNCDM", "H3z0UI_RefreshCustomTrackers", "H3z0UI_RefreshHoverName", "H3z0UI_RefreshBottomBar",
+                "H3z0UI_RefreshObjectiveTracker", "H3z0UI_RefreshDatatexts" }) do
+                local f = _G[fn]
+                if type(f) == "function" then pcall(f) end
+            end
+            -- a few parts (Blizzard's own fonts, chat) take a new font only after a reload
+            if GUI and GUI.ShowConfirmation then
+                GUI:ShowConfirmation({
+                    reload = true,
+                    title = "Font changed",
+                    message = "The new font is used everywhere now. Reload so the last parts take it too?",
+                    acceptText = "Reload",
+                    cancelText = "Later",
+                    onAccept = function() if H3z0UI and H3z0UI.SafeReload then H3z0UI:SafeReload() else ReloadUI() end end,
+                })
             end
         end)
+    end
+
+    -- Girly Look: pastel backgrounds with a soft pattern (every version) ----
+    local G = ns.H3z0Girly
+    local gs = G and G.GetSettings and G.GetSettings()
+    if gs then
+        b.Section("Girly Look")
+        b.Info("Soft pastel pink backgrounds with flowers (or hearts, sparkles, polka dots, bows) behind the action bars. The chat, damage meter and Bottom Bar can get it too: pick them under Where.", 34)
+        local preview, customPicker
+        local function Changed()
+            if G.Apply then G.Apply() end
+            if preview and preview.Refresh then preview.Refresh() end
+        end
+        b.Check("Girly Look", "enabled", gs, Changed)
+        preview = G.CreatePreview(holder)
+        if preview then b.Place(preview, 112) end
+        b.Drop("Colours", G.PaletteOptions(), "palette", gs, function()
+            Changed()
+            if customPicker and customPicker.SetEnabled then customPicker:SetEnabled(gs.palette == "custom") end
+        end)
+        customPicker = b.Place(GUI:CreateFormColorPicker(holder, "Custom Colour", "custom", gs, Changed, { noAlpha = true }))
+        if customPicker.SetEnabled then customPicker:SetEnabled(gs.palette == "custom") end
+        b.Drop("Pattern", G.PatternOptions(), "pattern", gs, Changed)
+        b.Slider("Pattern Strength", 0, 1, 0.05, "patternAlpha", gs, Changed, { live = true })
+        b.Slider("Pattern Size", 0.4, 2, 0.05, "patternScale", gs, Changed, { live = true })
+        b.Slider("Background Opacity", 0.2, 1, 0.05, "fillAlpha", gs, Changed, { live = true })
+        b.Slider("Background Lightness (dark to pastel)", 0, 1, 0.05, "lightness", gs, Changed, { live = true })
+        b.Check("Coloured Border", "border", gs, Changed)
+        b.Sub("Where")
+        b.Check("Action Bars", "actionBars", gs, Changed)
+        b.Check("Chat", "chat", gs, Changed)
+        b.Check("Damage Meter", "damageMeter", gs, Changed)
+        b.Check("Bottom Bar", "bottomBar", gs, Changed)
+        b.Info("Toggle it any time with /h3z0ui girly.", 22)
     end
 
     local NP = ns.H3zPlates
@@ -332,6 +382,7 @@ local function BuildLook(tabContent)
         holder:SetPoint("TOPRIGHT", 0, 0)
         holder.h3zRebuild = Rebuild
         local ok, h = pcall(BuildLookInto, holder, first)
+        if not ok and geterrorhandler then geterrorhandler()(h) end
         GUI._suppressSearchRegistration = false
         first = false
         h = (ok and h) or 600
@@ -390,42 +441,6 @@ local function BuildStreamer(tabContent)
 end
 
 ---------------------------------------------------------------------------
--- MAP
----------------------------------------------------------------------------
-local function BuildMap(tabContent)
-    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 6, subTabName = "Map"})
-    local b = Builder(tabContent)
-    local db = Shared.GetDB()
-    local mm = db and db.minimap
-    if not mm then
-        b.Info("Minimap settings are not loaded.")
-        b.Finish()
-        return
-    end
-
-    b.Section("Map Coordinates")
-    b.Check("Show Coordinates", "showCoords", mm, RefreshMinimap)
-    b.Drop("Precision", {
-        { value = "%d,%d", text = "Normal (45,62)" },
-        { value = "%.1f,%.1f", text = "High (45.3,62.1)" },
-        { value = "%.2f,%.2f", text = "Very High (45.31,62.08)" },
-    }, "coordPrecision", mm, RefreshMinimap)
-    if mm.coordsConfig then
-        local cc = mm.coordsConfig
-        b.Slider("Horizontal Offset", -300, 300, 1, "offsetX", cc, RefreshMinimap)
-        b.Slider("Vertical Offset", -300, 300, 1, "offsetY", cc, RefreshMinimap)
-        b.Slider("Text Size", 8, 24, 1, "fontSize", cc, RefreshMinimap)
-        b.Drop("Text Alignment", {
-            { value = "LEFT", text = "Left" }, { value = "CENTER", text = "Center" }, { value = "RIGHT", text = "Right" },
-        }, "align", cc, RefreshMinimap)
-        b.Check("Use Class Color", "useClassColor", cc, RefreshMinimap)
-    end
-    b.Info("Drag the coordinates in Layout Mode. More minimap options: Minimap & Datatext.", 22)
-
-    b.Finish()
-end
-
----------------------------------------------------------------------------
 -- EXTRAS
 ---------------------------------------------------------------------------
 local function BuildExtras(tabContent)
@@ -437,6 +452,40 @@ local function BuildExtras(tabContent)
     if pf then
         b.Section("Party")
         b.Info("Ready check ticks show on the party frame portraits (green = ready, red = not ready) and fade out after the check. Blizzard's raid manager tab on the left edge is hidden in a party when \"Hide Blizzard Party Frames\" is on (Party Frames page).", 46)
+    end
+
+    if db and not (ns.Client and (ns.Client.isClassic or ns.Client.isForever)) then
+        db.h3zGroupTools = db.h3zGroupTools or {}
+        local gt = db.h3zGroupTools
+        if gt.keystoneButtons == nil then gt.keystoneButtons = true end
+        if gt.sortApplicants == nil then gt.sortApplicants = true end
+        if gt.applicantFlags == nil then gt.applicantFlags = true end
+        if gt.pullSeconds == nil then gt.pullSeconds = 10 end
+        b.Section("Mythic+ Groups")
+        b.Check("Ready Check and Pull Timer Buttons on the Keystone Window", "keystoneButtons", gt, function()
+            if _G.H3z0UI_RefreshKeystoneButtons then _G.H3z0UI_RefreshKeystoneButtons() end
+        end)
+        b.Slider("Pull Timer (seconds)", 3, 20, 1, "pullSeconds", gt, function() if _G.H3z0UI_RefreshKeystoneButtons then _G.H3z0UI_RefreshKeystoneButtons() end end)
+        b.Info("Left button: ready check. Right button: pull timer. Group leader or assistant only.", 22)
+        b.Check("Sort Applicants by Mythic+ Rating", "sortApplicants", gt)
+        b.Check("Realm Language Flags Next to Applicants", "applicantFlags", gt)
+        b.Info("In your Premade Groups listing the applicants with the highest rating come first, and a small flag shows the language of each player's realm (hover it for the name).", 34)
+    end
+
+    local MT = ns.H3z0MapTools
+    local mt = MT and MT.Settings and MT.Settings()
+    if mt then
+        local function RefreshMT() if MT.Apply then MT.Apply() end end
+        b.Section("Map")
+        b.Check("Waypoints (/way)", "waypoints", mt, RefreshMT)
+        b.Info("/way 45.2 62.1 Mailbox, /way Elwynn Forest 42 65 Inn or /way #1453 60 70 prints a link; click it to set the map pin. You get a message when you arrive. /way clear forgets them. If another addon already has /way, use /h3way.", 46)
+        if ns.Client and ns.Client.isForever then
+            b.Check("Show Unexplored Areas on the World Map", "reveal", mt, RefreshMT)
+            b.Place(GUI:CreateFormColorPicker(tabContent, "Unexplored Area Colour", "revealColor", mt, RefreshMT))
+            b.Check("Zone Levels on the World Map", "zoneLevels", mt, RefreshMT)
+            b.Check("Fishing Skill on the World Map", "fishing", mt, RefreshMT)
+            b.Info("Hover a zone on a continent map to see its level range; the fishing skill it needs shows under it (red: too low, yellow: some fish get away, green: none do).", 34)
+        end
     end
 
     b.Section("WoW: Forever")
@@ -457,7 +506,7 @@ local function BuildExtras(tabContent)
     end)
 
     b.Section("Chat Commands")
-    b.Info("/h3z0ui layout  -  Layout Mode\n/h3z0ui frames  -  drag the H3z0 unit frames\n/h3z0ui party  /  raid  -  party / raid frame preview\n/h3z0ui style  -  Frame Style on/off\n/h3z0ui modern  -  Modern Look on/off\n/h3z0ui bars  -  Compact Action Bars on/off\n/h3z0ui controller  -  PC Controller on/off\n/h3z0ui pchandheld  -  PC Handheld on/off\n/h3z0ui deck  -  Handheld Mode on/off\n/h3z0ui streamer  -  Streamer Mode on/off\n/h3z0ui plates  -  H3z0 Nameplates on/off\n/h3z0ui whatsnew  -  What's New window\n/h3z0ui setup  -  Setup Wizard", 180, C.text)
+    b.Info("/h3z0ui layout  -  Layout Mode\n/h3z0ui frames  -  drag the H3z0 unit frames\n/h3z0ui party  /  raid  -  party / raid frame preview\n/h3z0ui style  -  Frame Style on/off\n/h3z0ui modern  -  Modern Look on/off\n/h3z0ui bars  -  Compact Action Bars on/off\n/h3z0ui controller  -  PC Controller on/off\n/h3z0ui pchandheld  -  PC Handheld on/off\n/h3z0ui deck  -  Handheld Mode on/off\n/h3z0ui streamer  -  Streamer Mode on/off\n/h3z0ui girly  -  Girly Look on/off\n/h3z0ui plates  -  H3z0 Nameplates on/off\n/h3z0ui whatsnew  -  What's New window\n/h3z0ui setup  -  Setup Wizard", 192, C.text)
 
     b.Finish()
 end
@@ -474,11 +523,10 @@ local function CreateFeaturesPage(parent)
     local scroll, content = Shared.CreateScrollableContent(parent)
     GUI:CreateSubTabs(content, {
         { name = "UI Look", builder = BuildLook },
-        { name = "Combat Mode", builder = function(c) Sub(ns.H3z0UI_CombatModeOptions, "BuildCombatModeTab", c) end },
+        { name = "True Reticle", builder = function(c) Sub(ns.H3z0UI_CombatModeOptions, "BuildCombatModeTab", c) end },
         { name = "Bottom Bar", builder = function(c) Sub(ns.H3z0UI_BottomBarOptions, "BuildBottomBarTab", c) end },
         { name = "Steam Deck + PC Controller", builder = function(c) Sub(ns.H3z0UI_HandheldOptions, "BuildHandheldTab", c) end },
         { name = "Layout & Bars", builder = BuildLayout },
-        { name = "Map", builder = BuildMap },
         { name = "Extras", builder = BuildExtras },
     })
     content:SetHeight(600)
@@ -490,7 +538,6 @@ ns.H3z0UI_FeaturesOptions = {
     BuildPortraits = BuildPortraits,   -- shown as Unit Frames > Portraits
     BuildLook = BuildLook,
     BuildLayout = BuildLayout,
-    BuildMap = BuildMap,
     BuildExtras = BuildExtras,
     BuildStreamer = BuildStreamer,
 }

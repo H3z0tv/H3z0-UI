@@ -615,6 +615,9 @@ local function SkinLFGListFrame()
         if av.RefreshButton then
             SkinBase.SkinButton(av.RefreshButton, { font = true })
         end
+        if av.BrowseGroupsButton then
+            SkinBase.SkinButton(av.BrowseGroupsButton, { font = true })
+        end
         if av.RemoveEntryButton then
             SkinBase.SkinButton(av.RemoveEntryButton, { font = true })
         end

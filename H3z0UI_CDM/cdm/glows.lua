@@ -150,9 +150,48 @@ end
 -- ======================================================
 -- LibCustomGlow application (supports 3 glow types)
 -- ======================================================
+-- the same glow as the action bars (source, style and colour from Action Bars >
+-- Skins & Glows; the colour follows the theme unless a custom colour is set)
+local _abOpts, _abTheme = {}, {}
+local function ActionBarGlowOpts()
+    local core = Helpers and Helpers.GetCore and Helpers.GetCore()
+    local p = core and core.db and core.db.profile
+    local g = p and p.actionBars and p.actionBars.global
+    _abOpts.source = (g and g.glowSource) or "H3z0UI"
+    _abOpts.style = (g and g.glowStyle) or "Button"
+    local color = g and g.glowColor
+    if not (g and g.glowColorSource == "custom") and Helpers and Helpers.GetSkinAccentColor then
+        local r, gg, b = Helpers.GetSkinAccentColor()
+        if r then
+            _abTheme[1], _abTheme[2], _abTheme[3], _abTheme[4] = r, gg, b, 1
+            color = _abTheme
+        end
+    end
+    _abOpts.color = color
+    _abOpts.lines = g and g.glowLines or nil
+    _abOpts.frequency = g and g.glowFrequency or nil
+    _abOpts.length = (g and g.glowLength and g.glowLength > 0) and g.glowLength or nil
+    _abOpts.thickness = g and g.glowThickness or nil
+    _abOpts.particles = g and g.glowParticles or nil
+    _abOpts.scale = g and g.glowScale or nil
+    return _abOpts
+end
+
+local function MatchActionBars()
+    local s = GetSettings()
+    return ns.IconGlow and not (s and s.matchActionBars == false)
+end
+
 local function ApplyLibCustomGlow(icon, viewerSettings)
-    if not LCG then return false end
     if not icon then return false end
+    if MatchActionBars() then
+        StopGlow(icon)
+        ns.IconGlow.Start(icon, ActionBarGlowOpts())
+        icon._H3z0UICustomGlowActive = true
+        activeGlowIcons[icon] = true
+        return true
+    end
+    if not LCG then return false end
 
     local glowType = viewerSettings.glowType
     local color = viewerSettings.color
@@ -224,6 +263,7 @@ end
 function StopGlow(icon)
     if not icon then return end
 
+    if ns.IconGlow then pcall(ns.IconGlow.Stop, icon) end
     -- Stop LibCustomGlow effects
     if LCG then
         pcall(LCG.PixelGlow_Stop, icon, "_H3z0UICustomGlow")

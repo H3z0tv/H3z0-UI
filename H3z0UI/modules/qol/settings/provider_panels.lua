@@ -1086,6 +1086,10 @@ ProviderPanels:RegisterAfterLoad(function(ctx)
         s2.AddRow(row(s2.frame, ns.L["Show Guild Rank"], guildRankW), row(s2.frame, ns.L["Color Guild Names"], guildColorW))
         L.closeSection(s2)
 
+        if ns.H3z0UI_TooltipExtras and ns.H3z0UI_TooltipExtras.BuildSettings then
+            ns.H3z0UI_TooltipExtras.BuildSettings(L, tooltip, row, RefreshTooltips, RefreshTooltipSkin)
+        end
+
         L.headerAt(ns.L["Player Item Level"])
         local s3 = L.sectionAt()
 

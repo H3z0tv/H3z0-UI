@@ -134,9 +134,12 @@ local FramePoolResetter = function(framePool,frame)
     frame:Hide()
     frame:ClearAllPoints()
 end
+-- (the Classic games don't have this template)
+local RESTRICTED_TEMPLATE = (not _G.H3z0UI_TemplateExists or _G.H3z0UI_TemplateExists("DisableUntrustedLayoutScriptsTemplate"))
+    and "DisableUntrustedLayoutScriptsTemplate" or nil
 local GlowFramePool = CreateFramePool("Frame",GlowParent,nil,FramePoolResetter)
 local RestrictedGlowFramePool = CreateFramePool(
-    "Frame", GlowParent, "DisableUntrustedLayoutScriptsTemplate", FramePoolResetter)
+    "Frame", GlowParent, RESTRICTED_TEMPLATE, FramePoolResetter)
 lib.GlowFramePool = GlowFramePool
 lib.RestrictedGlowFramePool = RestrictedGlowFramePool
 
@@ -495,7 +498,7 @@ local function ButtonGlowResetter(framePool,frame)
 end
 local ButtonGlowPool = CreateFramePool("Frame",GlowParent,nil,ButtonGlowResetter)
 local RestrictedButtonGlowPool = CreateFramePool(
-    "Frame", GlowParent, "DisableUntrustedLayoutScriptsTemplate", ButtonGlowResetter)
+    "Frame", GlowParent, RESTRICTED_TEMPLATE, ButtonGlowResetter)
 lib.ButtonGlowPool = ButtonGlowPool
 lib.RestrictedButtonGlowPool = RestrictedButtonGlowPool
 
@@ -819,7 +822,7 @@ end
 
 local ProcGlowPool = CreateFramePool("Frame", GlowParent, nil, ProcGlowResetter)
 local RestrictedProcGlowPool = CreateFramePool(
-    "Frame", GlowParent, "DisableUntrustedLayoutScriptsTemplate", ProcGlowResetter)
+    "Frame", GlowParent, RESTRICTED_TEMPLATE, ProcGlowResetter)
 lib.ProcGlowPool = ProcGlowPool
 lib.RestrictedProcGlowPool = RestrictedProcGlowPool
 

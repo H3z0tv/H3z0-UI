@@ -144,9 +144,7 @@ local function CreateLinkItemCompat(parent, label, url, iconR, iconG, iconB, ico
         button.text:SetPoint("RIGHT", button, "RIGHT", 0, 0)
     end
     button:SetScript("OnClick", function()
-        if StaticPopup_Show then
-            StaticPopup_Show("H3z0UI_COPY_TEXT", popupTitle or ns.L["Copy URL"], nil, url)
-        elseif url then
+        if url then
             print("|cFF30D1FFH3z0UI:|r " .. tostring(url))
         end
     end)

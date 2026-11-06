@@ -244,7 +244,8 @@ local function GetUnitClassColor(unit)
     local isPlayer = UnitIsPlayer(unit)
     if isPlayer then
         local _, class = UnitClass(unit)
-        if class then
+        -- the class can come back secret (a table cannot be indexed with it): use the reaction colour then
+        if class and not (_G.issecretvalue and _G.issecretvalue(class)) then
             local color = RAID_CLASS_COLORS[class]
             if color then
                 return color.r, color.g, color.b, 1
@@ -271,6 +272,20 @@ end
 -- HELPER: Get anchor point and justification for text
 -- Maps anchor setting to SetPoint anchor and JustifyH value
 ---------------------------------------------------------------------------
+-- the power bar under the health bar: full width of the frame, or a share of it (Power Bar Width)
+local function PlacePowerBar(bar, frame, settings, borderSize)
+    bar:ClearAllPoints()
+    local pct = tonumber(settings and settings.powerBarWidthPct) or 100
+    if pct >= 100 then
+        bar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", borderSize, borderSize)
+        bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize)
+    else
+        local w = math.max(8, ((frame:GetWidth() or 0) - 2 * borderSize) * math.max(pct, 10) / 100)
+        bar:SetPoint("BOTTOM", frame, "BOTTOM", 0, borderSize)
+        bar:SetWidth(w)
+    end
+end
+
 local function GetTextAnchorInfo(anchor)
     local anchorMap = {
         TOPLEFT     = { point = "TOPLEFT",     justify = "LEFT" },
@@ -903,6 +918,16 @@ local function UpdatePowerText(frame)
         return
     end
 
+    -- Forever / Classic: a unit without any resource (most beasts) shows no "0"
+    if ns.Client and ns.Client.isLegacy then
+        local okMax, pMax = pcall(UnitPowerMax, unit)
+        local secret = _G.issecretvalue and _G.issecretvalue(pMax)
+        if okMax and not secret and type(pMax) == "number" and pMax <= 0 then
+            frame.powerText:Hide()
+            return
+        end
+    end
+
     -- Get power percentage using API that handles secret values
     -- NOTE: Don't pass explicit powerType - let API use unit's primary power
     local powerPct = GetPowerPct(unit)
@@ -932,6 +957,11 @@ local function UpdatePowerText(frame)
             elseif settings.powerTextUsePowerColor then
                 -- Per-unit setting: Use power type color (mana blue, rage red, etc.)
                 local r, g, b = GetUnitPowerColor(unit)
+                -- dark mana blue is hard to read on the ground: lift the colour towards white
+                if type(r) == "number" and type(g) == "number" and type(b) == "number"
+                    and not (_G.issecretvalue and (_G.issecretvalue(r) or _G.issecretvalue(g) or _G.issecretvalue(b))) then
+                    r, g, b = r + (1 - r) * 0.5, g + (1 - g) * 0.5, b + (1 - b) * 0.5
+                end
                 frame.powerText:SetTextColor(r, g, b, 1)
             elseif settings.powerTextUseClassColor then
                 -- Per-unit setting: Use class/reaction color
@@ -1165,6 +1195,76 @@ end
 ---------------------------------------------------------------------------
 -- UPDATE: Name text (with truncation and inline ToT support)
 ---------------------------------------------------------------------------
+-- Level badge: on the portrait (bottom) when there is one, else at the left end of the frame.
+-- Colour = difficulty against your level; boss / skull = red "??". Target frame by default.
+local function UpdateLevel(frame)
+    local settings = GetUnitSettings(frame.unitKey)
+    local want = settings and settings.showLevel
+    if want == nil then want = (frame.unitKey == "target" or frame.unitKey == "player") end
+    local lv = frame.levelBadge
+    if not want or not frame.unit or not UnitExists(frame.unit) then
+        if lv then lv:Hide() end
+        return
+    end
+    if not lv then
+        lv = CreateFrame("Frame", nil, frame)
+        lv:SetFrameLevel(frame:GetFrameLevel() + 12)
+        lv:SetSize(24, 14)
+        lv.text = lv:CreateFontString(nil, "OVERLAY")
+        lv.text:SetPoint("CENTER", 0, 0)
+        frame.levelBadge = lv
+    end
+    lv.text:SetFont(GetFontPath(), 15, "THICKOUTLINE")
+    lv.text:SetShadowOffset(1, -1)
+    lv:ClearAllPoints()
+    -- the portrait you see: the round / square one of the frame style, else the plain one
+    local pic = (frame.h3zRound and frame.h3zRound:IsShown() and frame.h3zRound)
+        or (frame.h3zSquare and frame.h3zSquare:IsShown() and frame.h3zSquare)
+        or (frame.portrait and (frame.portrait:IsShown() or settings.showPortrait) and frame.portrait)
+    if pic then
+        -- hangs under the portrait, centred on its lower edge
+        lv:SetPoint("CENTER", pic, "BOTTOM", 0, -3)
+    else
+        lv:SetPoint("BOTTOMRIGHT", frame, "TOPLEFT", 26, 2)
+    end
+    local level = UnitLevel(frame.unit)
+    local secret = _G.issecretvalue and _G.issecretvalue(level)
+    if secret then
+        lv.text:SetTextColor(1, 1, 1, 1)
+        pcall(lv.text.SetText, lv.text, level)
+    elseif type(level) ~= "number" or level <= 0 then
+        lv.text:SetTextColor(1, 0.15, 0.15, 1)
+        lv.text:SetText("??")
+    else
+        local c = GetQuestDifficultyColor and GetQuestDifficultyColor(level)
+        if c then lv.text:SetTextColor(c.r, c.g, c.b, 1) else lv.text:SetTextColor(1, 0.82, 0, 1) end
+        lv.text:SetText(level)
+    end
+    lv:SetSize(math.max(22, (lv.text:GetStringWidth() or 12) + 6), 18)
+    lv:Show()
+end
+H3z0UI_UF.UpdateLevel = UpdateLevel
+
+-- the level number follows level ups (and a unit's level changing): looked at again a moment
+-- after the event, once the game has the new value
+do
+    local lvFrame = CreateFrame("Frame")
+    for _, ev in ipairs({ "PLAYER_LEVEL_UP", "UNIT_LEVEL", "PLAYER_LEVEL_CHANGED", "PLAYER_ENTERING_WORLD" }) do
+        pcall(lvFrame.RegisterEvent, lvFrame, ev)
+    end
+    local waiting
+    lvFrame:SetScript("OnEvent", function()
+        if waiting then return end
+        waiting = true
+        C_Timer.After(0.4, function()
+            waiting = nil
+            for _, f in pairs(H3z0UI_UF.frames or {}) do
+                if type(f) == "table" and f.unitKey then pcall(UpdateLevel, f) end
+            end
+        end)
+    end)
+end
+
 local function UpdateName(frame)
     if not frame or not frame.unit or not frame.nameText then return end
     local unit = frame.unit
@@ -1284,6 +1384,7 @@ local function UpdateFrame(frame)
     UpdatePower(frame)
     UpdatePowerText(frame)
     UpdateName(frame)
+    UpdateLevel(frame)
     UpdateHealthTextColor(frame)
     UpdateIndicators(frame)
     UpdateStance(frame)
@@ -1430,8 +1531,7 @@ local function CreateBossFrame(unit, frameKey, bossIndex)
     -- Power bar
     if settings.showPowerBar then
         local powerBar = CreateFrame("StatusBar", nil, frame)
-        powerBar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", borderSize, borderSize)
-        powerBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize)
+        PlacePowerBar(powerBar, frame, settings, borderSize)
         powerBar:SetHeight(powerHeight)
         powerBar:SetStatusBarTexture(GetTexturePath(settings.texture))
         local powerColor = settings.powerBarColor or { 0, 0.5, 1, 1 }
@@ -1734,8 +1834,7 @@ local function CreateUnitFrame(unit, unitKey)
     -- Power bar (inside the frame, at the bottom, pixel-perfect)
     if settings.showPowerBar then
         local powerBar = CreateFrame("StatusBar", nil, frame)
-        powerBar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", borderSize, borderSize)
-        powerBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize)
+        PlacePowerBar(powerBar, frame, settings, borderSize)
         powerBar:SetHeight(powerHeight)
         powerBar:SetStatusBarTexture(GetTexturePath(settings.texture))
         powerBar:SetMinMaxValues(0, 100)
@@ -2618,6 +2717,18 @@ local function UpdateAuras(frame)
     end
 end
 
+-- Aura changes come in bursts: collect them and rebuild once, 50 ms later
+local auraPending = {}
+local function RequestAuras(frame)
+    if auraPending[frame] then return end
+    auraPending[frame] = true
+    C_Timer.After(0.05, function()
+        auraPending[frame] = nil
+        if frame.unit then lastAuraUpdate[frame.unit] = 0 end
+        UpdateAuras(frame)
+    end)
+end
+
 -- Setup aura tracking for a frame
 local function SetupAuraTracking(frame)
     if not frame then return end
@@ -2625,7 +2736,9 @@ local function SetupAuraTracking(frame)
     local unit = frame.unit
 
     -- Register aura events and unit-change events based on unit type
-    frame:RegisterEvent("UNIT_AURA")
+    -- (only this frame's own unit: the event fires for every nameplate and
+    -- group member too, which this frame never needs)
+    frame:RegisterUnitEvent("UNIT_AURA", unit)
     if unit == "target" then
         frame:RegisterEvent("PLAYER_TARGET_CHANGED")
     elseif unit == "focus" then
@@ -2648,9 +2761,9 @@ local function SetupAuraTracking(frame)
         end
 
         if event == "UNIT_AURA" and arg1 == self.unit then
-            -- Force immediate update by clearing throttle
-            lastAuraUpdate[self.unit] = 0
-            UpdateAuras(self)
+            -- auras change in bursts (many a second in a fight): one rebuild
+            -- per short window instead of one per change
+            RequestAuras(self)
         elseif event == "PLAYER_TARGET_CHANGED" then
             -- Update target and targettarget when target changes
             if self.unit == "target" or self.unit == "targettarget" then
@@ -3314,9 +3427,7 @@ function H3z0UI_UF:RefreshFrame(unitKey)
                 if frame.powerBar then
                     if settings.showPowerBar then
                         frame.powerBar:SetStatusBarTexture(texturePath)
-                        frame.powerBar:ClearAllPoints()
-                        frame.powerBar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", borderSize, borderSize)
-                        frame.powerBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize)
+                        PlacePowerBar(frame.powerBar, frame, settings, borderSize)
                         frame.powerBar:SetHeight(powerHeight)
                         frame.powerBar:Show()
                     else
@@ -3547,8 +3658,7 @@ function H3z0UI_UF:RefreshFrame(unitKey)
         if not frame.powerBar then
             -- Create power bar dynamically when setting is enabled
             local powerBar = CreateFrame("StatusBar", nil, frame)
-            powerBar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", borderSize, borderSize)
-            powerBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize)
+            PlacePowerBar(powerBar, frame, settings, borderSize)
             powerBar:SetHeight(powerHeight)
             powerBar:SetStatusBarTexture(texturePath)
             powerBar:SetMinMaxValues(0, 100)
@@ -3560,9 +3670,7 @@ function H3z0UI_UF:RefreshFrame(unitKey)
         end
         -- Update existing power bar
         frame.powerBar:SetStatusBarTexture(texturePath)
-        frame.powerBar:ClearAllPoints()
-        frame.powerBar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", borderSize, borderSize)
-        frame.powerBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize)
+        PlacePowerBar(frame.powerBar, frame, settings, borderSize)
         frame.powerBar:SetHeight(powerHeight)
         frame.powerBar:Show()
     elseif frame.powerBar then
@@ -3663,6 +3771,7 @@ function H3z0UI_UF:RefreshFrame(unitKey)
     elseif frame.portrait then
         frame.portrait:Hide()
     end
+    pcall(UpdateLevel, frame)
 
     -- Update fonts and text positions
     local fontPath = GetFontPath()

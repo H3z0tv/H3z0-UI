@@ -411,22 +411,41 @@ local function SkinEntry(entry)
     pcall(bar.SetStatusBarTexture, bar, BAR_TEX)
 end
 
+-- Blizzard's meter list gives out its bars while Blizzard's own code runs. Our code must
+-- not run inside that (a callback registered on the list taints Blizzard's update and the
+-- meter then errors on its secret numbers). So the bars are skinned from a plain hook plus
+-- a timer: the hook only schedules, the skinning runs on its own a moment later.
+-- Blizzard's own list code runs inside this call: the game must treat it as its own
+local function EachEntry(list)
+    if type(securecallfunction) == "function" then
+        pcall(securecallfunction, list.ForEachFrame, list, SkinEntry)
+    else
+        pcall(list.ForEachFrame, list, SkinEntry)
+    end
+end
+local scrollHooked = setmetatable({}, { __mode = "k" })
+local skinPending = false
 local function SkinEntries(win)
     local list = FindList(win)
     if not list then return end
-    pcall(list.ForEachFrame, list, SkinEntry)
-    if list.h3zWSHooked then return end
-    list.h3zWSHooked = true
-    -- the callback gets (owner, frame, data); pick the frame either way
-    local function cb(a, b)
-        local f = (type(b) == "table" and b.GetObjectType) and b or a
-        if type(f) == "table" and f.GetObjectType then pcall(SkinEntry, f) end
+    EachEntry(list)
+    if scrollHooked[list] then return end
+    scrollHooked[list] = true
+    local function again()
+        if skinPending then return end
+        skinPending = true
+        C_Timer.After(InCombatLockdown() and 2 or 0, function()
+            skinPending = false
+            -- never while fighting: the meter updates every moment then
+            if InCombatLockdown() then again() return end
+            local st = DB()
+            if st and st.enabled and st.damageMeter and list.ForEachFrame then
+                EachEntry(list)
+            end
+        end)
     end
-    local SU = _G.ScrollUtil
-    if SU and SU.AddInitializedFrameCallback then
-        pcall(SU.AddInitializedFrameCallback, list, cb, WS, false)
-    elseif SU and SU.AddAcquiredFrameCallback then
-        pcall(SU.AddAcquiredFrameCallback, list, cb, WS, false)
+    for _, name in ipairs({ "Update", "FullUpdate", "SetDataProvider" }) do
+        if type(list[name]) == "function" then pcall(hooksecurefunc, list, name, again) end
     end
 end
 
@@ -486,7 +505,8 @@ local function SkinMeter(win, s)
     if not win.h3zWSShowHook then
         win.h3zWSShowHook = true
         win:HookScript("OnShow", function(self)
-            C_Timer.After(0, function()
+            C_Timer.After(InCombatLockdown() and 2 or 0, function()
+                if InCombatLockdown() then return end
                 local st = DB()
                 if st then pcall(SkinMeter, self, st) end
             end)

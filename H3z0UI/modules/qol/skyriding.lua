@@ -195,6 +195,7 @@ local function GetGlidingInfo()
         return false, false, 0
     end
 
+    if not (C_PlayerInfo and C_PlayerInfo.GetGlidingInfo) then return false, false, 0 end
     local gliding, canGlideNow, speed = C_PlayerInfo.GetGlidingInfo()
 
     if canGlideNow and not gliding and C_Spell and C_Spell.GetSpellCharges then

@@ -16,6 +16,14 @@ function RefreshScope.UnionBags(pending, changed)
     return pending
 end
 
+local function Join(list, sep)
+    for i = 1, #list do
+        local v = list[i]
+        if type(v) ~= "string" and type(v) ~= "number" then list[i] = tostring(v) end
+    end
+    return table.concat(list, sep)
+end
+
 function RefreshScope.LayoutSignature(slots, opts, buildDetails)
     local categories = opts.layoutMode == "categories" or opts.layoutMode == "inventory"
     local sortKey = Bags.SortPlanner.ResolveKey(opts.sortKey)
@@ -32,7 +40,7 @@ function RefreshScope.LayoutSignature(slots, opts, buildDetails)
                 local details = buildDetails and buildDetails(cell.entry) or nil
                 local recent = opts.getRecent and opts.getRecent(cell) or false
                 if opts.layoutMode == "inventory" then recent = false end
-                parts[#parts + 1] = table.concat({
+                parts[#parts + 1] = Join({
                     cell.bagID, cell.slot,
                     recent and "recent" or Bags.CategoryLayout.Categorize(details),
                     (details and details.quality) or cell.entry.quality or -1,
@@ -42,7 +50,7 @@ function RefreshScope.LayoutSignature(slots, opts, buildDetails)
                     (details and details.subClassID) or -1,
                     (details and details.ilvl) or -1,
                     (details and details.expacID) or -1,
-                    sortKey == "quality" and (cell.entry.count or 1) or "",
+                    (opts.withCounts or sortKey == "quality") and (cell.entry.count or 1) or "",
                 }, "\1")
             end
         elseif opts.groupEmptySlots then

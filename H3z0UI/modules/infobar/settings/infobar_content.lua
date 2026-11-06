@@ -158,9 +158,9 @@ ProviderPanels:RegisterAfterLoad(function(ctx)
             { description = ns.L["Pin the bar to the top or the bottom edge of the screen."] })
         g.AddRow(row(g.frame, ns.L["Enable Info Bar"], enW), row(g.frame, ns.L["Bar Position"], posW))
 
-        local hW = GUI:CreateFormSlider(g.frame, nil, 16, 40, 1, "height", db, RefreshInfoBar,
+        local hW = GUI:CreateFormSlider(g.frame, nil, 16, 80, 1, "height", db, RefreshInfoBar,
             { description = ns.L["Height of the bar in pixels."] })
-        local fSizeW = GUI:CreateFormSlider(g.frame, nil, 9, 18, 1, "fontSize", db, RefreshInfoBar,
+        local fSizeW = GUI:CreateFormSlider(g.frame, nil, 8, 32, 1, "fontSize", db, RefreshInfoBar,
             { description = ns.L["Font size of every widget on the bar."] })
         g.AddRow(row(g.frame, ns.L["Bar Height"], hW), row(g.frame, ns.L["Font Size"], fSizeW))
 
@@ -180,6 +180,33 @@ ProviderPanels:RegisterAfterLoad(function(ctx)
         local padW = GUI:CreateFormSlider(g.frame, nil, 0, 30, 1, "zonePadding", db, RefreshInfoBar,
             { description = ns.L["Inset between the screen edges and the left/right zones."] })
         g.AddRow(row(g.frame, ns.L["Widget Spacing"], spacingW), row(g.frame, ns.L["Zone Padding"], padW))
+
+        local widthW = GUI:CreateFormSlider(g.frame, nil, 0, 3840, 10, "barWidth", db, RefreshInfoBar,
+            { description = ns.L["Width of the bar in pixels. 0 = as wide as the screen."] })
+        local scaleW = GUI:CreateFormSlider(g.frame, nil, 0.5, 2, 0.05, "barScale", db, RefreshInfoBar,
+            { description = ns.L["Size of the whole bar (text, icons and height together)."] })
+        g.AddRow(row(g.frame, ns.L["Bar Width (0 = full)"], widthW), row(g.frame, ns.L["Bar Scale"], scaleW))
+
+        local oxW = GUI:CreateFormSlider(g.frame, nil, -1000, 1000, 1, "offsetX", db, RefreshInfoBar,
+            { description = ns.L["Move the bar left or right (only when it is narrower than the screen)."] })
+        local oyW = GUI:CreateFormSlider(g.frame, nil, -400, 400, 1, "offsetY", db, RefreshInfoBar,
+            { description = ns.L["Move the bar up or down from the screen edge."] })
+        g.AddRow(row(g.frame, ns.L["Horizontal Position"], oxW), row(g.frame, ns.L["Vertical Position"], oyW))
+
+        local bgOnW = GUI:CreateFormCheckbox(g.frame, nil, "bgColorOn", db, RefreshInfoBar,
+            { description = ns.L["Use your own background colour instead of the theme's."] })
+        local bgColorW = GUI:CreateFormColorPicker(g.frame, nil, "bgColor", db, RefreshInfoBar, { noAlpha = true },
+            { description = ns.L["Background colour of the bar (the opacity slider still applies)."] })
+        g.AddRow(row(g.frame, ns.L["Own Background Colour"], bgOnW), row(g.frame, ns.L["Background Colour"], bgColorW))
+
+        local iconSizeW = GUI:CreateFormSlider(g.frame, nil, 0, 80, 1, "menuIconSize", db, RefreshInfoBar,
+            { description = ns.L["Size of the menu icons (Character, Talents, ...). 0 = fit the bar height."] })
+        local iconGapW = GUI:CreateFormSlider(g.frame, nil, 0, 40, 1, "menuIconSpacing", db, RefreshInfoBar,
+            { description = ns.L["Gap between the menu icons. 0 = automatic."] })
+        g.AddRow(row(g.frame, ns.L["Menu Icon Size"], iconSizeW), row(g.frame, ns.L["Menu Icon Spacing"], iconGapW))
+        local counterW = GUI:CreateFormSlider(g.frame, nil, 6, 30, 1, "menuCounterSize", db, RefreshInfoBar,
+            { description = ns.L["Size of the small numbers above the menu icons."] })
+        g.AddRow(row(g.frame, ns.L["Menu Counter Size"], counterW))
         L.closeSection(g)
 
         L.headerAt(ns.L["Visibility"])

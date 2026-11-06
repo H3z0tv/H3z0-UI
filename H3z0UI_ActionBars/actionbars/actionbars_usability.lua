@@ -22,6 +22,12 @@ else
     SetupDebugInstrumentation()
 end
 
+-- how strongly the tint covers the icon: the icon stays visible under it
+local function TintAlpha(c)
+    local a = c and c[4] or 1
+    return math.min(a, 0.55)
+end
+
 local function ClearButtonTint(state)
     if state.tintOverlay then state.tintOverlay:Hide() end
     state.tinted = nil
@@ -36,7 +42,9 @@ function GetTintOverlay(button)
         if not icon then return nil end
         local overlay = button:CreateTexture(nil, "ARTWORK", nil, 1)
         overlay:SetAllPoints(icon)
-        overlay:SetBlendMode("MOD")
+        -- a see-through tint (not a multiply): a multiply ignores alpha, so when the
+        -- bars faded out (mouseover fade, the Esc menu) the tint stayed as a dark square
+        overlay:SetBlendMode("BLEND")
         overlay:SetColorTexture(1, 1, 1, 1)
         overlay:Hide()
         state.tintOverlay = overlay
@@ -96,19 +104,19 @@ function UpdateButtonUsability(button, settings, inRange, rangeKnown)
     if newTint == "range" then
         if overlay then
             local c = settings.rangeColor
-            overlay:SetColorTexture(c and c[1] or 0.8, c and c[2] or 0.1, c and c[3] or 0.1, c and c[4] or 1)
+            overlay:SetColorTexture(c and c[1] or 0.8, c and c[2] or 0.1, c and c[3] or 0.1, TintAlpha(c))
         end
         state.tinted = "range"
     elseif newTint == "mana" then
         if overlay then
             local c = settings.manaColor
-            overlay:SetColorTexture(c and c[1] or 0.5, c and c[2] or 0.5, c and c[3] or 1.0, c and c[4] or 1)
+            overlay:SetColorTexture(c and c[1] or 0.5, c and c[2] or 0.5, c and c[3] or 1.0, TintAlpha(c))
         end
         state.tinted = "mana"
     elseif newTint == "unusable" then
         if overlay then
             local c = settings.usabilityColor
-            overlay:SetColorTexture(c and c[1] or 0.4, c and c[2] or 0.4, c and c[3] or 0.4, c and c[4] or 1)
+            overlay:SetColorTexture(c and c[1] or 0.1, c and c[2] or 0.1, c and c[3] or 0.1, TintAlpha(c))
         end
         state.tinted = "unusable"
     end

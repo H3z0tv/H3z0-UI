@@ -1429,8 +1429,28 @@ end
 
 -- Rebuild the active icon set for a bar
 -- Called on: spec change, talent change, bar creation, hideNonUsable toggle
+local pendingRebuild = {}
+local regenFrame
 local function RebuildActiveSet(bar)
     if not bar then return end
+    -- the icons can be protected frames: showing / hiding them is blocked in combat,
+    -- so the rebuild waits until combat ends
+    if InCombatLockdown() then
+        pendingRebuild[bar] = true
+        if not regenFrame then
+            regenFrame = CreateFrame("Frame")
+            regenFrame:SetScript("OnEvent", function(self)
+                self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+                local list = {}
+                for b in pairs(pendingRebuild) do list[#list + 1] = b end
+                wipe(pendingRebuild)
+                for _, b in ipairs(list) do pcall(RebuildActiveSet, b) end
+                if CustomTrackers and CustomTrackers.RefreshAll then pcall(CustomTrackers.RefreshAll, CustomTrackers) end
+            end)
+        end
+        regenFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+        return
+    end
 
     bar.activeIcons = bar.activeIcons or {}
     wipe(bar.activeIcons)
@@ -2167,7 +2187,25 @@ end
 ---------------------------------------------------------------------------
 -- REFRESH ALL BARS
 ---------------------------------------------------------------------------
+local refreshAfterCombat = false
+local refreshWatcher
 function CustomTrackers:RefreshAll()
+    -- The bars and their icons can be protected frames: they cannot be hidden or re-parented in
+    -- combat. Wait until combat ends and do it once then.
+    if InCombatLockdown() then
+        refreshAfterCombat = true
+        if not refreshWatcher then
+            refreshWatcher = CreateFrame("Frame")
+            refreshWatcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+            refreshWatcher:SetScript("OnEvent", function()
+                if refreshAfterCombat then
+                    refreshAfterCombat = false
+                    CustomTrackers:RefreshAll()
+                end
+            end)
+        end
+        return
+    end
     -- Delete all existing bars
     for barID in pairs(self.activeBars) do
         self:DeleteBar(barID)
@@ -2378,6 +2416,25 @@ end
 -- Debounce flag for talent changes (prevents stacking timers on rapid talent swaps)
 local pendingTalentRebuild = false
 
+-- Cooldown / cast / aura events come many times a second in a fight:
+-- update the bars once on the next frame instead of once per event
+local queuedAll, queuedActive = false, false
+local function RunQueuedBarUpdates()
+    local all, active = queuedAll, queuedActive
+    queuedAll, queuedActive = false, false
+    for _, bar in pairs(CustomTrackers.activeBars) do
+        if bar and bar:IsShown() and bar.DoUpdate
+            and (all or (bar.config and bar.config.showActiveState ~= false)) then
+            bar.DoUpdate()
+        end
+    end
+end
+local function QueueBarUpdates(all)
+    local was = queuedAll or queuedActive
+    if all then queuedAll = true else queuedActive = true end
+    if not was then C_Timer.After(0, RunQueuedBarUpdates) end
+end
+
 local initFrame = CreateFrame("Frame")
 initFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 initFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
@@ -2387,18 +2444,18 @@ initFrame:RegisterEvent("SPELL_UPDATE_USABLE")
 initFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")  -- Performance: event-driven cooldown updates
 initFrame:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")  -- Performance: catches action bar cooldown changes
 -- Active state detection events (casting/channeling/buff)
-initFrame:RegisterEvent("UNIT_AURA")
-initFrame:RegisterEvent("UNIT_SPELLCAST_START")
-initFrame:RegisterEvent("UNIT_SPELLCAST_STOP")
-initFrame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
-initFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
-initFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
+initFrame:RegisterUnitEvent("UNIT_AURA", "player")
+initFrame:RegisterUnitEvent("UNIT_SPELLCAST_START", "player")
+initFrame:RegisterUnitEvent("UNIT_SPELLCAST_STOP", "player")
+initFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+initFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player")
+initFrame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
 -- Spec change detection for spec-specific spells
 initFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 -- Talent change detection for active icon rebuild (talent loadout swaps)
 initFrame:RegisterEvent("PLAYER_TALENT_UPDATE")
 -- Pet change detection (warlock demons, hunter pets with unique abilities)
-initFrame:RegisterEvent("UNIT_PET")
+initFrame:RegisterUnitEvent("UNIT_PET", "player")
 initFrame:SetScript("OnEvent", function(self, event, ...)
     -- Spec change: refresh all bars to load spec-appropriate spells
     -- PLAYER_SPECIALIZATION_CHANGED only fires for player, no unit check needed
@@ -2459,12 +2516,7 @@ initFrame:SetScript("OnEvent", function(self, event, ...)
 
     -- Event-driven cooldown updates (reduces ticker frequency)
     if event == "SPELL_UPDATE_COOLDOWN" or event == "ACTIONBAR_UPDATE_COOLDOWN" then
-        -- Update all active bars immediately on cooldown change
-        for _, bar in pairs(CustomTrackers.activeBars) do
-            if bar and bar:IsShown() and bar.DoUpdate then
-                bar.DoUpdate()
-            end
-        end
+        QueueBarUpdates(true)
         return
     end
 
@@ -2481,11 +2533,7 @@ initFrame:SetScript("OnEvent", function(self, event, ...)
                     chargeSpellLastCast[spellID] = GetTime()
                 end
             end
-            for _, bar in pairs(CustomTrackers.activeBars) do
-                if bar and bar:IsShown() and bar.DoUpdate and bar.config and bar.config.showActiveState ~= false then
-                    bar.DoUpdate()
-                end
-            end
+            QueueBarUpdates(false)
         end
         return
     end
@@ -2493,11 +2541,7 @@ initFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "UNIT_AURA" then
         local unit = ...
         if unit == "player" then
-            for _, bar in pairs(CustomTrackers.activeBars) do
-                if bar and bar:IsShown() and bar.DoUpdate and bar.config and bar.config.showActiveState ~= false then
-                    bar.DoUpdate()
-                end
-            end
+            QueueBarUpdates(false)
         end
         return
     end

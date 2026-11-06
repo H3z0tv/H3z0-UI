@@ -1685,7 +1685,7 @@ end
 local function EnsurePackContainer(groupHost)
     local container = groupHost._h3z0uiPackContainer
     if container then return container end
-    if InCombatLockdown() or type(CreateFrame) ~= "function" then return nil end
+    if InCombatLockdown() or type(CreateFrame) ~= "function" or (ns.Client and ns.Client.hasAuraContainers == false) then return nil end
     container = CreateFrame("AuraContainer", nil, groupHost, "CustomAuraContainerTemplate")
     if not container then return nil end
     container:SetSize(1, 1)

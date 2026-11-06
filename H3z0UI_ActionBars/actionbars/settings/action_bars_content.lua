@@ -519,6 +519,37 @@ local function BuildMouseoverHideTab(tabContent)
 
     closeSection(s1)
 
+    -- Mounted / flying: the HUD visibility rules for the action bars
+    -- (same settings as Appearance > HUD Visibility > Action Bars Visibility)
+    local core = ns.Addon
+    local prof = core and core.db and core.db.profile
+    if prof then
+        if type(prof.actionBarsVisibility) ~= "table" then prof.actionBarsVisibility = {} end
+        local vis = prof.actionBarsVisibility
+        local function RefreshVis()
+            if _G.H3z0UI_RefreshActionBarsVisibility then _G.H3z0UI_RefreshActionBarsVisibility() end
+        end
+        headerAt(ns.L["Mounted & Flying"])
+        local sm = sectionAt()
+        local mountW = GUI:CreateFormToggle(sm.frame, nil, "hideWhenMounted", vis, RefreshVis,
+            { description = ns.L["Hide the action bars while you are on a mount."] })
+        local flyW = GUI:CreateFormToggle(sm.frame, nil, "hideWhenFlying", vis, RefreshVis,
+            { description = ns.L["Hide the action bars while flying on a normal flying mount."] })
+        sm.AddRow(
+            Opts.BuildSettingRow(sm.frame, ns.L["Hide When Mounted"], mountW),
+            Opts.BuildSettingRow(sm.frame, ns.L["Hide When Flying"], flyW)
+        )
+        local skyW = GUI:CreateFormToggle(sm.frame, nil, "hideWhenSkyriding", vis, RefreshVis,
+            { description = ns.L["Hide the action bars while skyriding."] })
+        local vehW = GUI:CreateFormToggle(sm.frame, nil, "hideWhenInVehicle", vis, RefreshVis,
+            { description = ns.L["Hide the action bars while you are in a vehicle."] })
+        sm.AddRow(
+            Opts.BuildSettingRow(sm.frame, ns.L["Hide When Skyriding"], skyW),
+            Opts.BuildSettingRow(sm.frame, ns.L["Hide In Vehicle"], vehW)
+        )
+        closeSection(sm)
+    end
+
     headerAt(ns.L["Always Show Bars"])
     local s2 = sectionAt()
 

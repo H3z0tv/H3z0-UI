@@ -204,7 +204,7 @@ local function ModernButton(b, on)
     --   Show Backdrop / Backdrop Opacity -> the dark slate slot (same colour as chat + damage meter)
     --   Show Button Borders              -> the thin slate border
     --   Show Gloss / Gloss Opacity       -> the gloss, rounded like the tile
-    local sf, sb = Round.SLATE_FILL, Round.SLATE_BORDER
+    local sf, sb = Round.SLATE_FILL_FIXED or Round.SLATE_FILL, Round.SLATE_BORDER
     m.slot:SetColorTexture(sf[1], sf[2], sf[3], 1)
     local showSlot = not (settings and settings.showBackdrop == false)
     m.slot:SetAlpha(settings and settings.backdropAlpha or 0.9)

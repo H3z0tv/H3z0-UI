@@ -152,6 +152,8 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 frame:SetScript("OnEvent", function(_, event)
+    -- only while the panel is on screen (opening the map updates it)
+    if not (panel and panel:IsVisible()) then return end
     if event ~= "PLAYER_REGEN_ENABLED" or cooldownRefreshPending then UpdateCooldowns() end
 end)
 

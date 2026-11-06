@@ -17,9 +17,10 @@ Bags.Junk = Junk
 
 function Junk.IsBagExcluded(bagID)
     if bagID == 0 then
-        return C_Container.GetBackpackSellJunkDisabled() and true or false
+        return C_Container.GetBackpackSellJunkDisabled and C_Container.GetBackpackSellJunkDisabled() and true or false
     end
-    if bagID >= 1 and bagID <= 5 then
+    if bagID >= 1 and bagID <= ((ns.Client and ns.Client.LAST_BAG) or 5)
+        and C_Container.GetBagSlotFlag and Enum.BagSlotFlags and Enum.BagSlotFlags.ExcludeJunkSell then
         return C_Container.GetBagSlotFlag(bagID, Enum.BagSlotFlags.ExcludeJunkSell) and true or false
     end
     return false
@@ -76,7 +77,7 @@ function Junk.SellJunk(onDone)
 
     local items = {}
     local total = 0
-    for bagID = 0, 5 do
+    for bagID = 0, ((ns.Client and ns.Client.LAST_BAG) or 5) do
         local size = C_Container.GetContainerNumSlots(bagID) or 0
         for slot = 1, size do
             local info = C_Container.GetContainerItemInfo(bagID, slot)

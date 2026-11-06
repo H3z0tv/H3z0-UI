@@ -14,6 +14,8 @@ local RenderAdapters = Settings and Settings.RenderAdapters
 local THEME_COLORS_SUBPAGE_INDEX = 10
 
 local function RefreshSkinSurfaces()
+    if ns.Round and ns.Round.ApplyUiColor then pcall(ns.Round.ApplyUiColor) end
+    if _G.H3z0UI_RefreshWindowSkins then pcall(_G.H3z0UI_RefreshWindowSkins) end
     if ns.Registry and type(ns.Registry.RefreshAll) == "function" then
         ns.Registry:RefreshAll("skinning")
     end
@@ -179,7 +181,7 @@ local function BuildThemeColorsTab(tabContent)
     if general.themePreset == nil then general.themePreset = "Custom" end
     if general.skinUseClassColor == nil then general.skinUseClassColor = true end
     if general.addonAccentColor == nil then general.addonAccentColor = {0.376, 0.647, 0.980, 1} end
-    if general.skinBgColor == nil then general.skinBgColor = {0.008, 0.008, 0.008, 1} end
+    if general.skinBgColor == nil then general.skinBgColor = {0.105, 0.125, 0.16, 0.97} end
     if general.hideSkinBorders == nil then general.hideSkinBorders = false end
     if general.skinBorderColorSource == nil then
         general.skinBorderColorSource = general.skinBorderUseClassColor and "class" or "theme"
@@ -217,6 +219,46 @@ local function BuildThemeColorsTab(tabContent)
     sVS.AddRow(row(sVS.frame, ns.L["Visual Style"], styleDropdown))
     L.closeSection(sVS)
 
+    -- H3z0 Colour: ONE background colour for everything (H3z0 UI windows and
+    -- panels, bags, chat, damage meter, action button slots and every skinned
+    -- Blizzard window). Default: the H3z0 slate.
+    L.headerAt(ns.L["H3z0 Colour"])
+    local sUC = L.sectionAt()
+    local DEFAULT_SKIN_BG = { 0.105, 0.125, 0.16, 0.97 }
+    local bgPicker
+    local function ApplyH3z0Colour()
+        -- always solid: see-through backgrounds show the frames behind them as lines
+        local c = general.skinBgColor
+        if type(c) == "table" then
+            c[4] = DEFAULT_SKIN_BG[4]
+            -- only dark shades: the hue you pick is kept, the brightness is capped
+            if ns.Round and ns.Round.DarkBg then
+                local r, g, b = ns.Round.DarkBg(c[1], c[2], c[3])
+                if r ~= c[1] or g ~= c[2] or b ~= c[3] then
+                    c[1], c[2], c[3] = r, g, b
+                    if bgPicker and bgPicker.UpdateVisual then pcall(bgPicker.UpdateVisual, c) end
+                end
+            end
+        end
+        if _G.H3z0UI_ApplyUiColor then _G.H3z0UI_ApplyUiColor() end
+        RefreshSkinSurfaces()
+        RefreshTooltipSkin()
+        if _G.H3z0UI_RefreshChat then pcall(_G.H3z0UI_RefreshChat) end
+    end
+    bgPicker = GUI:CreateFormColorPicker(sUC.frame, nil, "skinBgColor", general, ApplyH3z0Colour, { noAlpha = true },
+        { description = ns.L["The background colour of everything: H3z0 UI windows and panels, bags, chat, damage meter, action button slots and all skinned Blizzard windows. Any colour you pick is used as a dark shade, so windows never get bright. Only the backgrounds change: buttons, borders and the rest of the look stay the same."] })
+    local resetHolder = CreateFrame("Frame", nil, sUC.frame)
+    resetHolder:SetSize(200, 22)
+    local resetBtn = GUI:CreateButton(resetHolder, ns.L["Back To Default"], 160, 22, function()
+        general.skinBgColor = { DEFAULT_SKIN_BG[1], DEFAULT_SKIN_BG[2], DEFAULT_SKIN_BG[3], DEFAULT_SKIN_BG[4] }
+        general.h3zUiColorOn = false
+        ApplyH3z0Colour()
+        if bgPicker and bgPicker.UpdateVisual then pcall(bgPicker.UpdateVisual, general.skinBgColor) end
+    end)
+    resetBtn:SetPoint("LEFT", resetHolder, "LEFT", 0, 0)
+    sUC.AddRow(row(sUC.frame, ns.L["Background Colour"], bgPicker), row(sUC.frame, ns.L["Default H3z0 Colour"], resetHolder))
+    L.closeSection(sUC)
+
     L.headerAt(ns.L["Theme Accent"])
     local sTA = L.sectionAt()
     local themeDropdown, accentColorPicker
@@ -248,14 +290,9 @@ local function BuildThemeColorsTab(tabContent)
 
     L.headerAt(ns.L["Global Skin Colors"])
     local sGS = L.sectionAt()
-    local gsBgColorW = GUI:CreateFormColorPicker(sGS.frame, nil, "skinBgColor", general, RefreshSkinSurfaces, { hasAlpha = true },
-        { description = ns.L["Background fill color applied to globally skinned frames. Alpha controls how opaque the fill is."] })
     local gsHideBordersW = GUI:CreateFormCheckbox(sGS.frame, nil, "hideSkinBorders", general, RefreshSkinSurfaces,
         { description = ns.L["Hide the 1px accent border drawn around globally skinned frames."] })
-    sGS.AddRow(
-        row(sGS.frame, ns.L["Background Color"], gsBgColorW),
-        row(sGS.frame, ns.L["Hide Borders"], gsHideBordersW)
-    )
+    sGS.AddRow(row(sGS.frame, ns.L["Hide Borders"], gsHideBordersW))
 
     local BORDER_SOURCE_OPTIONS = {
         { value = "theme",  text = ns.L["Theme"] },
@@ -430,7 +467,7 @@ local function BuildSkinningTab(tabContent)
 
     local L = MakeLayout(tabContent)
 
-    if general.skinGameMenu == nil then general.skinGameMenu = false end
+    if general.skinGameMenu == nil then general.skinGameMenu = true end
     if general.addH3z0UIButton == nil then general.addH3z0UIButton = false end
     if general.addEditModeButton == nil then general.addEditModeButton = true end
     if general.gameMenuFontSize == nil then general.gameMenuFontSize = 12 end
@@ -460,7 +497,18 @@ local function BuildSkinningTab(tabContent)
     local gmDimW = GUI:CreateFormCheckbox(sGM.frame, nil, "gameMenuDim", general, function()
         if _G.H3z0UI_RefreshGameMenuDim then _G.H3z0UI_RefreshGameMenuDim() end
     end, { description = ns.L["Dim the world behind the game menu while it is open so the panel reads more clearly."] })
-    sGM.AddRow(row(sGM.frame, ns.L["Dim Background"], gmDimW))
+    if general.gameMenuScene == nil then general.gameMenuScene = true end
+    local gmSceneW = GUI:CreateFormCheckbox(sGM.frame, nil, "gameMenuScene", general, function()
+        if _G.H3z0UI_RefreshGameMenuScene then _G.H3z0UI_RefreshGameMenuScene() end
+        if _G.H3z0UI_RefreshGameMenuDim then _G.H3z0UI_RefreshGameMenuDim() end
+    end, { description = "Dark cinematic bands at the top and bottom of the screen and, while the Esc menu is open: your character (in its current form) doing random emotes on the left, a random pet from your collection on the right, your class crest on top and the H3z0 UI logo at the bottom." })
+    sGM.AddRow(row(sGM.frame, ns.L["Dim Background"], gmDimW), row(sGM.frame, "Character & Pet Scene", gmSceneW))
+
+    if general.gameMenuHideUI == nil then general.gameMenuHideUI = true end
+    local gmHideW = GUI:CreateFormCheckbox(sGM.frame, nil, "gameMenuHideUI", general, function()
+        if _G.H3z0UI_RefreshGameMenuHideUI then _G.H3z0UI_RefreshGameMenuHideUI() end
+    end, { description = "While the Esc menu is open the rest of the UI (action bars, unit frames, chat, minimap, quest tracker, ...) fades out, so only the world, the menu and the scene are left. It all comes back when the menu closes." })
+    sGM.AddRow(row(sGM.frame, "Hide UI While Open", gmHideW))
     L.closeSection(sGM)
 
     if not db.loot then db.loot = {} end
@@ -543,40 +591,41 @@ local function BuildSkinningTab(tabContent)
     if db.lootResults.enabled == nil then db.lootResults.enabled = true end
     if general.skinCharacterFrame == nil then general.skinCharacterFrame = true end
     if general.skinInspectFrame == nil then general.skinInspectFrame = true end
-    if general.skinOverrideActionBar == nil then general.skinOverrideActionBar = false end
-    if general.skinInstanceFrames == nil then general.skinInstanceFrames = false end
-    if general.skinAuctionHouse == nil then general.skinAuctionHouse = false end
-    if general.skinCraftingOrders == nil then general.skinCraftingOrders = false end
-    if general.skinProfessions == nil then general.skinProfessions = false end
-    if general.skinPVPMatch == nil then general.skinPVPMatch = false end
-    if general.skinQuest == nil then general.skinQuest = false end
+    if general.skinOverrideActionBar == nil then general.skinOverrideActionBar = true end
+    if general.skinInstanceFrames == nil then general.skinInstanceFrames = true end
+    if general.skinAuctionHouse == nil then general.skinAuctionHouse = true end
+    if general.skinCraftingOrders == nil then general.skinCraftingOrders = true end
+    if general.skinProfessions == nil then general.skinProfessions = true end
+    if general.skinPVPMatch == nil then general.skinPVPMatch = true end
+    if general.skinQuest == nil then general.skinQuest = true end
     if general.skinStatusTrackingBars == nil then general.skinStatusTrackingBars = true end
-    if general.skinBank == nil then general.skinBank = false end
-    if general.skinMerchant == nil then general.skinMerchant = false end
-    if general.skinMail == nil then general.skinMail = false end
-    if general.skinGuildBank == nil then general.skinGuildBank = false end
-    if general.skinFriends == nil then general.skinFriends = false end
-    if general.skinFlightMap == nil then general.skinFlightMap = false end
-    if general.skinMacro == nil then general.skinMacro = false end
-    if general.skinMirrorTimers == nil then general.skinMirrorTimers = false end
-    if general.skinGossip == nil then general.skinGossip = false end
-    if general.skinCommunities == nil then general.skinCommunities = false end
-    if general.skinDelves == nil then general.skinDelves = false end
-    if general.skinDressUp == nil then general.skinDressUp = false end
-    if general.skinItemUpgrade == nil then general.skinItemUpgrade = false end
-    if general.skinSocket == nil then general.skinSocket = false end
-    if general.skinTrade == nil then general.skinTrade = false end
-    if general.skinTabard == nil then general.skinTabard = false end
-    if general.skinGuildRegistrar == nil then general.skinGuildRegistrar = false end
-    if general.skinSpellBook == nil then general.skinSpellBook = false end
-    if general.skinEncounterJournal == nil then general.skinEncounterJournal = false end
-    if general.skinCollections == nil then general.skinCollections = false end
-    if general.skinAchievement == nil then general.skinAchievement = false end
-    if general.skinWorldMap == nil then general.skinWorldMap = false end
-    if general.skinWeeklyRewards == nil then general.skinWeeklyRewards = false end
-    if general.skinTrainer == nil then general.skinTrainer = false end
-    if general.skinLegacySystem == nil then general.skinLegacySystem = false end
-    if general.skinStable == nil then general.skinStable = false end
+    if general.skinBank == nil then general.skinBank = true end
+    if general.skinMerchant == nil then general.skinMerchant = true end
+    if general.skinMail == nil then general.skinMail = true end
+    if general.skinGuildBank == nil then general.skinGuildBank = true end
+    if general.skinFriends == nil then general.skinFriends = true end
+    if general.skinFlightMap == nil then general.skinFlightMap = true end
+    if general.skinMacro == nil then general.skinMacro = true end
+    if general.skinMirrorTimers == nil then general.skinMirrorTimers = true end
+    if general.skinGossip == nil then general.skinGossip = true end
+    if general.skinCommunities == nil then general.skinCommunities = true end
+    if general.skinDelves == nil then general.skinDelves = true end
+    if general.skinDressUp == nil then general.skinDressUp = true end
+    if general.skinItemUpgrade == nil then general.skinItemUpgrade = true end
+    if general.skinSocket == nil then general.skinSocket = true end
+    if general.skinTrade == nil then general.skinTrade = true end
+    if general.skinTabard == nil then general.skinTabard = true end
+    if general.skinGuildRegistrar == nil then general.skinGuildRegistrar = true end
+    if general.skinSpellBook == nil then general.skinSpellBook = true end
+    if general.skinEncounterJournal == nil then general.skinEncounterJournal = true end
+    if general.skinCollections == nil then general.skinCollections = true end
+    if general.skinAchievement == nil then general.skinAchievement = true end
+    if general.skinWorldMap == nil then general.skinWorldMap = true end
+    if general.skinWeeklyRewards == nil then general.skinWeeklyRewards = true end
+    if general.skinHousing == nil then general.skinHousing = true end
+    if general.skinTrainer == nil then general.skinTrainer = true end
+    if general.skinLegacySystem == nil then general.skinLegacySystem = true end
+    if general.skinStable == nil then general.skinStable = true end
 
     L.headerAt(ns.L["Skin Blizzard Frames"])
     local sSBF = L.sectionAt()
@@ -604,6 +653,7 @@ local function BuildSkinningTab(tabContent)
         {key="skinFriends",           label=ns.L["Friends List (Req. Reload)"],            dbT=general,         desc=ns.L["Skin the Friends / Ignore / Who window. Requires a reload."]},
         {key="skinGossip",            label=ns.L["Gossip Dialog (Req. Reload)"],           dbT=general,         desc=ns.L["Skin the NPC gossip / quest-giver dialog window. Requires a reload."]},
         {key="skinGuildBank",         label=ns.L["Guild Bank (Req. Reload)"],              dbT=general,         desc=ns.L["Skin the Guild Bank window. Requires a reload."]},
+        {key="skinHousing",           label="Housing Dashboard (Req. Reload)",              dbT=general,         retailOnly=true, desc="Skin the Housing Dashboard (house level, Endeavors, catalog and blueprints) with the H3z0 UI window look. Requires a reload."},
         {key="skinInspectFrame",      label=ns.L["Inspect Frame (Req. Reload)"],           dbT=general,         desc=ns.L["Skin the Inspect window that opens when you /inspect another player. Requires a reload."]},
         {key="skinInstanceFrames",    label=ns.L["Instance Frames (Req. Reload)"],         dbT=general,         desc=ns.L["Skin the Group Finder and available PvP and dungeon windows. Requires a reload."]},
         {key="skinKeystoneFrame",     label=ns.L["Keystone Window (Req. Reload)"],         dbT=general,         retailOnly=true, desc=ns.L["Skin the Mythic+ Keystone insertion and selection window. Requires a reload."]},
@@ -630,7 +680,13 @@ local function BuildSkinningTab(tabContent)
     local sbfCells = {}
     for _, def in ipairs(blizFrames) do
         local isForever = ns.Client and ns.Client.isForever
-        if not (def.foreverOnly and not isForever) and not (def.retailOnly and isForever) then
+        local isLegacy = ns.Client and ns.Client.isLegacy
+        -- windows the Classic games don't have (or that H3z0 UI doesn't skin there)
+        local CLASSIC_NONE = { skinCraftingOrders = true, skinDelves = true, skinItemUpgrade = true, skinEncounterJournal = true,
+            skinFlightMap = true, skinHousing = true, skinInspectFrame = true, skinInstanceFrames = true, skinKeystoneFrame = true,
+            skinProfessions = true, skinPVPMatch = true, skinWeeklyRewards = true }
+        local hiddenHere = ns.Client and ns.Client.isClassic and CLASSIC_NONE[def.key]
+        if not hiddenHere and not (def.foreverOnly and not isForever) and not (def.retailOnly and isLegacy) then
             local w = GUI:CreateFormCheckbox(sSBF.frame, nil, def.key, def.dbT, ReloadConfirm,
                 { description = def.desc })
             sbfCells[#sbfCells + 1] = row(sSBF.frame, def.label, w)
@@ -763,7 +819,7 @@ local function BuildSkinningTab(tabContent)
     AddBgOverrides(sSTB, general, "statusTrackingBars")
     L.closeSection(sSTB)
 
-    if general.skinObjectiveTracker == nil then general.skinObjectiveTracker = false end
+    if general.skinObjectiveTracker == nil then general.skinObjectiveTracker = true end
     if general.objectiveTrackerClickThrough == nil then general.objectiveTrackerClickThrough = false end
     if general.objectiveTrackerHeight == nil then general.objectiveTrackerHeight = 600 end
     if general.objectiveTrackerWidth == nil then general.objectiveTrackerWidth = 260 end

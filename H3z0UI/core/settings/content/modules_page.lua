@@ -15,7 +15,7 @@ local CONTENT_WIDTH   = 680
 local GROUP_HDR_H     = 22
 local BOTTOM_PADDING  = 20
 
-local CONTENT_TOP_Y   = -32
+local CONTENT_TOP_Y   = -66
 
 local function CollectVisibleModules()
     local groups     = {}
@@ -284,10 +284,85 @@ local function BuildModulesContent(content)
 
     local yCursor = CONTENT_TOP_Y
 
+    -- filter bar: text search and On / Off / All. Non-matching modules are dimmed.
+    local filterText, filterStatus = "", "all"
+    local function ApplyFilter()
+        for _, rec in ipairs(content._panelRows or {}) do
+            local on = type(rec.entry.isEnabled) == "function" and rec.entry.isEnabled() or false
+            local okText = filterText == "" or (rec.label and rec.label:lower():find(filterText, 1, true) ~= nil)
+            local okStatus = filterStatus == "all" or (filterStatus == "on" and on) or (filterStatus == "off" and not on)
+            if rec.cell then rec.cell:SetAlpha((okText and okStatus) and 1 or 0.22) end
+        end
+    end
+    content._applyFilter = ApplyFilter
+
+    local box = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
+    box:SetSize(190, 20)
+    box:SetPoint("TOPLEFT", content, "TOPLEFT", 12, -30)
+    box:SetAutoFocus(false)
+    box:SetFontObject(ChatFontNormal)
+    box:SetScript("OnTextChanged", function(self)
+        filterText = (self:GetText() or ""):lower()
+        ApplyFilter()
+    end)
+    box:SetScript("OnEscapePressed", function(self) self:SetText(""); self:ClearFocus() end)
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    local hint = CreateWrappedLabel(content, "Find a module", 10, C.textMuted, 120)
+    hint:SetPoint("BOTTOMLEFT", box, "TOPLEFT", 2, 2)
+
+    local statusBtns = {}
+    local function SetStatus(v)
+        filterStatus = v
+        for key, b in pairs(statusBtns) do b:SetAlpha(key == v and 1 or 0.5) end
+        ApplyFilter()
+    end
+    for i, def in ipairs({ { "all", "All" }, { "on", "On" }, { "off", "Off" } }) do
+        local b = GUI:CreateButton(content, def[2], 48, 22, function() SetStatus(def[1]) end)
+        b:SetPoint("LEFT", box, "RIGHT", 12 + (i - 1) * 52, 0)
+        statusBtns[def[1]] = b
+    end
+    SetStatus("all")
+    if ns.H3z0UI_Modules then
+        local tok = ns.H3z0UI_Modules:Subscribe("*", ApplyFilter)
+        content:HookScript("OnHide", function() ns.H3z0UI_Modules:Unsubscribe(tok) end)
+    end
+
     for _, groupName in ipairs(groupOrder) do
         local header = Shared.CreateAccentDotLabel(content, groupName, yCursor)
 
         header:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, yCursor)
+
+        -- all on / all off for this group (all off asks twice)
+        local function GroupSet(want)
+            if InCombatLockdown() then return end
+            for _, item in ipairs(groups[groupName]) do
+                local e = item.entry
+                local cur = type(e.isEnabled) == "function" and e.isEnabled() or false
+                if cur ~= want and not e.combatLocked then
+                    if ns.H3z0UI_Modules and ns.H3z0UI_Modules.SetEnabled then
+                        ns.H3z0UI_Modules:SetEnabled(item.id, want)
+                    elseif type(e.setEnabled) == "function" then
+                        e.setEnabled(want)
+                    end
+                end
+            end
+        end
+        local offBtn = GUI:CreateButton(header, "All off", 56, 18, nil)
+        offBtn:SetPoint("RIGHT", header, "RIGHT", -8, 0)
+        local armed
+        offBtn:SetScript("OnClick", function(self)
+            if not armed then
+                armed = true
+                self:SetText("Sure?")
+                C_Timer.After(3, function() armed = nil; self:SetText("All off") end)
+            else
+                armed = nil
+                self:SetText("All off")
+                GroupSet(false)
+            end
+        end)
+        local onBtn = GUI:CreateButton(header, "All on", 56, 18, function() GroupSet(true) end)
+        onBtn:SetPoint("RIGHT", offBtn, "LEFT", -6, 0)
 
         content._groupHeaders[groupName] = header
         yCursor = yCursor - GROUP_HDR_H - 4
@@ -318,6 +393,8 @@ local function BuildModulesContent(content)
                 group    = groupName,
                 entry    = leftItem.entry,
                 pill     = leftCell._pill,
+                label    = leftItem.label,
+                id       = leftItem.id,
             }
 
             if rightItem and rightCell then
@@ -328,6 +405,8 @@ local function BuildModulesContent(content)
                     group    = groupName,
                     entry    = rightItem.entry,
                     pill     = rightCell._pill,
+                    label    = rightItem.label,
+                    id       = rightItem.id,
                 }
             end
 
@@ -379,7 +458,7 @@ if Registry and Schema
     Registry:RegisterFeature(Schema.Feature({
         id = "modulesPage",
         category = "global",
-        nav = { tileId = "global", subPageIndex = 3 },
+        nav = { tileId = "global", subPageIndex = 4 },
         sections = {
             Schema.Section({
                 id = "modulesList",

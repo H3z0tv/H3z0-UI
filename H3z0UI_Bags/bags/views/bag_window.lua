@@ -307,6 +307,25 @@ local function EnsureWindow()
     win._free:SetPoint("LEFT", 8, 0)
     CJKFont(win._free, Helpers.GetGeneralFont() or STANDARD_TEXT_FONT, 12, "OUTLINE")
 
+    -- hover the free-slots text to see which bags you carry and how many slots each has
+    win._freeHit = CreateFrame("Button", nil, win._footer)
+    win._freeHit:SetAllPoints(win._free)
+    win._freeHit:SetScript("OnEnter", function(self)
+        if viewedCharacter ~= nil then return end
+        local list, total, free = BagSummary()
+        if #list == 0 then return end
+        GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+        GameTooltip:SetText(ns.L["Your bags"])
+        for _, b in ipairs(list) do
+            GameTooltip:AddDoubleLine(b.name .. (b.reagent and (" (" .. ns.L["Reagent Bag"] .. ")") or ""),
+                (b.slots - b.free) .. "/" .. b.slots .. " " .. ns.L["used"], 1, 1, 1, 0.8, 0.8, 0.8)
+        end
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddDoubleLine(ns.L["Total"], (total - free) .. "/" .. total .. " " .. ns.L["used"], 1, 0.82, 0, 1, 0.82, 0)
+        GameTooltip:Show()
+    end)
+    win._freeHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     win._bagSlotButtons = {}
     for i = 1, 5 do
         local bagID = i
@@ -590,10 +609,34 @@ local function DressPlacedCell(cell, btn, live, rightClickRoute)
     end
 end
 
+-- the bags you carry: { name, slots, free } per container, plus the totals (live character only)
+local function BagSummary()
+    local list, total, free = {}, 0, 0
+    local lastBag = (ns.Client and ns.Client.LAST_BAG) or 5
+    for bagID = 0, lastBag do
+        local n = C_Container.GetContainerNumSlots(bagID) or 0
+        if n > 0 then
+            local f = C_Container.GetContainerNumFreeSlots(bagID) or 0
+            local name = C_Container.GetBagName and C_Container.GetBagName(bagID) or nil
+            if not name or name == "" then name = (bagID == 0) and (BACKPACK_TOOLTIP or "Backpack") or (ns.L["Bag"] .. " " .. bagID) end
+            list[#list + 1] = { name = name, slots = n, free = f, reagent = (bagID == 5 and lastBag == 5) }
+            total, free = total + n, free + f
+        end
+    end
+    return list, total, free
+end
+
 local function UpdateFreeText(slots)
     local free = 0
     for _, cell in ipairs(slots) do
         if not cell.entry then free = free + 1 end
+    end
+    if viewedCharacter == nil then
+        local list, total = BagSummary()
+        if #list > 0 then
+            win._free:SetText(free .. "/" .. total .. " " .. ns.L["free"] .. "  -  " .. #list .. " " .. ns.L["bags"])
+            return
+        end
     end
     win._free:SetText(free .. " " .. ns.L["free"])
 end
@@ -671,6 +714,9 @@ function BagWindow.Refresh()
     local inv
     if inventoryMode then
         local behavior = s and s.behavior
+        -- the bag-slot strip sits above the sidebar and the items, like in the other layouts
+        local wantStrip = live and (not appearance or appearance.showBagSlots ~= false)
+        Bags.InventoryView.SetBagTop(live and (wantStrip and (BAG_SLOT_SIZE + 8) or 16) or 0)
         inv = Bags.InventoryView.Compute(win, slots, gridOpts, live, {
             key = behavior and behavior.sortKey,
             reverse = behavior and behavior.sortReverse,
@@ -755,9 +801,9 @@ function BagWindow.Refresh()
     end
 
     local stripH = 0
-    local showStrip = live and not inventoryMode and (not appearance or appearance.showBagSlots ~= false)
+    local showStrip = live and (not appearance or appearance.showBagSlots ~= false)
     if win._stripToggle then
-        if live and not inventoryMode then
+        if live then
             win._stripToggle._label:SetText(showStrip and "-" or "+")
             local tr, tg, tb, ta = Helpers.GetWindowColors()
             UIKit.UpdateBorderLines(win._stripToggle, 1, tr, tg, tb, 0.35 * ta)
@@ -782,7 +828,7 @@ function BagWindow.Refresh()
                     local q = GetInventoryItemQuality("player", inv)
                     local qr, qg, qb = Bags.ItemButtons.GetQualityColor(q or 1)
                     UIKit.UpdateBorderLines(b, 1, qr, qg, qb, 1)
-                    b._count:SetText(C_Container.GetContainerNumFreeSlots(i) or "")
+                    b._count:SetText((C_Container.GetContainerNumFreeSlots(i) or 0) .. "/" .. (C_Container.GetContainerNumSlots(i) or 0))
                 else
                     b._icon:Hide()
                     b._count:SetText("")
@@ -802,11 +848,14 @@ function BagWindow.Refresh()
     if showStrip then
         stripH = BAG_SLOT_SIZE + 8
         contentW = math.max(contentW, 18 + 5 * BAG_SLOT_SIZE + 4 * 4)
-    elseif live and not inventoryMode then
+    elseif live then
         stripH = 16
     end
     if stripH > 0 then
-        for _, p in ipairs(placed) do p.y = p.y - stripH end
+        -- the inventory layout already moved its sidebar and item area down (SetBagTop above)
+        if not inventoryMode then
+            for _, p in ipairs(placed) do p.y = p.y - stripH end
+        end
         if catHeaders then
             for _, h in ipairs(catHeaders) do h.y = h.y - stripH end
         end
@@ -1094,7 +1143,7 @@ local function UpdateBagSlotStripCounts()
     if not (win and win._bagSlotButtons) then return end
     for i, b in ipairs(win._bagSlotButtons) do
         if b:IsShown() and b._icon:IsShown() then
-            b._count:SetText(C_Container.GetContainerNumFreeSlots(i) or "")
+            b._count:SetText((C_Container.GetContainerNumFreeSlots(i) or 0) .. "/" .. (C_Container.GetContainerNumSlots(i) or 0))
         end
     end
 end

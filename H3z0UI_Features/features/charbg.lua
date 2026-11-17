@@ -55,6 +55,8 @@ local function BackgroundAtlas(unit)
     return nil
 end
 
+CB.BackgroundAtlas = function(unit) return BackgroundAtlas(unit) end
+
 local function Host(frame)
     if frame == CharacterFrame then
         return _G.H3z0UI_CharacterFrameBg_Skin or frame
@@ -128,16 +130,27 @@ local function Layout(frame, v)
 
     -- logo: bottom-right corner, above the tab row
     v.logoFrame:ClearAllPoints()
-    v.logoFrame:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -14, frame == CharacterFrame and 44 or 12)
+    if ns.Client and ns.Client.isLegacy then
+        -- Forever / Classic: the stats list fills the right side down to the bottom, so the logo
+        -- goes to the free bottom-left corner instead of over the Defense lines
+        v.logoFrame:SetPoint("BOTTOMLEFT", host, "BOTTOMLEFT", 14, 10)
+    else
+        v.logoFrame:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -14, frame == CharacterFrame and 44 or 12)
+    end
     v.logoFrame:SetFrameStrata(frame:GetFrameStrata())
     v.logoFrame:SetFrameLevel((frame:GetFrameLevel() or 0) + 20)
     v.logoText:SetFont(Font(), 18, "OUTLINE")
     v.logoText:ClearAllPoints()
-    v.logoText:SetPoint("RIGHT", v.logoFrame, "RIGHT", 0, 0)
     v.logoText:SetText("H3z0 UI")
     v.logoText:SetTextColor(0.85, 0.88, 0.92, 0.6)
     v.logo:ClearAllPoints()
-    v.logo:SetPoint("RIGHT", v.logoText, "LEFT", -4, 0)
+    if ns.Client and ns.Client.isLegacy then
+        v.logo:SetPoint("LEFT", v.logoFrame, "LEFT", 0, 0)
+        v.logoText:SetPoint("LEFT", v.logo, "RIGHT", 4, 0)
+    else
+        v.logoText:SetPoint("RIGHT", v.logoFrame, "RIGHT", 0, 0)
+        v.logo:SetPoint("RIGHT", v.logoText, "LEFT", -4, 0)
+    end
     v.logo:SetAlpha(0.65)
 end
 

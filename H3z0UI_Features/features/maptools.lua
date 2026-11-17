@@ -195,7 +195,7 @@ function MT.Way(msg)
 end
 
 local function RegisterSlash()
-    SLASH_H3Z0UIWAY1 = "/h3way"
+    SLASH_H3Z0UIWAY1 = "/h3z0way"
     local wayTaken = _G.hash_SlashCmdList and _G.hash_SlashCmdList["/WAY"]
     if not wayTaken then
         for k, v in pairs(_G) do

@@ -75,7 +75,12 @@ end)
 local function ApplyToggleOptionsKeybind()
     local key = H3z0UI.db and H3z0UI.db.global and H3z0UI.db.global.toggleOptionsKey
     if type(key) == "string" and key ~= "" and not InCombatLockdown() then
-        SetBindingClick(key, "H3z0UI_ToggleOptionsButton")
+        -- only when the key is not already bound to it: every binding change makes the game
+        -- refresh all its action bars (the controller bars too) from inside this addon, and
+        -- that made them hit Midnight's hidden values and throw errors
+        local want = "CLICK H3z0UI_ToggleOptionsButton:LeftButton"
+        local now = GetBindingAction and GetBindingAction(key) or ""
+        if now ~= want then SetBindingClick(key, "H3z0UI_ToggleOptionsButton") end
     end
 end
 ---@type table|AceAddon

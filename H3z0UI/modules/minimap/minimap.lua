@@ -64,8 +64,8 @@ end
 --- HELPER FUNCTIONS
 ---=================================================================================
 
+-- always the current profile's table (a copy from early login goes stale on a profile switch)
 local function GetSettings()
-    if cachedSettings then return cachedSettings end
     cachedSettings = Helpers.GetModuleDB("minimap")
     return cachedSettings
 end
@@ -751,6 +751,81 @@ function UpdateZoneTextDisplay()
 end
 
 ---=================================================================================
+--- COORDINATES (one text, bottom centre inside the map)
+---=================================================================================
+
+local coordsFrame, coordsFont, coordsTicker
+
+local function UpdateCoordsText()
+    if not coordsFont then return end
+    local settings = GetSettings()
+    local cfg = settings and settings.coordsConfig
+    if not (settings and settings.showCoords and cfg) then return end
+    local text = ""
+    local mapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+    if mapID and not (issecretvalue and issecretvalue(mapID)) then
+        local pos = C_Map.GetPlayerMapPosition(mapID, "player")
+        if pos and pos.GetXY then
+            local x, y = pos:GetXY()
+            if x and y and not (issecretvalue and (issecretvalue(x) or issecretvalue(y))) and (x > 0 or y > 0) then
+                local ok, str = pcall(string.format, settings.coordPrecision or "%d,%d", x * 100, y * 100)
+                if ok then text = str end
+            end
+        end
+    end
+    coordsFont:SetText(text)
+end
+
+local function UpdateCoords()
+    local settings = GetSettings()
+    if not settings or not settings.enabled then return end
+    local cfg = settings.coordsConfig
+    if not settings.showCoords or not cfg then
+        if coordsFrame then coordsFrame:Hide() end
+        if coordsTicker then coordsTicker:Cancel(); coordsTicker = nil end
+        return
+    end
+    if not coordsFrame then
+        coordsFrame = CreateFrame("Frame", nil, Minimap)
+        coordsFrame:SetFrameLevel(Minimap:GetFrameLevel() + 6)
+        coordsFont = coordsFrame:CreateFontString(nil, "OVERLAY")
+        coordsFont:SetAllPoints(coordsFrame)
+    end
+    coordsFrame:Show()
+    coordsFrame:ClearAllPoints()
+    coordsFrame:SetPoint("BOTTOM", Minimap, "BOTTOM", cfg.offsetX or 0, (cfg.offsetY or 0) + 6)
+    coordsFrame:SetSize(120, (cfg.fontSize or 12) + 2)
+
+    local flags = nil
+    if cfg.monochrome and cfg.outline ~= "NONE" then flags = "MONOCHROME," .. cfg.outline
+    elseif cfg.monochrome then flags = "MONOCHROME"
+    elseif cfg.outline ~= "NONE" then flags = cfg.outline end
+    local generalFont = "H3z0UI"
+    local general = H3z0UICore and H3z0UICore.db and H3z0UICore.db.profile and H3z0UICore.db.profile.general
+    if general then
+        generalFont = general.font or generalFont
+        if not cfg.monochrome then flags = general.fontOutline or flags end
+    end
+    local fontPath = LSM:Fetch("font", generalFont) or "Fonts\\FRIZQT__.TTF"
+    H3z0UICore:SafeSetFont(coordsFont, fontPath, cfg.fontSize or 12, flags)
+    coordsFont:SetJustifyH(cfg.align or "CENTER")
+
+    local r, g, b, a = 1, 1, 1, 1
+    if cfg.useClassColor then
+        local color = GetClassColor()
+        if color then r, g, b = color.r, color.g, color.b end
+    elseif cfg.color then
+        r, g, b, a = cfg.color[1] or 1, cfg.color[2] or 1, cfg.color[3] or 1, cfg.color[4] or 1
+    end
+    coordsFont:SetTextColor(r, g, b, a)
+
+    UpdateCoordsText()
+    if coordsTicker then coordsTicker:Cancel() end
+    local interval = math.max(0.1, tonumber(settings.coordUpdateInterval) or 0.5)
+    coordsTicker = C_Timer.NewTicker(interval, UpdateCoordsText)
+end
+
+---=================================================================================
 --- BUTTON VISIBILITY
 ---=================================================================================
 
@@ -1345,6 +1420,7 @@ function Minimap_Module:Initialize()
     
     CreateZoneText()
     UpdateZoneText()
+    UpdateCoords()
     
     -- Datatext panel (integrated below minimap with 3 slots)
     CreateDatatextPanel()
@@ -1458,6 +1534,7 @@ function Minimap_Module:Refresh()
     UpdateMinimapSize()
     UpdateClock()
     UpdateZoneText()
+    UpdateCoords()
     UpdateDatatextPanel()
     UpdateButtonVisibility()
     SetupAddonButtonHiding()

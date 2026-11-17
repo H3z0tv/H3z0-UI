@@ -188,17 +188,36 @@ end
 ---------------------------------------------------------------------------
 -- Hook chat frame AddMessage to process URLs
 ---------------------------------------------------------------------------
-local function HookChatMessages(chatFrame)
-    if chatFrame.__h3z0uiChatMessageHooked then return end
-    chatFrame.__h3z0uiChatMessageHooked = true
+local CHAT_FILTER_EVENTS = {
+    "CHAT_MSG_SAY","CHAT_MSG_YELL","CHAT_MSG_EMOTE","CHAT_MSG_TEXT_EMOTE","CHAT_MSG_GUILD","CHAT_MSG_OFFICER",
+    "CHAT_MSG_PARTY","CHAT_MSG_PARTY_LEADER","CHAT_MSG_RAID","CHAT_MSG_RAID_LEADER","CHAT_MSG_RAID_WARNING",
+    "CHAT_MSG_INSTANCE_CHAT","CHAT_MSG_INSTANCE_CHAT_LEADER","CHAT_MSG_WHISPER","CHAT_MSG_WHISPER_INFORM",
+    "CHAT_MSG_BN_WHISPER","CHAT_MSG_BN_WHISPER_INFORM","CHAT_MSG_CHANNEL","CHAT_MSG_SYSTEM","CHAT_MSG_LOOT",
+    "CHAT_MSG_COMMUNITIES_CHANNEL",
+}
+local chatFilterInstalled = false
 
-    local origAddMessage = chatFrame.AddMessage
-    chatFrame.AddMessage = function(self, text, ...)
-        if text and type(text) == "string" then
-            text = AddTimestamp(text)
-            text = MakeURLsClickable(text)
+-- Do NOT replace chatFrame.AddMessage: that taints the game's chat code
+-- ("attempted to iterate a table that cannot be accessed while tainted").
+-- Message event filters change the text without touching game functions.
+local function ChatTextFilter(_, _, text, ...)
+    if type(text) == "string" then
+        local ok, result = pcall(function()
+            return MakeURLsClickable(AddTimestamp(text))
+        end)
+        if ok and type(result) == "string" then
+            return false, result, ...
         end
-        return origAddMessage(self, text, ...)
+    end
+    return false, text, ...
+end
+
+local function HookChatMessages(chatFrame)
+    if chatFilterInstalled then return end
+    chatFilterInstalled = true
+    if not ChatFrame_AddMessageEventFilter then return end
+    for _, ev in ipairs(CHAT_FILTER_EVENTS) do
+        pcall(ChatFrame_AddMessageEventFilter, ev, ChatTextFilter)
     end
 end
 

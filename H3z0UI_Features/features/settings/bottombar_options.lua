@@ -78,6 +78,34 @@ local function Build(tabContent)
     end
     if ib.h3zHideBlizzardMenus == nil then ib.h3zHideBlizzardMenus = true end
 
+    -- one place for both looks: the full-width bar or the Top Dock (either-or)
+    local dock = db and db.dock
+    local DockMod = ns.H3z0Dock
+    if dock and DockMod then
+        local style = { value = dock.enabled == true and "top" or (ib.enabled ~= false and "bar" or "off") }
+        Section("Style")
+        Info("Two looks for the same menu icons, clock and widgets. The Dock Bar is the full-width bar; the Top Dock is a slim floating bar at the top of the screen with a thin colour line. Only one of them shows at a time, or choose Off for none. The Top Dock settings are on the Top Dock page.", 46)
+        Place(GUI:CreateFormDropdown(tabContent, "Dock Style", {
+            { value = "bar", text = "Dock Bar (full width)" },
+            { value = "top", text = "Top Dock (floating, at the top)" },
+            { value = "off", text = "Off (no dock)" },
+        }, "value", style, function()
+            if style.value == "top" then
+                dock.enabled = true
+            elseif style.value == "bar" then
+                dock.enabled = false
+                dock.barWasOn = nil
+                ib.enabled = true
+            else
+                dock.enabled = false
+                dock.barWasOn = nil
+                ib.enabled = false
+            end
+            if _G.H3z0UI_RefreshDock then _G.H3z0UI_RefreshDock() end
+            Refresh()
+        end))
+    end
+
     Section("Bottom Bar")
     Info("The Bottom Bar is the full-width bar at the bottom of the screen: menu icons and spec on the left, the clock in the middle, professions, gold, bags and location on the right.", 34)
     Place(GUI:CreateFormCheckbox(tabContent, "Show Bottom Bar", "enabled", ib, Refresh))

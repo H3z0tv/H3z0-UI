@@ -26,12 +26,37 @@ function Junk.IsBagExcluded(bagID)
     return false
 end
 
+-- items you marked yourself (Ctrl+Alt+click on an item in the bag); saved in behavior.junk.marked
+local function Marked()
+    local s = GetSettings()
+    local j = s and s.behavior and s.behavior.junk
+    return j and j.marked
+end
+
+function Junk.IsMarked(itemID)
+    local m = Marked()
+    return (m and itemID and m[itemID]) and true or false
+end
+
+function Junk.ToggleMarked(itemID)
+    local s = GetSettings()
+    if not (s and s.behavior and itemID) then return nil end
+    s.behavior.junk = s.behavior.junk or {}
+    s.behavior.junk.marked = s.behavior.junk.marked or {}
+    local m = s.behavior.junk.marked
+    if m[itemID] then m[itemID] = nil else m[itemID] = true end
+    return m[itemID] and true or false
+end
+
 function Junk.IsJunk(liveInfo, bagID, exclusions)
     if not liveInfo then return false end
-    if liveInfo.quality ~= 0 then return false end
     if liveInfo.hasNoValue then return false end
     if exclusions and exclusions[liveInfo.itemID] then return false end
     if Junk.IsBagExcluded(bagID) then return false end
+    if liveInfo.quality ~= 0 then
+        -- not grey: junk only if you marked it
+        return Junk.IsMarked(liveInfo.itemID)
+    end
     return true
 end
 

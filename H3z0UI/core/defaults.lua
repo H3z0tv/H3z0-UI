@@ -642,6 +642,7 @@ local defaults = {
                     dim        = true,
                     sellButton = true,
                     exclusions = {},
+                    marked     = {},
                 },
                 tooltipCounts = "on",
                 newItemGlow = {
@@ -3731,13 +3732,13 @@ local defaults = {
                 timeFormat = "local",
             },
 
-            showCoords = false,
+            showCoords = true,
             coordPrecision = "%d,%d",
-            coordUpdateInterval = 1,
+            coordUpdateInterval = 0.5,
             coordsConfig = {
                 offsetX = 0,
                 offsetY = 0,
-                align = "RIGHT",
+                align = "CENTER",
                 font = "H3z0UI",
                 fontSize = 12,
                 monochrome = false,

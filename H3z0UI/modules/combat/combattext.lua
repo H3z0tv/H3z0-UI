@@ -199,10 +199,13 @@ local function ApplyScrollingCombatText(fromOnChange)
     end
     _sctApplyPending = false
 
+    -- a setting is only written when it really changes (writing one makes the game refresh
+    -- parts of its UI from inside this addon)
+    local cur = GetCVar and GetCVar("enableFloatingCombatText")
     if WantsScrollingCombatTextDisabled() then
-        SetCVar("enableFloatingCombatText", "0")
+        if cur ~= "0" then SetCVar("enableFloatingCombatText", "0") end
     elseif fromOnChange then
-        SetCVar("enableFloatingCombatText", "1")
+        if cur ~= "1" then SetCVar("enableFloatingCombatText", "1") end
     end
 end
 

@@ -1121,6 +1121,73 @@ if ns.WhenLoggedIn then
     ns.WhenLoggedIn(InitializeTooltipSkinning)
 end
 
+-- The profile can be switched or replaced after login (WoW: Forever, per-spec profiles,
+-- profile pins). The skin was set up once at login from whatever profile was active then:
+-- if that one had skinning off, the skin never started; if it had other fonts / colours,
+-- they stayed until an option was touched, and the next restart broke it again. Catch up
+-- whenever the profile changes and once more when the world has loaded.
+local function CatchUpWithProfile()
+    if not initialized then
+        InitializeTooltipSkinning()
+        return
+    end
+    if IsEnabled() then
+        RefreshAllFonts()
+        RefreshAllColors()
+    end
+end
+
+local profileWatcher = {}
+local function WatchProfile()
+    local core = GetCore()
+    local db = core and core.db
+    if not (db and db.RegisterCallback) or profileWatcher.db == db then return end
+    profileWatcher.db = db
+    local function onChange()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, CatchUpWithProfile)
+        else
+            CatchUpWithProfile()
+        end
+    end
+    db.RegisterCallback(profileWatcher, "OnProfileChanged", onChange)
+    db.RegisterCallback(profileWatcher, "OnProfileCopied", onChange)
+    db.RegisterCallback(profileWatcher, "OnProfileReset", onChange)
+end
+
+local worldWatcher = CreateFrame("Frame")
+worldWatcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+worldWatcher:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    WatchProfile()
+    if C_Timer and C_Timer.After then
+        C_Timer.After(1, CatchUpWithProfile)
+    else
+        CatchUpWithProfile()
+    end
+end)
+if ns.WhenLoggedIn then
+    ns.WhenLoggedIn(WatchProfile)
+end
+
+-- /h3z0ui tipcheck: what the tooltip is running on right now
+_G.H3z0UI_TooltipCheck = function(say)
+    say = say or print
+    local core = GetCore()
+    local db = core and core.db
+    local p = db and db.profile
+    local t = p and p.tooltip
+    local function yn(v) return v and "on" or "off" end
+    say("Profile: " .. tostring(db and db.GetCurrentProfile and db:GetCurrentProfile() or "?"))
+    say("Skinning (master): " .. yn(not (p and p.skinning and p.skinning.enabled == false)))
+    say("Tooltip settings: " .. (t and "found" or "MISSING") .. ", enabled " .. yn(t and t.enabled)
+        .. ", skin " .. yn(t and t.skinTooltips))
+    say("Skin started: " .. yn(initialized) .. ", skin active now: " .. yn(IsEnabled()))
+    local P = ns.TooltipProvider
+    say("Tooltip engine started: " .. yn(P and P.initialized)
+        .. ", reads the current profile: " .. yn(P and P.GetSettings and P:GetSettings() == t))
+end
+
 ns.H3z0UI_RefreshTooltipSkinColors = RefreshAllColors
 ns.H3z0UI_RefreshTooltipFontSize = RefreshAllFonts
 

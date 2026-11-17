@@ -2,7 +2,7 @@
 ## Title: |cFF30D1FFH3z0 UI|r Unit Frames
 ## Notes: H3z0 UI unit, party and raid frames. Requires the H3z0 UI core addon.
 ## Author: H3z0
-## Version: 0.28.2
+## Version: 0.28.5
 ## Category: User Interface
 ## Group: H3z0UI
 ## Dependencies: H3z0UI
@@ -14,6 +14,7 @@ unitframes\castbar.lua
 unitframes\unitframes.lua
 unitframes\framestyle.lua
 unitframes\modernlook.lua
+unitframes\visibility.lua
 unitframes\partyframes.lua
 unitframes\raidframes.lua
 unitframes\layout_bridge.lua

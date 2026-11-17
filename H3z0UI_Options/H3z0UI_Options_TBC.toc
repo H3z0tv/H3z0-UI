@@ -3,7 +3,7 @@
 ## IconTexture: Interface\AddOns\H3z0UI\assets\icon
 ## Notes: Options window for H3z0 UI
 ## Author: H3z0
-## Version: 0.28.2
+## Version: 0.28.5
 ## Category: User Interface
 ## Group: H3z0UI
 ## RequiredDeps: H3z0UI
@@ -145,6 +145,7 @@ aura_elements_editor.lua
 ..\H3z0UI_Features\features\settings\quickaccess_options.lua
 ..\H3z0UI_Features\features\settings\hovername_options.lua
 ..\H3z0UI_Features\features\settings\herald_options.lua
+..\H3z0UI_Features\features\settings\dock_options.lua
 ..\H3z0UI_Features\features\settings\arcanum_options.lua
 ..\H3z0UI_Features\features\settings\lorekeeper_options.lua
 ..\H3z0UI_Features\features\settings\oracle_options.lua

@@ -212,45 +212,46 @@ local function WantsHidden()
     return ib ~= nil and ib.enabled ~= false and ib.h3zHideBlizzardMenus ~= false
 end
 
+-- the Top Dock's icons replace the micro menu too (the bag bar stays, the Top Dock has no bag button)
+local function DockWantsMicroMenuHidden()
+    local dock = ns.H3z0Dock
+    return dock ~= nil and dock.WantsMenusHidden ~= nil and dock.WantsMenusHidden() == true
+end
+
 -- Blizzard's micro menu and bag bar are parked on a hidden frame while the
 -- Bottom Bar is on (its menu icons replace them) and come back when it is off.
 local FRAME_NAMES = { "MicroMenuContainer", "BagsBar" }
+local FRAME_BAR_KEY = { MicroMenuContainer = "microbar", BagsBar = "bags" }
 local hider = CreateFrame("Frame", nil, UIParent)
 hider:Hide()
 local hidden = {}      -- frame -> original parent
 
--- turn the micro menu / bag bar of H3z0 UI's action bars back on
-local function UndoOldSwitch(ib)
-    if not ib.h3zHidBars then return end
-    local p = Profile()
-    local bars = p and p.actionBars and p.actionBars.bars
-    for key in pairs(ib.h3zHidBars) do
-        if bars and type(bars[key]) == "table" then bars[key].enabled = true end
-    end
-    ib.h3zHidBars = nil
-end
-
 -- H3z0 UI's own micro menu / bag bar (Action Bars): off while the Bottom Bar
--- replaces them, back on when it doesn't
+-- replaces them (the Top Dock only the micro menu), back on when it doesn't.
+-- want = { microbar = true/false, bags = true/false }
 local function SwitchOwnedBars(ib, want)
     local p = Profile()
     local bars = p and p.actionBars and p.actionBars.bars
     if type(bars) ~= "table" then return end
     local changed = false
-    if want then
-        for _, key in ipairs({ "microbar", "bags" }) do
-            local cfg = bars[key]
-            if type(cfg) == "table" and cfg.enabled ~= false then
-                cfg.enabled = false
-                ib.h3zHidBars = ib.h3zHidBars or {}
-                ib.h3zHidBars[key] = true
+    for _, key in ipairs({ "microbar", "bags" }) do
+        local cfg = bars[key]
+        if type(cfg) == "table" then
+            if want[key] then
+                if cfg.enabled ~= false then
+                    cfg.enabled = false
+                    ib.h3zHidBars = ib.h3zHidBars or {}
+                    ib.h3zHidBars[key] = true
+                    changed = true
+                end
+            elseif ib.h3zHidBars and ib.h3zHidBars[key] then
+                cfg.enabled = true
+                ib.h3zHidBars[key] = nil
                 changed = true
             end
         end
-    elseif ib.h3zHidBars then
-        UndoOldSwitch(ib)
-        changed = true
     end
+    if ib.h3zHidBars and next(ib.h3zHidBars) == nil then ib.h3zHidBars = nil end
     if changed and _G.H3z0UI_RefreshActionBars then
         C_Timer.After(0, function() pcall(_G.H3z0UI_RefreshActionBars) end)
     end
@@ -264,15 +265,17 @@ function BB.ApplyMenus()
     pendingApply = false
     local ib = InfoBarDB()
     if not ib then return end
-    local want = WantsHidden()
+    local wantBar = WantsHidden()
+    local want = { microbar = wantBar or DockWantsMicroMenuHidden(), bags = wantBar }
     SwitchOwnedBars(ib, want)
     for _, name in ipairs(FRAME_NAMES) do
         local frame = _G[name]
         if frame then
-            if want and not hidden[frame] then
+            local hide = want[FRAME_BAR_KEY[name]]
+            if hide and not hidden[frame] then
                 local original = frame:GetParent() or UIParent
                 if pcall(frame.SetParent, frame, hider) then hidden[frame] = original end
-            elseif not want and hidden[frame] then
+            elseif not hide and hidden[frame] then
                 pcall(frame.SetParent, frame, hidden[frame] or UIParent)
                 hidden[frame] = nil
             end

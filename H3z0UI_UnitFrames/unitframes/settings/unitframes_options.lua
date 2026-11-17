@@ -135,9 +135,7 @@ local function CreateUnitFramesPage(parent)
         end)
         y = y - FORM_ROW - 10
 
-        local featText = GUI:LookIs("classic")
-            and "Square portraits are in the Portraits tab. UI version, Layout Mode and Compact Action Bars are in H3z0 Features."
-            or "Portraits, frame style, shadows and rounded corners of this version are in H3z0 Features > UI Look."
+        local featText = "Portraits, frame style and the extras of the version in use are in the Version Settings tab. Shadows and rounded corners are in H3z0 Features > UI Look."
         local featNote = GUI:CreateLabel(tabContent, featText, 11, C.textMuted)
         featNote:SetPoint("TOPLEFT", PAD, y)
         featNote:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
@@ -483,6 +481,44 @@ local function CreateUnitFramesPage(parent)
         enableCheck:SetPoint("TOPLEFT", PAD, y)
         enableCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
+
+        -- VISIBILITY section (fade out of combat)
+        local visSettings = (unitKey ~= "boss" and ns.UnitFrameVisibility and ns.UnitFrameVisibility.GetSettings(unitKey)) or nil
+        if visSettings then
+            local visHeader = GUI:CreateSectionHeader(tabContent, "Visibility")
+            visHeader:SetPoint("TOPLEFT", PAD, y)
+            y = y - visHeader.gap
+
+            local fadeCheck = GUI:CreateFormCheckbox(tabContent, "Fade Out of Combat", "fadeOutOfCombat", visSettings)
+            fadeCheck:SetPoint("TOPLEFT", PAD, y)
+            fadeCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+
+            local fadeAlpha = GUI:CreateFormSlider(tabContent, "Alpha Out of Combat (0 = hidden)", 0, 1, 0.05, "outOfCombatAlpha", visSettings)
+            fadeAlpha:SetPoint("TOPLEFT", PAD, y)
+            fadeAlpha:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+
+            local fadeHold = GUI:CreateFormSlider(tabContent, "Stay Visible After Combat (sec)", 0, 10, 0.5, "holdTime", visSettings)
+            fadeHold:SetPoint("TOPLEFT", PAD, y)
+            fadeHold:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+
+            local fadeMouse = GUI:CreateFormCheckbox(tabContent, "Show When Mouse Is Over It", "showOnMouseover", visSettings)
+            fadeMouse:SetPoint("TOPLEFT", PAD, y)
+            fadeMouse:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+
+            local fadeTarget = GUI:CreateFormCheckbox(tabContent, "Show When You Have a Target", "showWithTarget", visSettings)
+            fadeTarget:SetPoint("TOPLEFT", PAD, y)
+            fadeTarget:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+
+            local fadeHurt = GUI:CreateFormCheckbox(tabContent, "Show When Not at Full Health", "showWhenHurt", visSettings)
+            fadeHurt:SetPoint("TOPLEFT", PAD, y)
+            fadeHurt:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+        end
 
         -- FRAME SIZE section
         local sizeHeader = GUI:CreateSectionHeader(tabContent, "Frame Size & Position")
@@ -924,11 +960,6 @@ local function CreateUnitFramesPage(parent)
         powerHeightSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
         y = y - FORM_ROW
 
-        local powerWidthSlider = GUI:CreateFormSlider(tabContent, "Power Bar Width (%)", 20, 100, 1, "powerBarWidthPct", unitDB, RefreshUnit)
-        powerWidthSlider:SetPoint("TOPLEFT", PAD, y)
-        powerWidthSlider:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
-        y = y - FORM_ROW
-
         local powerBorderCheck = GUI:CreateFormCheckbox(tabContent, "Power Bar Border", "powerBarBorder", unitDB, RefreshUnit)
         powerBorderCheck:SetPoint("TOPLEFT", PAD, y)
         powerBorderCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
@@ -953,6 +984,88 @@ local function CreateUnitFramesPage(parent)
         -- Set initial state (greyed out if power type color is enabled)
         powerBarColorPicker:SetEnabled(not unitDB.powerBarUsePowerColor)
         y = y - FORM_ROW
+
+        -- SHAPESHIFT BARS (WoW: Forever druids): the Mana / Rage / Energy bars built into the
+        -- player frame under the power bar (see H3z0UI_Features/features/formwise)
+        local SB = _G.H3z0UI_Formwise
+        local sbdb = SB and SB.OptionsDB and SB.OptionsDB()
+        if unitKey == "player" and sbdb and ns.Client and ns.Client.isForever
+            and select(2, UnitClass("player")) == "DRUID" then
+            local function ApplySB() if SB.Apply then SB:Apply() end end
+            local function Row(w)
+                w:SetPoint("TOPLEFT", PAD, y)
+                w:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+                y = y - FORM_ROW
+                return w
+            end
+            local function Note(text, h)
+                local fs = tabContent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                fs:SetPoint("TOPLEFT", PAD, y)
+                fs:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+                fs:SetJustifyH("LEFT")
+                fs:SetWordWrap(true)
+                fs:SetText(text)
+                fs:SetTextColor(0.75, 0.78, 0.85)
+                y = y - (h or 30)
+            end
+            -- own copies of the default colours, so the picker never edits the shared defaults
+            for _, k in ipairs({ "color_mana", "color_rage", "color_energy" }) do
+                local c = sbdb[k]
+                if type(c) ~= "table" then c = { 1, 1, 1, 1 } end
+                if SB.DEFAULTS and c == SB.DEFAULTS[k] then c = { c[1], c[2], c[3], c[4] or 1 } end
+                sbdb[k] = c
+            end
+            if sbdb.attached == nil then sbdb.attached = true end
+
+            local sbHeader = GUI:CreateSectionHeader(tabContent, "Shapeshift Bars")
+            sbHeader:SetPoint("TOPLEFT", PAD, y)
+            y = y - sbHeader.gap
+            Note("The Mana, Rage and Energy you will have after shifting, as bars under your power bar inside the player frame (same edges, one border, rounded corners), with shift icons under the frame. Druids only.", 44)
+
+            Row(GUI:CreateFormCheckbox(tabContent, "Show the Shapeshift Bars", "enabled", sbdb, function()
+                if SB.SetEnabled then SB.SetEnabled(sbdb.enabled) end
+            end))
+            Row(GUI:CreateFormCheckbox(tabContent, "Built into the Player Frame (untick for a separate, movable box)", "attached", sbdb, function()
+                if SB.Set then SB:Set("attached", sbdb.attached) else ApplySB() end
+            end))
+            Row(GUI:CreateFormSlider(tabContent, "Bar Height", 4, 30, 1, "height", sbdb, ApplySB))
+            Row(GUI:CreateFormCheckbox(tabContent, "Show Numbers on the Bars", "showText", sbdb, ApplySB))
+            Row(GUI:CreateFormCheckbox(tabContent, "Show the Five-Second Rule Spark on Mana", "showSpark", sbdb, ApplySB))
+
+            Row(GUI:CreateFormCheckbox(tabContent, "Show the Shift Icons", "showCost", sbdb, ApplySB))
+            Row(GUI:CreateFormCheckbox(tabContent, "Shift Icon: Bear Form", "shiftBear", sbdb, ApplySB))
+            Row(GUI:CreateFormCheckbox(tabContent, "Shift Icon: Cat Form", "shiftCat", sbdb, ApplySB))
+            Row(GUI:CreateFormCheckbox(tabContent, "Shift Icon: Travel Form", "shiftTravel", sbdb, ApplySB))
+            Row(GUI:CreateFormCheckbox(tabContent, "Shift Icon: Moonkin Form", "shiftMoonkin", sbdb, ApplySB))
+            Row(GUI:CreateFormSlider(tabContent, "Gap Under the Frame (Shift Icons)", 0, 12, 1, "spacing", sbdb, ApplySB))
+
+            local pickers = {}
+            local function SyncPickers()
+                for _, w in ipairs(pickers) do if w.SetEnabled then w:SetEnabled(sbdb.customColors and true or false) end end
+            end
+            Row(GUI:CreateFormCheckbox(tabContent, "Custom Bar Colors", "customColors", sbdb, function()
+                SyncPickers()
+                ApplySB()
+            end))
+            pickers[1] = Row(GUI:CreateFormColorPicker(tabContent, "Mana Color", "color_mana", sbdb, ApplySB, { noAlpha = true }))
+            pickers[2] = Row(GUI:CreateFormColorPicker(tabContent, "Rage Color", "color_rage", sbdb, ApplySB, { noAlpha = true }))
+            pickers[3] = Row(GUI:CreateFormColorPicker(tabContent, "Energy Color", "color_energy", sbdb, ApplySB, { noAlpha = true }))
+            SyncPickers()
+
+            Note("Only for the separate box (Built into the Player Frame unticked):", 22)
+            Row(GUI:CreateFormCheckbox(tabContent, "Lock the Box (untick to drag it)", "locked", sbdb, ApplySB))
+            Row(GUI:CreateFormCheckbox(tabContent, "Match the Width of the Player Frame's Power Bar", "matchWidth", sbdb, ApplySB))
+            Row(GUI:CreateFormSlider(tabContent, "Width", 40, 400, 1, "width", sbdb, ApplySB))
+            Row(GUI:CreateFormSlider(tabContent, "Scale", 0.5, 2, 0.05, "scale", sbdb, ApplySB))
+            Row(GUI:CreateFormSlider(tabContent, "Offset X", -100, 100, 1, "x", sbdb, ApplySB))
+            Row(GUI:CreateFormSlider(tabContent, "Offset Y", -100, 100, 1, "y", sbdb, ApplySB))
+            local resetBtn = GUI:CreateButton(tabContent, "Reset Shapeshift Bars Layout", 220, 26, function()
+                if SB.ResetLayout then SB:ResetLayout() end
+            end)
+            resetBtn:SetPoint("TOPLEFT", PAD, y)
+            y = y - FORM_ROW - 4
+            Note("Chat: /shiftbars (or /fw) unlock, lock, reset, furor, log.", 24)
+        end
 
         -- POWER TEXT section
         local powerTextHeader = GUI:CreateSectionHeader(tabContent, "Power Text")
@@ -1714,12 +1827,12 @@ local function CreateUnitFramesPage(parent)
             y = y - FORM_ROW
         end
 
-        -- Portrait settings live in Unit Frames > Portraits
+        -- Portrait settings live in Unit Frames > Version Settings
         if (unitKey == "player" or unitKey == "target" or unitKey == "focus") and GUI:LookIs("classic") then
             local portraitHeader = GUI:CreateSectionHeader(tabContent, "Portrait")
             portraitHeader:SetPoint("TOPLEFT", PAD, y)
             y = y - portraitHeader.gap
-            local pNote = GUI:CreateLabel(tabContent, "All portrait settings are in the Portraits tab (last tab above).", 11, C.textMuted)
+            local pNote = GUI:CreateLabel(tabContent, "All portrait settings are in the Version Settings tab (last tab above).", 11, C.textMuted)
             pNote:SetPoint("TOPLEFT", PAD, y)
             pNote:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
             pNote:SetJustifyH("LEFT")
@@ -1738,9 +1851,10 @@ local function CreateUnitFramesPage(parent)
         {name = "Pet", builder = function(c) BuildUnitTab(c, "pet") end},
         {name = "Focus", builder = function(c) BuildUnitTab(c, "focus") end},
         {name = "Boss", builder = function(c) BuildUnitTab(c, "boss") end},
-        {name = "Portraits", looks = { "classic" }, builder = function(c)
+        -- the settings of the version in use only (Legacy, Modern, Modern v2, Modern v3)
+        {name = "Version Settings", builder = function(c)
             local F = ns.H3z0UI_FeaturesOptions
-            if F and F.BuildPortraits then F.BuildPortraits(c) end
+            if F and F.BuildFrameLook then F.BuildFrameLook(c) end
         end},
     }
     if collect then return subTabs end

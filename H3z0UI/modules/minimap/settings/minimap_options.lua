@@ -529,6 +529,59 @@ local function BuildMinimapTab(tabContent)
         y = y - FORM_ROW
     end
 
+    -- SECTION 6: Button Bag (addon minimap buttons in one movable H3z0 button)
+    local Bag = ns.ButtonBag
+    local bag = Bag and Bag.GetSettings and Bag.GetSettings()
+    if bag then
+        local function RefreshBag() if _G.H3z0UI_RefreshButtonBag then _G.H3z0UI_RefreshButtonBag() end end
+        y = y - 10
+        GUI:SetSearchSection("Button Bag")
+        local bagHeader = GUI:CreateSectionHeader(tabContent, "Button Bag (Addon Minimap Buttons)")
+        bagHeader:SetPoint("TOPLEFT", PAD, y)
+        y = y - bagHeader.gap
+
+        local bagDesc = GUI:CreateLabel(tabContent, "Puts the minimap buttons of your other addons into one H3z0 button. Click it to open them. Drag it anywhere to move it; right-click it to lock or unlock it.", 11, C.textMuted)
+        bagDesc:SetPoint("TOPLEFT", PAD, y)
+        bagDesc:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+        bagDesc:SetJustifyH("LEFT")
+        y = y - 34
+
+        local function Row(widget)
+            widget:SetPoint("TOPLEFT", PAD, y)
+            widget:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+        end
+        Row(GUI:CreateFormCheckbox(tabContent, "Enable Button Bag", "enabled", bag, function()
+            RefreshBag()
+            if not bag.enabled and _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("Button Bag switched off: a reload puts every button back on the minimap.") end
+        end))
+        Row(GUI:CreateFormCheckbox(tabContent, "Lock Position", "locked", bag, RefreshBag))
+        Row(GUI:CreateFormCheckbox(tabContent, "Open on Mouseover", "openOnHover", bag, RefreshBag))
+        Row(GUI:CreateFormSlider(tabContent, "Close Delay After Mouseover (sec)", 0.2, 5, 0.1, "autoHideDelay", bag, RefreshBag))
+        Row(GUI:CreateFormDropdown(tabContent, "Opens Toward", {
+            {value = "DOWN", text = "Down"}, {value = "UP", text = "Up"},
+            {value = "LEFT", text = "Left"}, {value = "RIGHT", text = "Right"},
+        }, "grow", bag, RefreshBag))
+        Row(GUI:CreateFormSlider(tabContent, "H3z0 Button Size", 18, 60, 1, "toggleSize", bag, RefreshBag))
+        Row(GUI:CreateFormSlider(tabContent, "Addon Button Size", 16, 48, 1, "buttonSize", bag, RefreshBag))
+        Row(GUI:CreateFormSlider(tabContent, "Buttons Per Row", 1, 12, 1, "columns", bag, RefreshBag))
+        Row(GUI:CreateFormSlider(tabContent, "Spacing", 0, 12, 1, "spacing", bag, RefreshBag))
+
+        local known = Bag.Known and Bag.Known() or {}
+        if #known > 0 then
+            local listLabel = GUI:CreateLabel(tabContent, "Untick a button to leave it on the minimap:", 11, C.textMuted)
+            listLabel:SetPoint("TOPLEFT", PAD, y)
+            y = y - 22
+            for _, name in ipairs(known) do
+                local proxy = { inBag = not bag.hidden[name] }
+                Row(GUI:CreateFormCheckbox(tabContent, Bag.DisplayName(name), "inBag", proxy, function(val)
+                    if val then bag.hidden[name] = nil else bag.hidden[name] = true end
+                    RefreshBag()
+                end))
+            end
+        end
+    end
+
     tabContent:SetHeight(math.abs(y) + 50)
 end
 

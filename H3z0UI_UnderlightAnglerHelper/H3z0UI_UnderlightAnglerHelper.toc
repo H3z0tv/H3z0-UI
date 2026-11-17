@@ -2,7 +2,7 @@
 ## Title: |cFF30D1FFH3z0 UI|r Tidecaller
 ## Notes: Helper for the Underlight Angler, the fishing artifact rod: a checklist of what you still need to unlock it and its trait tree, where you click a trait to buy it. Opens with /angler or on the artifact window. Loads only when used. Requires the H3z0 UI core addon.
 ## Author: H3z0
-## Version: 0.28.2
+## Version: 0.28.5
 ## Category: User Interface
 ## Group: H3z0UI
 ## Dependencies: H3z0UI

@@ -999,7 +999,7 @@ local h3zDefaults = {
             autoSelectSingle = false, showObjectives = true,
             pageSound = true, controller = true, inputDevice = "auto",
             markSellPrice = true, markUpgrade = true, simpleCurrency = false,
-            hideNames = false, cameraFocus = true,
+            hideNames = false, cameraFocus = true, markBestWeapon = true, waitingLast = true,
             fonts = true,
             npcWidth = 0, npcHeight = 0, questWidth = 0, questHeight = 0,
         },
@@ -1021,6 +1021,28 @@ local h3zDefaults = {
             subtitleSize = 15,
             holdTime = 3,
             animSpeed = 1,
+        },
+
+        -- Top Dock (0.28.5): slim bar at the top of the screen, the H3z0 menu icons in two
+        -- groups with the clock between them, plus a thin colour line along the top edge.
+        -- Off by default; it and the Dock Bar (infobar) are either-or.
+        dock = {
+            enabled = false,
+            hideBlizzardMenus = true,
+            hideInCombat = false,
+            iconSize = 20, iconGap = 10, pillGap = 8,
+            scale = 1, offsetY = -10,
+            bgOpacity = 60, border = true,
+            iconColor = "white",         -- white | class
+            showClock = true, clock24 = true, clockSource = "local", clockSize = 20,
+            strip = true, stripClassColor = true, stripColor = { 1, 1, 1, 1 }, stripHeight = 2,
+            slots = {
+                character = "left", spellbook = "left", talents = "left", achievements = "left",
+                quest = "left", guild = "left", social = "left",
+                groupfinder = "right", adventure = "right", collections = "right",
+                housing = "right", vault = "right", menu = "right",
+                mode_pc = "off",
+            },
         },
 
         -- Arcanum (0.25.7): loot toasts, alerts, self highlight, achievement tracker
@@ -1321,15 +1343,15 @@ local h3zDefaults = {
                 healthTextUseClassColor = false, -- Independent from name class color
                 healthTextColor = { 1, 1, 1, 1 }, -- Custom health text color
                 -- Power text
-                showPowerText = false,
-                powerTextFormat = "percent",    -- "percent", "current", "both"
+                showPowerText = true,
+                powerTextFormat = "both",    -- "percent", "current", "both"
                 powerTextUsePowerColor = true,  -- Use power type color (mana blue, rage red, etc.)
                 powerTextUseClassColor = false,
                 powerTextColor = { 1, 1, 1, 1 },
-                powerTextFontSize = 12,
+                powerTextFontSize = 13,
                 powerTextAnchor = "BOTTOMRIGHT",
-                powerTextOffsetX = -9,
-                powerTextOffsetY = 4,
+                powerTextOffsetX = 69,
+                powerTextOffsetY = -5,
                 -- Power bar
                 showPowerBar = false,
                 powerBarHeight = 4,
@@ -2632,13 +2654,13 @@ local h3zDefaults = {
             },
             
             -- Coordinates (anchored top-right)
-            showCoords = false,
+            showCoords = true,
             coordPrecision = "%d,%d",  -- %d,%d = normal, %.1f,%.1f = high, %.2f,%.2f = very high
-            coordUpdateInterval = 1,  -- Update every 1 second
+            coordUpdateInterval = 0.5,  -- Update every 1 second
             coordsConfig = {
                 offsetX = 0,
                 offsetY = 0,
-                align = "RIGHT",
+                align = "CENTER",
                 font = "Poppins SemiBold",
                 fontSize = 12,
                 monochrome = false,
@@ -2937,7 +2959,11 @@ if ns.Client and ns.Client.isLegacy then
             u.showPowerText, u.powerTextFormat = true, "current"
             u.powerTextAnchor, u.powerTextOffsetX, u.powerTextOffsetY, u.powerTextFontSize = "BOTTOMLEFT", 9, -20, 12
         end
-        if u and key == "player" then u.powerTextAnchor, u.powerTextOffsetX, u.powerTextOffsetY, u.powerTextFontSize = "BOTTOMRIGHT", -9, -20, 12 end
+        if u and key == "player" then
+            -- 0.28.4: the power text sits just past the right end of the frame, next to the bars
+            u.showPowerText, u.powerTextFormat, u.powerTextUsePowerColor = true, "both", true
+            u.powerTextAnchor, u.powerTextOffsetX, u.powerTextOffsetY, u.powerTextFontSize = "BOTTOMRIGHT", 69, -5, 13
+        end
     end
 end
 

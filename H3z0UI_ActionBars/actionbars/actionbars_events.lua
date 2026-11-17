@@ -181,8 +181,10 @@ abSlotFrame:SetScript("OnUpdate", function(self)
     self:Hide()
     local inCombat = InCombatLockdown()
     local refreshAll = abDirtySlots[0]
+    local onlyBar1 = refreshAll and abDirtySlots._bar1 and not abDirtySlots._all
     for _, barKey in ipairs(STANDARD_BAR_KEYS) do
         local buttons = ActionBarsOwned.nativeButtons[barKey]
+        if onlyBar1 and barKey ~= "bar1" then buttons = nil end
         if buttons then
             for _, btn in ipairs(buttons) do
                 local slot = GetSafeActionSlot(btn)
@@ -227,14 +229,46 @@ abSlotFrame:SetScript("OnUpdate", function(self)
     ActionBarsOwned.UpdateAllAssistedCombatRotation()
 end)
 
-function ScheduleSlotUpdate(slot)
+-- bar1Only: a form / page change only changes bar 1, so the refresh of "every button" can stay on bar 1
+-- (it re-skinned all ~100 buttons of every bar on each shapeshift). Any other full refresh still does all.
+function ScheduleSlotUpdate(slot, bar1Only)
     slot = Helpers.SafeValue(slot, nil)
     if type(slot) ~= "number" or slot < 0 then return end
     if GetTime() - _lastPagingTime < 0.5 then
         ScheduleABVisualUpdate(false, true)
     end
+    if slot == 0 then
+        if bar1Only then abDirtySlots._bar1 = true else abDirtySlots._all = true end
+    end
     abDirtySlots[slot] = true
     abSlotFrame:Show()
+end
+
+-- /h3z0 abtime: slowest run of each step of the action bar refresh (ms)
+ActionBarsOwned.abPerf = ActionBarsOwned.abPerf or {}
+local function PerfAdd(name, t0)
+    local d = debugprofilestop() - t0
+    local perf = ActionBarsOwned.abPerf
+    if d > (perf[name] or 0) then perf[name] = d end
+end
+ActionBarsOwned.PerfAdd = PerfAdd
+do
+    local origSlot = abSlotFrame:GetScript("OnUpdate")
+    if origSlot then
+        abSlotFrame:SetScript("OnUpdate", function(self, ...)
+            local t = debugprofilestop()
+            origSlot(self, ...)
+            PerfAdd("slot refresh frame", t)
+        end)
+    end
+    local origAb = abUpdateFrame and abUpdateFrame:GetScript("OnUpdate")
+    if origAb then
+        abUpdateFrame:SetScript("OnUpdate", function(self, ...)
+            local t = debugprofilestop()
+            origAb(self, ...)
+            PerfAdd("visual/cooldown/state frame", t)
+        end)
+    end
 end
 
 function OnOwnedEvent(self, event, ...)
@@ -257,37 +291,54 @@ function OnOwnedEvent(self, event, ...)
         if HideOwnedFlyout then
             HideOwnedFlyout()
         end
-        local buttons = ActionBarsOwned.nativeButtons["bar1"]
-        ScheduleSlotUpdate(0)
-        local settings = GetEffectiveSettings("bar1")
-        if buttons and settings then
-            for _, btn in ipairs(buttons) do
-                UpdateEmptySlotVisibility(btn, settings)
+        -- A form change fires five or six of these events in a row. Do the work once, a moment
+        -- after the last one, instead of once per event (that was the shapeshift stutter).
+        if not ActionBarsOwned.pagingRefreshQueued then
+            ActionBarsOwned.pagingRefreshQueued = true
+            local function RunPagingRefresh()
+                ActionBarsOwned.pagingRefreshQueued = false
+            local buttons = ActionBarsOwned.nativeButtons["bar1"]
+            local t0 = debugprofilestop()
+            ScheduleSlotUpdate(0, true)
+            local settings = GetEffectiveSettings("bar1")
+            if buttons and settings then
+                for _, btn in ipairs(buttons) do
+                    UpdateEmptySlotVisibility(btn, settings)
+                end
             end
-        end
-        if buttons then
-            for _, btn in ipairs(buttons) do
-                ActionBarsOwned.UpdateCooldown(btn)
-                ActionBarsOwned.UpdateOverlayGlow(btn)
+            if buttons then
+                for _, btn in ipairs(buttons) do
+                    ActionBarsOwned.UpdateCooldown(btn)
+                    ActionBarsOwned.UpdateOverlayGlow(btn)
+                end
             end
+            if ActionBarsOwned.RefreshUsabilityButtons then
+                ActionBarsOwned.RefreshUsabilityButtons()
+            end
+            PerfAdd("paging: buttons loop", t0)
+            t0 = debugprofilestop()
+            ScheduleABVisualUpdate(false, true)
+            if not InCombatLockdown() then
+                UpdateStanceBarLayout()
+            else
+                ActionBarsOwned.pendingStanceUpdate = true
+            end
+            PerfAdd("paging: stance layout", t0)
+            t0 = debugprofilestop()
+            ApplyBar1OverrideBindings()
+            PerfAdd("paging: key bindings", t0)
+            t0 = debugprofilestop()
+            -- the game finishes a form change a moment after the event; bind the keys
+            -- again once it has settled so the number keys keep working after a shift
+            if C_Timer then
+                C_Timer.After(0.3, function() if not InCombatLockdown() then ApplyBar1OverrideBindings() end end)
+                C_Timer.After(1.2, function() if not InCombatLockdown() then ApplyBar1OverrideBindings() end end)
+            end
+            SetupOwnedBarMouseover("bar1")
+            PerfAdd("paging: mouseover setup", t0)
+            end
+            if C_Timer and C_Timer.After then C_Timer.After(0.03, RunPagingRefresh) else RunPagingRefresh() end
         end
-        if ActionBarsOwned.RefreshUsabilityButtons then
-            ActionBarsOwned.RefreshUsabilityButtons()
-        end
-        ScheduleABVisualUpdate(false, true)
-        if not InCombatLockdown() then
-            UpdateStanceBarLayout()
-        else
-            ActionBarsOwned.pendingStanceUpdate = true
-        end
-        ApplyBar1OverrideBindings()
-        -- the game finishes a form change a moment after the event; bind the keys
-        -- again once it has settled so the number keys keep working after a shift
-        if C_Timer then
-            C_Timer.After(0.3, function() if not InCombatLockdown() then ApplyBar1OverrideBindings() end end)
-            C_Timer.After(1.2, function() if not InCombatLockdown() then ApplyBar1OverrideBindings() end end)
-        end
-        SetupOwnedBarMouseover("bar1")
 
     elseif event == "UPDATE_SHAPESHIFT_COOLDOWN" or event == "UPDATE_SHAPESHIFT_USABLE" then
         ActionBarsOwned.UpdateAllStanceButtons()
@@ -404,6 +455,12 @@ function OnOwnedEvent(self, event, ...)
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         local isLogin, isReload = ...
+        -- Forever keeps the main bar page between sessions. A leftover page 4 makes Bar 1 show the
+        -- slots of Bar 5 (the same buttons twice), so a fresh login starts on page 1
+        if isLogin and ns.Client and ns.Client.isForever and not InCombatLockdown()
+            and GetActionBarPage and ChangeActionBarPage and GetActionBarPage() ~= 1 then
+            ChangeActionBarPage(1)
+        end
         local previousInitSafeWindow = ns._inInitSafeWindow
         inInitSafeWindow = true
         ns._inInitSafeWindow = true
@@ -659,4 +716,37 @@ if ns.DebugRegister then
     ns.DebugRegister(SetupDebugInstrumentation)
 else
     SetupDebugInstrumentation()
+end
+
+---------------------------------------------------------------------------
+-- Pet bar / stance bar position after a loading screen.
+-- A bar with no saved anchor of its own copies the game's bar position. At the loading screen the
+-- game may not have put its layout in place yet (or moves its bars again a moment later), so the
+-- bar could be copied from a default spot and sit over the main action bar. Copy it again a little
+-- later, out of combat.
+---------------------------------------------------------------------------
+do
+    local lateFrame = CreateFrame("Frame")
+    local function SettleBarPositions()
+        if InCombatLockdown() then return end
+        for _, barKey in ipairs({ "pet", "stance" }) do
+            pcall(RestoreContainerPosition, barKey)
+        end
+        if _G.H3z0UI_UpdateFramesAnchoredTo then
+            pcall(_G.H3z0UI_UpdateFramesAnchoredTo, "petBar")
+            pcall(_G.H3z0UI_UpdateFramesAnchoredTo, "stanceBar")
+        end
+    end
+    lateFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    lateFrame:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
+    lateFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    lateFrame:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_ENABLED" then
+            C_Timer.After(0.5, SettleBarPositions)
+            return
+        end
+        for _, delay in ipairs({ 1.5, 4, 8 }) do
+            C_Timer.After(delay, SettleBarPositions)
+        end
+    end)
 end

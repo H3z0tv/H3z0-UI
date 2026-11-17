@@ -2363,6 +2363,7 @@ local function GetSharedDropdownMenu()
     end)
 
     sharedDropdownMenu = menu
+    GUI.sharedDropdownMenu = menu   -- read by the controller navigation (padnav.lua)
     -- The menu is UIParent-parented and outlives GUI:RefreshAccentColor's
     -- panel rebuild, so it re-tints from the live tokens on accent change.
     if GUI.OnAccentChanged then

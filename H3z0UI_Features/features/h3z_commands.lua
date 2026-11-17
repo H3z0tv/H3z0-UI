@@ -30,6 +30,70 @@ COMMANDS["setup"] = function()
 end
 COMMANDS["wizard"] = COMMANDS["setup"]
 
+COMMANDS["gamepad"] = function()
+    local H = _G.H3z0UI_Handheld
+    if not H then Say("Handheld module not loaded.") return end
+    local function CV(n) local ok, v = pcall(C_CVar.GetCVar, n) return ok and tostring(v) or "?" end
+    local p = ns.Addon and ns.Addon.db and ns.Addon.db.profile
+    local c = p and p.handheld or {}
+    Say("Controller check: Forever " .. tostring(H.IsForever and H.IsForever()) .. ", mode Controller (game UI) " .. tostring(c.gamepadUI == true))
+    Say("GamePadEnable = " .. CV("GamePadEnable") .. ", game controller UI active " .. tostring(H.GamepadUIActive and H.GamepadUIActive()) .. ", controller plugged in " .. tostring(H.ControllerConnected and H.ControllerConnected()))
+    if H.GamepadUISettingInfo then
+        local nm, var, val = H.GamepadUISettingInfo()
+        if nm then Say("game option found: " .. tostring(nm) .. " (variable " .. tostring(var) .. ") = " .. tostring(val))
+        else Say("game option Enable Gamepad UI: NOT FOUND in the game's options") end
+    end
+    if C_Console and C_Console.GetAllCommands then
+        local ok, all = pcall(C_Console.GetAllCommands)
+        if ok and type(all) == "table" then
+            local names = {}
+            for _, cmd in ipairs(all) do
+                local n = type(cmd) == "table" and cmd.command
+                if type(n) == "string" and n:lower():find("gamepad", 1, true) then
+                    local l = n:lower()
+                    if l:find("ui", 1, true) or l:find("hud", 1, true) or l:find("legend", 1, true) or l:find("mode", 1, true) then
+                        names[#names + 1] = n .. "=" .. CV(n)
+                    end
+                end
+            end
+            Say("gamepad UI variables: " .. (#names > 0 and table.concat(names, ", ") or "none"))
+        end
+    end
+    local hide = _G.H3z0UI_ShouldHideBarsForConsole and _G.H3z0UI_ShouldHideBarsForConsole()
+    Say("action bars 1-3 hidden: " .. tostring(hide == true))
+    local n = 0
+    for k, v in pairs(_G) do
+        if n < 12 and type(k) == "string" and k:find("GamePad") and type(v) == "table" and v.IsShown then
+            local ok, shown = pcall(v.IsShown, v)
+            Say("  frame " .. k .. (ok and shown and " (shown)" or ""))
+            n = n + 1
+        end
+    end
+end
+COMMANDS["controller"] = COMMANDS["gamepad"]
+
+COMMANDS["friendicons"] = function()
+    local list = _G.FriendsListFrame
+    local box = list and list.ScrollBox
+    if not (box and box.ForEachFrame) then Say("Open the Contacts (Friends) window first.") return end
+    local n = 0
+    box:ForEachFrame(function(row)
+        if n >= 6 then return end
+        local icon = row.gameIcon
+        if icon and icon:IsShown() then
+            n = n + 1
+            local okt, tex = pcall(icon.GetTexture, icon)
+            local oka, atlas = pcall(icon.GetAtlas, icon)
+            local r, g, b = icon:GetVertexColor()
+            Say(tostring(row.name and row.name:GetText() or "?") .. ": client " .. tostring(row.h3zGameIconClient)
+                .. ", texture " .. tostring(okt and tex) .. ", atlas " .. tostring(oka and atlas)
+                .. string.format(", colour %.2f %.2f %.2f", r or 0, g or 0, b or 0))
+        end
+    end)
+    if n == 0 then Say("no game icons shown") end
+end
+
+
 COMMANDS["deck"] = function()
     local hh = _G.H3z0UI_Handheld
     if hh and hh.Toggle then hh.Toggle() else Say("Handheld module not loaded.") end
@@ -396,6 +460,80 @@ COMMANDS["npcheck"] = function()
     if _G.H3z0UI_NameplateCheck then _G.H3z0UI_NameplateCheck(Say) else Say("Nameplates are not loaded.") end
 end
 
+COMMANDS["arrowmove"] = function()
+    if _G.H3z0UI_QuestArrowMove then
+        Say(_G.H3z0UI_QuestArrowMove() and "Drag the arrow where you want it, then type /h3z0ui arrow move again to lock it." or "Quest Arrow locked.")
+    else
+        Say("The Quest Arrow is not available on this client.")
+    end
+end
+
+COMMANDS["arrow"] = function()
+    if _G.H3z0UI_QuestArrowToggle then
+        Say("Quest Arrow " .. (_G.H3z0UI_QuestArrowToggle() and "on" or "off"))
+    else
+        Say("The Quest Arrow is not available on this client.")
+    end
+end
+
+COMMANDS["dungeonmap"] = function()
+    if _G.H3z0UI_DungeonMapCheck then _G.H3z0UI_DungeonMapCheck() else Say("The Dungeon Map is not available on this client.") end
+end
+
+-- /h3z0 whatis : after 5 seconds, lists the small frames under the mouse (even ones that ignore the
+-- mouse) with their parents and picture, to find out what a stray icon belongs to.
+COMMANDS["whatis"] = function()
+    Say("Put the mouse over the icon now. Result in 5 seconds.")
+    C_Timer.After(5, function()
+        local x, y = GetCursorPosition()
+        local sc = UIParent:GetEffectiveScale()
+        x, y = x / sc, y / sc
+        local found = 0
+        local f = EnumerateFrames()
+        while f do
+            local ok, shown = pcall(f.IsVisible, f)
+            if ok and shown then
+                local okr, l, b, w, h = pcall(f.GetRect, f)
+                if not okr then l = nil end
+                if l and w and w > 0 and w < 140 and h < 140 and x >= l and x <= l + w and y >= b and y <= b + h then
+                    local chain, p = "", f
+                    for _ = 1, 5 do
+                        if not p then break end
+                        chain = chain .. (p:GetName() or "?") .. " < "
+                        p = p:GetParent()
+                    end
+                    local tex = ""
+                    for _, r in ipairs({ f:GetRegions() }) do
+                        if r.GetTexture and r:IsShown() then
+                            local t = r:GetTexture()
+                            if t ~= nil then tex = tex .. " [" .. tostring(t) .. "]" end
+                        end
+                    end
+                    Say(chain .. tex)
+                    found = found + 1
+                    if found >= 8 then break end
+                end
+            end
+            f = EnumerateFrames(f)
+        end
+        if found == 0 then Say("Nothing found under the mouse.") end
+    end)
+end
+
+COMMANDS["layoutintro"] = function()
+    if _G.H3z0UI_LayoutIntroToggle then _G.H3z0UI_LayoutIntroToggle(Say) else Say("The Layout Mode opening animation is not available.") end
+end
+
+COMMANDS["layoutroutes"] = function()
+    local U = ns.H3z0UI_LayoutMode_Utils
+    if U and U.AuditRoutes then U.AuditRoutes(Say) else Say("Layout Mode is not loaded yet.") end
+end
+
+
+COMMANDS["tipcheck"] = function()
+    if _G.H3z0UI_TooltipCheck then _G.H3z0UI_TooltipCheck(Say) else Say("Tooltips are not loaded.") end
+end
+
 COMMANDS["lkcheck"] = function()
     if _G.H3z0UI_LorekeeperCheck then _G.H3z0UI_LorekeeperCheck(Say) else Say("Lorekeeper is not loaded.") end
 end
@@ -440,6 +578,53 @@ COMMANDS["badtex"] = function()
     Say(found == 0 and ("No missing atlas found (" .. shown .. " pictures checked).") or (found .. " missing atlas picture(s) found, first ones listed above."))
 end
 
+COMMANDS["whatishere"] = function()
+    -- tells which picture sits under the mouse (for the red ? square): type this command, move the
+    -- mouse over the ?, wait. It reads the position after 5 seconds.
+    Say("Move the mouse over the red ? now and keep it still. Reading in 5 seconds...")
+    C_Timer.After(5, function()
+        local cx, cy = GetCursorPosition()
+        local list = {}
+        local function Path(f)
+            local parts, n = {}, 0
+            while f and n < 7 do
+                local nm = f.GetName and f:GetName()
+                parts[#parts + 1] = nm or (f.GetObjectType and f:GetObjectType()) or "?"
+                f = f.GetParent and f:GetParent()
+                n = n + 1
+            end
+            return table.concat(parts, " < ")
+        end
+        local function Check(owner, r)
+            if not (r and r.GetObjectType and r:GetObjectType() == "Texture") then return end
+            local okV, vis = pcall(r.IsVisible, r)
+            if not (okV and vis) then return end
+            local okR, l, b, w, h = pcall(r.GetRect, r)
+            if not (okR and l and w) then return end
+            local sc = r:GetEffectiveScale()
+            if not sc or sc == 0 then return end
+            local x, y = cx / sc, cy / sc
+            if x < l or x > l + w or y < b or y > b + h then return end
+            if w > 600 or h > 600 then return end            -- big backgrounds are not it
+            local okT, tex = pcall(r.GetTexture, r)
+            local okA, atlas = pcall(r.GetAtlas, r)
+            list[#list + 1] = string.format("  %dx%d  texture=%s  atlas=%s  on %s", w, h,
+                tostring(okT and tex or "-"), tostring(okA and atlas or "-"), Path(owner))
+        end
+        local f = EnumerateFrames()
+        while f do
+            if not (f.IsForbidden and f:IsForbidden()) then
+                local ok, regions = pcall(function() return { f:GetRegions() } end)
+                if ok then for _, r in ipairs(regions) do pcall(Check, f, r) end end
+            end
+            f = EnumerateFrames(f)
+        end
+        if #list == 0 then Say("No small picture found under the mouse. Try again with the mouse exactly on the ?.") return end
+        Say(#list .. " picture(s) under the mouse:")
+        for i = 1, math.min(#list, 12) do Say(list[i]) end
+    end)
+end
+
 COMMANDS["ejcheck"] = function()
     local function Has(n) return type(_G[n]) == "function" and "yes" or "NO" end
     Say("Adventure Guide check: ToggleEncounterJournal " .. Has("ToggleEncounterJournal")
@@ -454,6 +639,163 @@ COMMANDS["intdebug"] = function()
     I.SetDebug(not I.IsDebug())
     Say(I.IsDebug() and "Interrupt debug is ON. Fight something with a group member or companion, then send me the lines. Type /h3z0ui intdebug again to stop."
         or "Interrupt debug is off.")
+end
+-- /h3z0 cpu: which addons use the most time. Shapeshift a few times, then type it: the Peak column is the
+-- slowest single frame since login (or since /h3z0 cpureset), which is what a spike is.
+COMMANDS["cpu"] = function()
+    local P = C_AddOnProfiler
+    if not (P and P.GetAddOnMetric and Enum and Enum.AddOnProfilerMetric) then
+        Say("This game does not have the addon profiler.")
+        return
+    end
+    if P.IsEnabled and not P.IsEnabled() then Say("The addon profiler is off in this game (Options > Advanced).") return end
+    local list = {}
+    local tracking = _G.H3z0UI_CpuTrack
+    if tracking and tracking.peaks then
+        for name, peak in pairs(tracking.peaks) do list[#list + 1] = { name = name, peak = peak } end
+        Say(string.format("Slowest single frame per addon (ms) in the last %d seconds (since /h3z0 cpureset):", math.floor(GetTime() - tracking.since)))
+    else
+        local num = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or 0
+        for i = 1, num do
+            local name = C_AddOns.GetAddOnInfo(i)
+            if name and C_AddOns.IsAddOnLoaded(name) then
+                local okPk, peak = pcall(P.GetAddOnMetric, name, Enum.AddOnProfilerMetric.PeakTime)
+                if okPk and type(peak) == "number" then list[#list + 1] = { name = name, peak = peak } end
+            end
+        end
+        Say("Slowest single frame per addon (ms) since login, which includes loading screens. For a real test type /h3z0 cpureset first:")
+    end
+    table.sort(list, function(x, y) return x.peak > y.peak end)
+    for i = 1, math.min(10, #list) do
+        Say(string.format("%2d. %s  peak %.1f", i, list[i].name, list[i].peak))
+    end
+end
+-- /h3z0 cpureset: start counting now (the game cannot reset its own peaks). It reads each addon's time
+-- every frame until /h3z0 cpustop, so shapeshift, then type /h3z0 cpu.
+COMMANDS["cpureset"] = function()
+    local P = C_AddOnProfiler
+    if not (P and P.GetAddOnMetric and Enum and Enum.AddOnProfilerMetric and Enum.AddOnProfilerMetric.LastTime) then
+        Say("This game does not have the addon profiler.")
+        return
+    end
+    local names = {}
+    local num = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or 0
+    for i = 1, num do
+        local name = C_AddOns.GetAddOnInfo(i)
+        if name and C_AddOns.IsAddOnLoaded(name) then names[#names + 1] = name end
+    end
+    local t = { peaks = {}, since = GetTime() }
+    _G.H3z0UI_CpuTrack = t
+    local f = _G.H3z0UI_CpuTrackFrame or CreateFrame("Frame")
+    _G.H3z0UI_CpuTrackFrame = f
+    f:SetScript("OnUpdate", function()
+        local metric = Enum.AddOnProfilerMetric.LastTime
+        local cur = _G.H3z0UI_CpuTrack
+        if not cur then f:SetScript("OnUpdate", nil) return end
+        for i = 1, #names do
+            local ok, v = pcall(P.GetAddOnMetric, names[i], metric)
+            if ok and type(v) == "number" and v > (cur.peaks[names[i]] or 0) then cur.peaks[names[i]] = v end
+        end
+    end)
+    Say("Counting. Shapeshift a few times, then type /h3z0 cpu. /h3z0 cpustop ends it.")
+end
+COMMANDS["abtime"] = function()
+    local ab = ns.ActionBarsOwned
+    local perf = ab and ab.abPerf
+    if not perf or next(perf) == nil then Say("Nothing measured yet. Shapeshift, then type /h3z0 abtime.") return end
+    local list = {}
+    for k, v in pairs(perf) do list[#list + 1] = { k = k, v = v } end
+    table.sort(list, function(x, y) return x.v > y.v end)
+    Say("Action bars, slowest run of each step (ms):")
+    for _, e in ipairs(list) do Say(string.format("  %s: %.1f", e.k, e.v)) end
+    wipe(perf)
+end
+COMMANDS["charwindow"] = function()
+    if _G.H3z0UI_ToggleCharacterWindow then _G.H3z0UI_ToggleCharacterWindow()
+    else Say("The H3z0 character window is not loaded.") end
+end
+-- /h3z0 chartabs: what the game's character window tabs are, for the H3z0 character window
+COMMANDS["chartabs"] = function()
+    local g = CharacterFrame
+    if not g then Say("No character window.") return end
+    local mt = g.ModeTabs
+    local tabs = (mt and type(mt.Tabs) == "table") and mt.Tabs or nil
+    if not tabs then
+        tabs = {}
+        for i = 1, 12 do local t = _G["CharacterFrameTab" .. i] if not t then break end tabs[#tabs + 1] = t end
+    end
+    Say("Game tabs: " .. #tabs .. (mt and " (side tabs)" or " (bottom tabs)"))
+    for i, t in ipairs(tabs) do
+        local parts = {}
+        for _, k in ipairs({ "tooltipText", "tooltip", "tooltipTitle", "name", "label", "mode", "frameName", "tabID", "id" }) do
+            local v = t[k]
+            if v ~= nil and type(v) ~= "table" and type(v) ~= "function" then parts[#parts + 1] = k .. "=" .. tostring(v) end
+        end
+        local okN, n = pcall(t.GetName, t)
+        Say(string.format("  %d. %s shown=%s %s", i, tostring(okN and n or "?"), tostring(t:IsShown()), table.concat(parts, " ")))
+    end
+    local pages = {}
+    for _, c in ipairs({ g:GetChildren() }) do
+        local okN, n = pcall(c.GetName, c)
+        if okN and n then pages[#pages + 1] = n .. (c:IsShown() and "*" or "") end
+    end
+    Say("Named parts (* = shown): " .. table.concat(pages, ", "))
+    -- what the game offers to switch pages
+    local fns = {}
+    for k, v in pairs(g) do
+        if type(v) == "function" and type(k) == "string" and (k:find("Tab") or k:find("Mode") or k:find("Show") or k:find("Page")) then fns[#fns + 1] = k end
+    end
+    local mtab = mt or {}
+    for k, v in pairs(mtab) do
+        if type(v) == "function" and type(k) == "string" then fns[#fns + 1] = "ModeTabs." .. k end
+    end
+    table.sort(fns)
+    Say("Window functions: " .. table.concat(fns, ", "))
+    local globals = {}
+    for _, n in ipairs({ "SkillFrame", "HonorFrame", "PVPFrame", "PVPParentFrame", "TokenFrame", "ReputationFrame",
+        "PetPaperDollFrame", "StatisticsFrame", "CharacterStatsPane", "AchievementFrame" }) do
+        if _G[n] then
+            local p = _G[n]:GetParent()
+            local okP, pn = pcall(p and p.GetName or function() end, p)
+            globals[#globals + 1] = n .. "(in " .. tostring(okP and pn or "?") .. ")"
+        end
+    end
+    Say("Known pages present: " .. table.concat(globals, ", "))
+    for i, t in ipairs(tabs) do
+        local hasClick = t:GetScript("OnClick") and "OnClick" or ""
+        local hasDown = t:GetScript("OnMouseDown") and "OnMouseDown" or ""
+        local hasUp = t:GetScript("OnMouseUp") and "OnMouseUp" or ""
+        Say(string.format("  tab %d scripts: %s %s %s", i, hasClick, hasDown, hasUp))
+    end
+end
+COMMANDS["inspectwindow"] = function()
+    if _G.H3z0UI_ToggleInspectWindow then _G.H3z0UI_ToggleInspectWindow()
+    else Say("The H3z0 inspect window is not loaded.") end
+end
+COMMANDS["inspecttabs"] = function()
+    local g = InspectFrame
+    if not g then Say("Inspect someone first.") return end
+    local mt = g.ModeTabs
+    local tabs = (mt and type(mt.Tabs) == "table") and mt.Tabs or {}
+    if #tabs == 0 then for i = 1, 8 do local t = _G["InspectFrameTab" .. i] if not t then break end tabs[#tabs + 1] = t end end
+    Say("Inspect tabs: " .. #tabs)
+    for i, t in ipairs(tabs) do
+        local okN, n = pcall(t.GetName, t)
+        local okT, txt = pcall(t.GetText or function() end, t)
+        Say(string.format("  %d. %s shown=%s text=%s tooltip=%s frame=%s", i, tostring(okN and n), tostring(t:IsShown()),
+            tostring(okT and txt), tostring(t.tooltipText), tostring(t.frameName)))
+    end
+    local parts = {}
+    for _, c in ipairs({ g:GetChildren() }) do
+        local okN, n = pcall(c.GetName, c)
+        if okN and n then parts[#parts + 1] = n .. (c:IsShown() and "*" or "") end
+    end
+    Say("Parts: " .. table.concat(parts, ", "))
+end
+COMMANDS["cpustop"] = function()
+    _G.H3z0UI_CpuTrack = nil
+    if _G.H3z0UI_CpuTrackFrame then _G.H3z0UI_CpuTrackFrame:SetScript("OnUpdate", nil) end
+    Say("Counting stopped.")
 end
 COMMANDS["npperf"] = function()
     if _G.H3z0UI_NameplatePerf then _G.H3z0UI_NameplatePerf() else Say("Nameplates are not available.") end
@@ -473,3 +815,5 @@ function addon:SlashCommandOpen(input)
         return original(self, input)
     end
 end
+
+

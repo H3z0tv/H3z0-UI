@@ -267,6 +267,11 @@ end
 
 -- the scrolling area's content frame (built on first use); the bag window parents
 -- its item holders here before combat so a bag opened in combat still scrolls
+-- room kept free above the sidebar and the item area (the bag window's bag-slot strip lives there)
+function InventoryView.SetBagTop(n)
+    BAG_CTX.top = n or 0
+end
+
 function InventoryView.GetAnchor(win, ctx)
     local v = EnsureFrames(win, ctx)
     return v and v.child

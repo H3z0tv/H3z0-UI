@@ -94,6 +94,7 @@ local function LayoutName()
     if h.enabled then return "Handheld" end
     if h.pcHandheld then return "PC Handheld" end
     if h.pcController then return "PC Controller" end
+    if h.gamepadUI then return "Controller (game UI)" end
     return "PC"
 end
 

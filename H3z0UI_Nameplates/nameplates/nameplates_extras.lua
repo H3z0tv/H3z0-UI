@@ -180,6 +180,12 @@ local function RefreshAuras(p)
     local row = p.h3zAuras
     if not s or s.auras == "off" or not p.unit then
         if row then row:Hide() end
+        if NP.AuraContainers then NP.AuraContainers.Release(p) end
+        return
+    end
+    -- the game's own aura container draws the debuffs: movable, sized, off in and out of combat
+    if NP.AuraContainers and NP.AuraContainers.Apply(p, s) then
+        if row then row:Hide() end
         return
     end
     local t0 = debugprofilestop and debugprofilestop() or 0
@@ -198,7 +204,12 @@ local function RefreshAuras(p)
     end
 
     row:ClearAllPoints()
-    row:SetPoint("BOTTOM", p.border, "TOP", 0, 4)
+    -- above the name (the name sits right above the bar; the old spot was on top of it)
+    if p.name and p.name:IsShown() then
+        row:SetPoint("BOTTOM", p.name, "TOP", 0, 3)
+    else
+        row:SetPoint("BOTTOM", p.border, "TOP", 0, 4)
+    end
     row:SetSize(math.max(1, #list * (size + 2)), size)
     row:Show()
 
@@ -336,6 +347,7 @@ end
 
 function NP.OnPlateRemoved(p)
     if p.h3zAuraEv then p.h3zAuraEv:UnregisterAllEvents() end
+    if NP.AuraContainers then NP.AuraContainers.Release(p) end
     dirty[p] = nil
     p.h3zCasting = false
     p.h3zRule = nil

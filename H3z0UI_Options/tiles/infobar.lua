@@ -13,7 +13,6 @@ function V2InfoBar.Register(frame)
         id = "infobar",
         icon = "i",
         name = "Dock Bar",
-        moduleFeatureId = "moduleFlag_infobar",
         subPages = {
             {
                 id = "infobar",
@@ -55,6 +54,18 @@ function V2InfoBar.Register(frame)
                         if not ok and geterrorhandler then geterrorhandler()(err) end
                     end,
                 })
+                -- the Top Dock (the other look of the Dock Bar) is the last page of the same tile
+                local DO = ns.H3z0UI_DockOptions
+                if DO and DO.BuildDockTab then
+                    table.insert(tile.config.subPages, {
+                        id = "h3zTopDock",
+                        name = "Top Dock",
+                        buildFunc = function(body)
+                            local ok, err = pcall(DO.BuildDockTab, body)
+                            if not ok and geterrorhandler then geterrorhandler()(err) end
+                        end,
+                    })
+                end
                 break
             end
         end

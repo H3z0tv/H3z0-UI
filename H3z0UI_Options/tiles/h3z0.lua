@@ -57,15 +57,16 @@ function Tiles.RegisterFeatures(frame)
     Add(frame, GUI, {
         id = "h3z_features",
         name = "H3z0 Features",
-        subtitle = "UI Look · Steam Deck · Combat Mode · Hover Name",
+        subtitle = "UI Look · Steam Deck · Combat Mode · Hover Name · Quest Arrow",
         subPages = Pages({
             { id = "look", name = "UI Look", build = F.BuildLook },
-            { id = "combatMode", name = "True Reticle", build = Call("H3z0UI_CombatModeOptions", "BuildCombatModeTab") },
+            { id = "combatMode", name = "Crosshair Z", build = Call("H3z0UI_CombatModeOptions", "BuildCombatModeTab") },
             { id = "handheld", name = "Steam Deck + PC Controller", build = Call("H3z0UI_HandheldOptions", "BuildHandheldTab") },
             { id = "layout", name = "Layout & Bars", build = F.BuildLayout },
             { id = "streamer", name = "Streamer Mode", build = F.BuildStreamer },
             { id = "quickAccess", name = "Quick Access (Dungeons)", build = Call("H3z0UI_QuickAccessOptions", "BuildQuickAccessTab") },
             { id = "hoverName", name = "Hover Name", build = Call("H3z0UI_HoverNameOptions", "BuildHoverNameTab") },
+            { id = "questArrow", name = "Quest Arrow", build = F.BuildArrow },
             { id = "extras", name = "Extras", build = F.BuildExtras },
             { id = "setup", name = "Setup Wizard", build = Call("H3z0UI_SetupOptions", "BuildSetupTab") },
         }),

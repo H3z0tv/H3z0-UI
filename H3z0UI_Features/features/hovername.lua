@@ -690,7 +690,7 @@ local function CachePositionSettings()
     lastX = nil
 end
 
--- Clicking with an aim-reticle addon (True Reticle ...) switches between mouselook and the
+-- Clicking with an aim-reticle addon (Crosshair Z ...) switches between mouselook and the
 -- free cursor, and for a moment the cursor position and the hovered unit are not steady.
 -- So: the mouselook state must stay the same for a short moment before it counts, the name
 -- stays where it was while it settles, and while aiming the name hangs on the middle of the

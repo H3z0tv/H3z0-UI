@@ -73,8 +73,12 @@ local function StreamerOn()
     return s and s.streamerMode and true or false
 end
 
+local streamerWasOn = false
 local function ApplyStreamerMode()
     local on = StreamerOn()
+    -- off now and never switched on: nothing to undo (this ran over every button on each shapeshift)
+    if not on and not streamerWasOn then return end
+    streamerWasOn = on and true or false
     ForEachActionButton(function(b)
         for _, r in ipairs(StreamerRegions(b)) do
             pcall(r.SetAlpha, r, on and 0 or 1)
@@ -162,6 +166,7 @@ local function ModernButton(b, on)
         local cd = b.cooldown or b.Cooldown
         if cd and m.swipe then pcall(cd.SetSwipeTexture, cd, "Interface\\Buttons\\WHITE8x8") end
         b.h3zModernOn = nil
+        b.h3zModernSig = nil
         return
     end
     if not m then
@@ -186,6 +191,26 @@ local function ModernButton(b, on)
     local px = Round.PixelSize(b)
     local w = b:GetWidth() or 36
     local r = Round.Enabled() and math.max(2, math.min(Round.Radius(), w / 5)) or 1
+
+    -- Nothing the tile depends on changed since it was last drawn: skip the whole restyle (masks and
+    -- anchors on every button made each shapeshift stutter). Checked cheaply: the settings, the size,
+    -- where the icon sits and whether the classic skin showed its frame again.
+    local sig = table.concat({
+        tostring(settings and settings.showBackdrop), tostring(settings and settings.backdropAlpha),
+        tostring(settings and settings.showBorders), tostring(settings and settings.showGloss),
+        tostring(settings and settings.glossAlpha), tostring(px), tostring(w), tostring(r),
+        Round.Enabled() and "1" or "0",
+    }, "|")
+    if b.h3zModernOn and b.h3zModernSig == sig then
+        local iconOk = true
+        if icon then
+            local _, rel, _, ix = icon:GetPoint(1)
+            iconOk = (rel == b and type(ix) == "number" and math.abs(ix - px) < 0.01)
+        end
+        local classicBack = (b._h3z0uiNormal and b._h3z0uiNormal:IsShown()) or (b._h3z0uiBackdrop and b._h3z0uiBackdrop:IsShown())
+        if iconOk and not classicBack then return end
+    end
+    b.h3zModernSig = sig
 
     -- remember what the classic skin showed, then hide it
     if not b.h3zModernOn then

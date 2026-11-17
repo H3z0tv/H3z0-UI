@@ -216,11 +216,18 @@ Build = function(tabContent)
     local NP = ns.H3zPlates
     local npdb = NP and NP.GetSettings and NP.GetSettings()
     if npdb then
+        local jumpTo = {}        -- setting key -> the widget that edits it (the preview jumps there)
+        local pendingKey
         local function Place(w, h)
             w:SetPoint("TOPLEFT", PAD, y)
             w:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            if pendingKey then jumpTo[pendingKey] = { w = w, y = y }; pendingKey = nil end
             y = y - (h or FORM_ROW)
             return w
+        end
+        local function PlaceK(key, w, h)
+            pendingKey = key
+            return Place(w, h)
         end
         local preview
         local function RefreshNP()
@@ -234,8 +241,15 @@ Build = function(tabContent)
             if IsLoaded(a) then Info(a .. " is loaded - disable it to use H3z0 Nameplates.", 18, {1, 0.6, 0.2, 1}) end
         end
         -- live preview: stays at the top of the page while you scroll through the settings
+        local pvOk, pvErr = true, nil
         if NP.CreatePreview then
-            preview = NP.CreatePreview(tabContent)
+            pvOk, preview = pcall(NP.CreatePreview, tabContent, { height = 215, interactive = true })
+            if not pvOk then
+                pvErr, preview = preview, nil
+                Info("The live preview could not be built (the settings below still work). Please send me this text: " .. tostring(pvErr), 60, {1, 0.4, 0.4, 1})
+            end
+        end
+        if preview then
             preview:SetFrameLevel(tabContent:GetFrameLevel() + 40)
             local homeY = y
             local lastTop
@@ -252,27 +266,58 @@ Build = function(tabContent)
             end
             preview.onTick = Pin
             Pin(preview)
+
+            -- click a part of a plate: scroll to its setting and flash it
+            local flash = CreateFrame("Frame", nil, tabContent)
+            flash:SetFrameLevel(tabContent:GetFrameLevel() + 60)
+            flash.tex = flash:CreateTexture(nil, "OVERLAY")
+            flash.tex:SetAllPoints()
+            flash.tex:SetColorTexture(0.2, 0.8, 1, 0.35)
+            flash:Hide()
+            flash:SetScript("OnUpdate", function(self, el)
+                self.t = (self.t or 0) + el
+                if self.t > 1.6 then self:Hide() return end
+                self.tex:SetAlpha(0.45 * (1 - self.t / 1.6) * (0.6 + 0.4 * math.abs(math.sin(self.t * 9))))
+            end)
+            preview.onPick = function(key)
+                local hit = jumpTo[key]
+                if not hit then return end
+                local sf = tabContent:GetParent()
+                if sf and sf.SetVerticalScroll and sf.GetVerticalScrollRange then
+                    local target = -hit.y - (preview:GetHeight() + 24)
+                    sf:SetVerticalScroll(math.max(0, math.min(sf:GetVerticalScrollRange() or 0, target)))
+                end
+                flash:ClearAllPoints()
+                flash:SetPoint("TOPLEFT", hit.w, "TOPLEFT", -4, 2)
+                flash:SetPoint("BOTTOMRIGHT", hit.w, "BOTTOMRIGHT", 4, -2)
+                flash.t = 0
+                flash:Show()
+            end
             y = y - preview:GetHeight() - 12
         end
         Place(GUI:CreateFormCheckbox(tabContent, "Use H3z0 Nameplates", "enabled", npdb, function()
             RefreshNP()
             if not npdb.enabled then if _G.H3z0UI_NeedReload then _G.H3z0UI_NeedReload("H3z0 nameplates switched off.") end end
         end))
-        Place(GUI:CreateFormDropdown(tabContent, "Font", NP.FONTS, "font", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Width", 60, 500, 1, "width", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Height", 6, 80, 1, "height", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Name Size", 6, 20, 1, "nameSize", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Health Text Size", 6, 20, 1, "textSize", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Target Size", 1, 1.5, 0.05, "targetScale", npdb, RefreshNP))
+        PlaceK("font", GUI:CreateFormDropdown(tabContent, "Font", NP.FONTS, "font", npdb, RefreshNP))
+        PlaceK("width", GUI:CreateFormSlider(tabContent, "Width", 60, 500, 1, "width", npdb, RefreshNP))
+        PlaceK("height", GUI:CreateFormSlider(tabContent, "Height", 6, 80, 1, "height", npdb, RefreshNP))
+        PlaceK("nameSize", GUI:CreateFormSlider(tabContent, "Name Size", 6, 20, 1, "nameSize", npdb, RefreshNP))
+        PlaceK("textSize", GUI:CreateFormSlider(tabContent, "Health Text Size", 6, 20, 1, "textSize", npdb, RefreshNP))
+        PlaceK("targetScale", GUI:CreateFormSlider(tabContent, "Target Size", 1, 1.5, 0.05, "targetScale", npdb, RefreshNP))
         if npdb.limitDistance == nil then npdb.limitDistance = true end
-        if npdb.maxDistance == nil then npdb.maxDistance = 40 end
-        Place(GUI:CreateFormCheckbox(tabContent, "Only Show Nameplates Close to You", "limitDistance", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Nameplate Distance (yards)", 10, 60, 1, "maxDistance", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Show Level", "showLevel", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Show Quest Marker (gold ! on units you need for a quest)", "questMark", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Show Health Value", "showHealth", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Show Health Percent", "showPercent", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Show Shields and Heal Absorbs", "showAbsorbs", npdb, RefreshNP))
+        if npdb.maxDistance == nil then npdb.maxDistance = 60 end
+        PlaceK("limitDistance", GUI:CreateFormCheckbox(tabContent, "Only Show Nameplates Close to You", "limitDistance", npdb, RefreshNP))
+        PlaceK("maxDistance", GUI:CreateFormSlider(tabContent, "Nameplate Distance (yards)", 10, 100, 1, "maxDistance", npdb, RefreshNP))
+        PlaceK("showLevel", GUI:CreateFormCheckbox(tabContent, "Show Level", "showLevel", npdb, RefreshNP))
+        PlaceK("questMark", GUI:CreateFormCheckbox(tabContent, "Show Quest Marker (gold ! on units you need for a quest)", "questMark", npdb, RefreshNP))
+        for k in pairs({ questX = 0, questY = 0, questSize = 0 }) do if npdb[k] == nil then npdb[k] = 0 end end
+        PlaceK("questX", GUI:CreateFormSlider(tabContent, "Quest Marker Position: Left / Right", -150, 150, 1, "questX", npdb, RefreshNP))
+        PlaceK("questY", GUI:CreateFormSlider(tabContent, "Quest Marker Position: Down / Up", -60, 60, 1, "questY", npdb, RefreshNP))
+        PlaceK("questSize", GUI:CreateFormSlider(tabContent, "Quest Marker Size", -6, 20, 1, "questSize", npdb, RefreshNP))
+        PlaceK("showHealth", GUI:CreateFormCheckbox(tabContent, "Show Health Value", "showHealth", npdb, RefreshNP))
+        PlaceK("showPercent", GUI:CreateFormCheckbox(tabContent, "Show Health Percent", "showPercent", npdb, RefreshNP))
+        PlaceK("showAbsorbs", GUI:CreateFormCheckbox(tabContent, "Show Shields and Heal Absorbs", "showAbsorbs", npdb, RefreshNP))
         -- 0.24.4: stacking / overlap (the game's own spacing; also for Blizzard's plates)
         if NP.StackingAvailable and NP.StackingAvailable() then
             if NP.ReadStacking then NP.ReadStacking() end
@@ -286,8 +331,8 @@ Build = function(tabContent)
                 { value = "stack", text = "Stacked (no overlap)" },
                 { value = "overlap", text = "Overlapping" },
             }, "stackMode", npdb, Stack))
-            Place(GUI:CreateFormSlider(tabContent, "Vertical Spacing", 0.3, 2.5, 0.05, "overlapV", npdb, Stack))
-            Place(GUI:CreateFormSlider(tabContent, "Horizontal Spacing", 0.3, 2.5, 0.05, "overlapH", npdb, Stack))
+            PlaceK("overlapV", GUI:CreateFormSlider(tabContent, "Vertical Spacing", 0.3, 2.5, 0.05, "overlapV", npdb, Stack))
+            PlaceK("overlapH", GUI:CreateFormSlider(tabContent, "Horizontal Spacing", 0.3, 2.5, 0.05, "overlapH", npdb, Stack))
             local resetStack = GUI:CreateButton(tabContent, "Game Default Spacing", 180, 24, function()
                 npdb.stackMode, npdb.overlapV, npdb.overlapH = "stack", 1.1, 0.8
                 Stack()
@@ -299,38 +344,44 @@ Build = function(tabContent)
         end
         Info("Teammates inside dungeons / raids: the game locks friendly nameplates there, so they can't get the H3z0 look. H3z0 UI can switch Blizzard's own settings while you are inside (and back when you leave):", 34)
         local function RefreshInst() if _G.H3z0UI_ApplyInstanceFriendly then _G.H3z0UI_ApplyInstanceFriendly() end end
-        Place(GUI:CreateFormCheckbox(tabContent, "Teammates in Class Colours (instances)", "instClassColors", npdb, RefreshInst))
-        Place(GUI:CreateFormCheckbox(tabContent, "Friendly Players as Names Only (all dungeons, raids, scenarios)", "instNamesOnly", npdb, RefreshInst))
-        Place(GUI:CreateFormCheckbox(tabContent, "Friendly Players as Names Only (Mythic dungeons and Mythic+)", "mythicNamesOnly", npdb, RefreshInst))
+        PlaceK("instClassColors", GUI:CreateFormCheckbox(tabContent, "Teammates in Class Colours (instances)", "instClassColors", npdb, RefreshInst))
+        PlaceK("instNamesOnly", GUI:CreateFormCheckbox(tabContent, "Friendly Players as Names Only (all dungeons, raids, scenarios)", "instNamesOnly", npdb, RefreshInst))
+        PlaceK("mythicNamesOnly", GUI:CreateFormCheckbox(tabContent, "Friendly Players as Names Only (Mythic dungeons and Mythic+)", "mythicNamesOnly", npdb, RefreshInst))
         Info("Only Show Names just in Mythic: on in Mythic dungeons and Mythic+ keys, back to your own setting everywhere else (normal and heroic dungeons, raids, the open world).", 32)
         Place(GUI:CreateFormCheckbox(tabContent, "Nameplate Colours on Unit Frames", "unitFrameColors", npdb, function()
             RefreshNP()
             if _G.H3z0UI_RefreshUnitFrames then pcall(_G.H3z0UI_RefreshUnitFrames) end
         end))
-        Place(GUI:CreateFormCheckbox(tabContent, "Rounded Corners", "rounded", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Target Arrows", "arrows", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Threat Border", "threat", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Friendly Nameplates", "friendly", npdb, RefreshNP))
+        PlaceK("rounded", GUI:CreateFormCheckbox(tabContent, "Rounded Corners", "rounded", npdb, RefreshNP))
+        PlaceK("arrows", GUI:CreateFormCheckbox(tabContent, "Target Arrows", "arrows", npdb, RefreshNP))
+        PlaceK("threat", GUI:CreateFormCheckbox(tabContent, "Threat Border", "threat", npdb, RefreshNP))
+        PlaceK("friendly", GUI:CreateFormCheckbox(tabContent, "Friendly Nameplates", "friendly", npdb, RefreshNP))
         Place(GUI:CreateFormCheckbox(tabContent, "Friendly Nameplates: Text Only (name, class colour) in towns and everywhere", "friendlyNamesOnly", npdb, function()
             RefreshNP()
             if _G.H3z0UI_ApplyInstanceFriendly then _G.H3z0UI_ApplyInstanceFriendly() end
         end))
-        Place(GUI:CreateFormCheckbox(tabContent, "Cast Bar", "castbar", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Cast Bar Height", 6, 48, 1, "castHeight", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Cast Bar Width (0 = as wide as the nameplate)", 0, 600, 5, "castWidth", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Cast Bar Sideways Offset", -150, 150, 1, "castOffsetX", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Cast Bar Gap Under Health Bar", -10, 30, 1, "castGap", npdb, RefreshNP))
+        Place(GUI:CreateFormCheckbox(tabContent, "Service Icons Above Friendly NPCs (flight master, innkeeper, banker, vendor ...)", "npcIcons", npdb, RefreshNP))
+        if npdb.npcTitles == nil then npdb.npcTitles = true end
+        if type(npdb.npcTitleSize) ~= "number" then npdb.npcTitleSize = 0 end
+        Place(GUI:CreateFormCheckbox(tabContent, "NPC Titles Under Friendly Names (Wind Rider Master, Reagents and Herbs ...)", "npcTitles", npdb, RefreshNP))
+        Place(GUI:CreateFormSlider(tabContent, "NPC Title Size", -4, 8, 1, "npcTitleSize", npdb, RefreshNP))
+        PlaceK("castbar", GUI:CreateFormCheckbox(tabContent, "Cast Bar", "castbar", npdb, RefreshNP))
+        PlaceK("castHeight", GUI:CreateFormSlider(tabContent, "Cast Bar Height", 6, 48, 1, "castHeight", npdb, RefreshNP))
+        PlaceK("castWidth", GUI:CreateFormSlider(tabContent, "Cast Bar Width (0 = as wide as the nameplate)", 0, 600, 5, "castWidth", npdb, RefreshNP))
+        PlaceK("castOffsetX", GUI:CreateFormSlider(tabContent, "Cast Bar Sideways Offset", -150, 150, 1, "castOffsetX", npdb, RefreshNP))
+        PlaceK("castGap", GUI:CreateFormSlider(tabContent, "Cast Bar Gap Under Health Bar", -10, 30, 1, "castGap", npdb, RefreshNP))
+        pendingKey = "castIconSide"
         Place(GUI:CreateFormDropdown(tabContent, "Cast Icon", {
             { value = "left", text = "Left" }, { value = "right", text = "Right" }, { value = "off", text = "Hidden" },
         }, "castIconSide", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Cast Icon Size (0 = same as bar height)", 0, 64, 1, "castIconSize", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Cast Text Size (0 = automatic)", 0, 24, 1, "castTextSize", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Show Spell Name On Cast Bar", "castNameShow", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Show Cast Time On Cast Bar", "castTimeShow", npdb, RefreshNP))
-        Place(GUI:CreateFormSlider(tabContent, "Name Gap Above Health Bar", -10, 30, 1, "nameGap", npdb, RefreshNP))
-        Place(GUI:CreateFormCheckbox(tabContent, "Grey Casts While Your Interrupt Is On Cooldown", "interruptReady", npdb, RefreshNP))
+        PlaceK("castIconSize", GUI:CreateFormSlider(tabContent, "Cast Icon Size (0 = same as bar height)", 0, 64, 1, "castIconSize", npdb, RefreshNP))
+        PlaceK("castTextSize", GUI:CreateFormSlider(tabContent, "Cast Text Size (0 = automatic)", 0, 24, 1, "castTextSize", npdb, RefreshNP))
+        PlaceK("castNameShow", GUI:CreateFormCheckbox(tabContent, "Show Spell Name On Cast Bar", "castNameShow", npdb, RefreshNP))
+        PlaceK("castTimeShow", GUI:CreateFormCheckbox(tabContent, "Show Cast Time On Cast Bar", "castTimeShow", npdb, RefreshNP))
+        PlaceK("nameGap", GUI:CreateFormSlider(tabContent, "Name Gap Above Health Bar", -10, 30, 1, "nameGap", npdb, RefreshNP))
+        PlaceK("interruptReady", GUI:CreateFormCheckbox(tabContent, "Grey Casts While Your Interrupt Is On Cooldown", "interruptReady", npdb, RefreshNP))
         Place(GUI:CreateFormDropdown(tabContent, "Mythic Colours", {
-            { value = "instance", text = "In dungeons, raids and delves" },
+            { value = "instance", text = (ns.Client and ns.Client.isLegacy) and "Off in dungeons too (same colours everywhere)" or "In dungeons, raids and delves" },
             { value = "always", text = "Always" },
             { value = "off", text = "Off (hostile / neutral / friendly)" },
         }, "mythicColors", npdb, RefreshNP))
@@ -374,21 +425,23 @@ Build = function(tabContent)
         end
 
         Section("Auras on Nameplates")
-        Info("Icons above the plate with the time left. Pandemic: the icon border turns gold in the last 30% of the time, when the game shows addons the times. Nothing is shown while the game hides them.", 32)
+        Info("Your debuffs above the plate with the time left, drawn by the game's own aura container, so they show in and out of combat and follow the position sliders (left edge of the bar). Pandemic Cue only works in the older icon row, used where the game has no aura container.", 44)
         Place(GUI:CreateFormDropdown(tabContent, "Auras", {
             { value = "off", text = "Off" },
             { value = "mine", text = "My debuffs" },
         }, "auras", npdb, RefreshExtras))
-        Place(GUI:CreateFormCheckbox(tabContent, "Also Show Dispellable Enemy Buffs", "auraDispel", npdb, RefreshExtras))
-        Place(GUI:CreateFormCheckbox(tabContent, "Pandemic Cue", "auraPandemic", npdb, RefreshExtras))
-        Place(GUI:CreateFormSlider(tabContent, "Icons Per Plate", 1, 10, 1, "auraMax", npdb, RefreshExtras))
-        Place(GUI:CreateFormSlider(tabContent, "Icon Size", 10, 36, 1, "auraSize", npdb, RefreshExtras))
+        PlaceK("auraDispel", GUI:CreateFormCheckbox(tabContent, "Also Show Dispellable Enemy Buffs", "auraDispel", npdb, RefreshExtras))
+        PlaceK("auraPandemic", GUI:CreateFormCheckbox(tabContent, "Pandemic Cue", "auraPandemic", npdb, RefreshExtras))
+        PlaceK("auraMax", GUI:CreateFormSlider(tabContent, "Icons Per Plate", 1, 10, 1, "auraMax", npdb, RefreshExtras))
+        PlaceK("auraSize", GUI:CreateFormSlider(tabContent, "Icon Size", 10, 36, 1, "auraSize", npdb, RefreshExtras))
+        PlaceK("auraX", GUI:CreateFormSlider(tabContent, "Icon Row Position: Left / Right", -150, 150, 1, "auraX", npdb, RefreshExtras))
+        PlaceK("auraY", GUI:CreateFormSlider(tabContent, "Icon Row Position: Down / Up", -60, 120, 1, "auraY", npdb, RefreshExtras))
 
         Section("Focus and Scaling")
-        Place(GUI:CreateFormSlider(tabContent, "Focus Size", 1, 1.5, 0.05, "focusScale", npdb, RefreshExtras))
-        Place(GUI:CreateFormSlider(tabContent, "Size While Casting (1 = off)", 1, 1.5, 0.05, "castScale", npdb, RefreshExtras))
-        Place(GUI:CreateFormSlider(tabContent, "Fade Other Plates When You Have a Target (1 = off)", 0.3, 1, 0.05, "nonTargetAlpha", npdb, RefreshExtras))
-        Place(GUI:CreateFormCheckbox(tabContent, "Bigger Plates for Bosses and Rares", "classScale", npdb, RefreshExtras))
+        PlaceK("focusScale", GUI:CreateFormSlider(tabContent, "Focus Size", 1, 1.5, 0.05, "focusScale", npdb, RefreshExtras))
+        PlaceK("castScale", GUI:CreateFormSlider(tabContent, "Size While Casting (1 = off)", 1, 1.5, 0.05, "castScale", npdb, RefreshExtras))
+        PlaceK("nonTargetAlpha", GUI:CreateFormSlider(tabContent, "Fade Other Plates When You Have a Target (1 = off)", 0.3, 1, 0.05, "nonTargetAlpha", npdb, RefreshExtras))
+        PlaceK("classScale", GUI:CreateFormCheckbox(tabContent, "Bigger Plates for Bosses and Rares", "classScale", npdb, RefreshExtras))
 
         Section("Highlight Rules")
         Info("Make a unit stand out: type its exact name or its NPC number and press Add. It gets a gold bar and a bigger plate. Names are matched out of combat only when the game shows them.", 32)

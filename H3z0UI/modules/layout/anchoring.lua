@@ -567,7 +567,9 @@ local function InstallAnchorGuard(frame, key)
     hooksecurefunc(frame, "ApplySystemAnchor", function()
         if _editModeReapplyGuard then return end
         C_Timer.After(0, function()
-            if InCombatLockdown() then
+            -- only a frame the game locks in combat has to wait; the cooldown rows are free to move,
+            -- and waiting let the game's own position show for the whole fight
+            if InCombatLockdown() and ns.Helpers.FrameMutationRestricted(frame) then
                 pendingAnchoredFrameUpdateAfterCombat = true
                 return
             end

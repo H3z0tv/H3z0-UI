@@ -23,7 +23,8 @@ function SwingTimers.IsEnabled()
 end
 
 function SwingTimers.SetEnabled(enabled)
-    C_CVar.SetCVar("showSwingTimer", enabled and "1" or "0")
+    local want = enabled and "1" or "0"
+    if C_CVar.GetCVar("showSwingTimer") ~= want then C_CVar.SetCVar("showSwingTimer", want) end
 end
 
 local function InNativeEditMode()

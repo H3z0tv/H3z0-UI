@@ -6,11 +6,11 @@
 ## AddonCompartmentFuncOnLeave: H3z0UI_CompartmentOnLeave
 ## Notes: Comprehensive UI customization addon
 ## Author: H3z0
-## Version: 0.28.2
+## Version: 0.28.5
 ## Category: User Interface
 ## SavedVariables: H3z0UIDB, H3z0UI_StorageDB
 ## LoadSavedVariablesFirst: 1
-## OptionalDeps: DandersFrames, BigWigs, TrueReticle
+## OptionalDeps: DandersFrames, BigWigs, CrosshairZ
 
 ## X-License: GPLv3
 
@@ -184,6 +184,7 @@ modules\layout\layoutmode.lua
 modules\layout\layoutmode_ui.lua
 modules\layout\layoutmode_settings.lua
 modules\layout\layoutmode_utils.lua
+modules\layout\layoutmode_intro.lua
 modules\layout\anchoring.lua
 
 
@@ -228,6 +229,7 @@ modules\datatexts\providers_extra.lua
 modules\datatexts\ldb_bridge.lua
 modules\datatexts\datapanels.lua
 modules\minimap\minimap.lua
+modules\minimap\button_bag.lua
 modules\minimap\dungeon_data.lua
 modules\minimap\init_inwindow.lua
 modules\infobar\infobar.lua

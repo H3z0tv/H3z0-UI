@@ -348,13 +348,23 @@ local UI_MODES = {
     { key = "controller", name = "PC Controller", icon = "mode_controller" },
     { key = "pchandheld", name = "PC Handheld",   icon = "mode_handheld" },
     { key = "deck",       name = "Steam Deck",    icon = "mode_deck" },
+    { key = "gamepad",    name = "Controller (game UI)", icon = "mode_controller", forever = true },
 }
+-- the game's own controller UI exists on WoW: Forever only
+do
+    local forever = ns.Client and ns.Client.isForever
+    for i = #UI_MODES, 1, -1 do
+        if UI_MODES[i].forever and not forever then table.remove(UI_MODES, i) end
+    end
+end
 
 local function UIModeIndex()
     local p = Helpers and Helpers.GetProfile and Helpers.GetProfile()
     local c = p and p.handheld
     local key = "pc"
-    if c and c.enabled then
+    if c and c.gamepadUI and ns.Client and ns.Client.isForever then
+        key = "gamepad"
+    elseif c and c.enabled then
         key = c.pcHandheld and "pchandheld" or "deck"
     elseif c and c.pcController then
         key = "controller"
@@ -384,6 +394,8 @@ local function UIModeTooltip()
     GameTooltip:AddLine("Switching reloads the UI.", 0.6, 0.6, 0.6)
 end
 
+-- the reload has to happen right inside the click (the game only allows it there on some clients);
+-- if it still did not happen, a Reload button is offered
 local function UIModeApply(key)
     local H = _G.H3z0UI_Handheld
     if not H then return end
@@ -393,26 +405,116 @@ local function UIModeApply(key)
     end
     local p = Helpers.GetProfile()
     local c = p and p.handheld or {}
-    if key == "pc" then
-        if c.enabled then
-            H.SetEnabled(false)
-        elseif c.pcController then
-            H.SetPCController(false)
+    -- the switch runs inside this click, then the reload (also inside the click)
+    local ok, err = pcall(function()
+        if key == "gamepad" then
+            H.SetGamepadUI(true, true)
+            return
         end
-    elseif key == "controller" then
-        H.SetPCController(true)
-    elseif key == "pchandheld" then
-        H.SetPCHandheld(true)
-    elseif key == "deck" then
-        H.SetSteamDeck(true)
-    end
-    -- every switch ends with a reload (most of them reload on their own)
-    C_Timer.After(0.2, function()
-        if not InCombatLockdown() then ReloadUI() end
+        if c.gamepadUI and H.SetGamepadUI then H.SetGamepadUI(false, true) end
+        if key == "pc" then
+            if c.enabled then
+                H.SetEnabled(false)
+            elseif c.pcController then
+                H.SetPCController(false)
+            end
+        elseif key == "controller" then
+            H.SetPCController(true)
+        elseif key == "pchandheld" then
+            H.SetPCHandheld(true)
+        elseif key == "deck" then
+            H.SetSteamDeck(true)
+        end
     end)
+    if not ok then
+        local handler = geterrorhandler and geterrorhandler()
+        if handler then handler(err) end
+    end
+    if H.Reload then H.Reload() else ReloadUI() end
+end
+
+-- Own small list instead of the game's context menu: a game menu opened by an addon carries the
+-- addon's "taint", and on Forever the game's controller UI then fails when the menu closes
+-- (SetPreferredGamepadInteractTarget blocked). This list is H3z0 UI's own frame, so nothing of the game's is touched.
+local modePopup
+local function UIModeList(owner)
+    if not modePopup then
+        local catcher = CreateFrame("Button", nil, UIParent)
+        catcher:SetAllPoints(UIParent)
+        catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+        catcher:RegisterForClicks("AnyUp")
+        catcher:Hide()
+        local p = CreateFrame("Frame", nil, catcher, "BackdropTemplate")
+        p:SetFrameStrata("FULLSCREEN_DIALOG")
+        p:SetFrameLevel(catcher:GetFrameLevel() + 5)
+        p:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+        p:SetBackdropColor(0.06, 0.07, 0.09, 0.97)
+        p:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+        p:EnableMouse(true)
+        p.title = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        p.title:SetPoint("TOPLEFT", 10, -8)
+        p.title:SetText("UI Mode")
+        p.rows = {}
+        catcher:SetScript("OnClick", function(self) self:Hide() end)
+        catcher:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then self:SetPropagateKeyboardInput(false); self:Hide()
+            else self:SetPropagateKeyboardInput(true) end
+        end)
+        pcall(catcher.EnableKeyboard, catcher, true)
+        catcher.panel = p
+        modePopup = catcher
+    end
+    local p = modePopup.panel
+    local cur = UIModeIndex()
+    local width = 170
+    for i, m in ipairs(UI_MODES) do
+        local row = p.rows[i]
+        if not row then
+            row = CreateFrame("Button", nil, p)
+            row:SetHeight(20)
+            row:SetScript("OnClick", function(self)
+                modePopup:Hide()
+                if self.modeKey and not self.isCurrent then UIModeApply(self.modeKey) end
+            end)
+            local addon = _G.H3z0UI
+            if addon and addon.BindReloadButton then addon:BindReloadButton(row) end
+            row.hl = row:CreateTexture(nil, "HIGHLIGHT")
+            row.hl:SetAllPoints()
+            row.hl:SetColorTexture(1, 1, 1, 0.08)
+            row.dot = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            row.dot:SetPoint("LEFT", 8, 0)
+            row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            row.text:SetPoint("LEFT", 24, 0)
+            p.rows[i] = row
+        end
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", 2, -26 - (i - 1) * 20)
+        row:SetPoint("RIGHT", p, "RIGHT", -2, 0)
+        row.text:SetText(m.name)
+        row.dot:SetText(i == cur and "|cff34D399>|r" or "")
+        if i == cur then row.text:SetTextColor(0.2, 1, 0.6) else row.text:SetTextColor(0.9, 0.9, 0.9) end
+        width = math.max(width, (row.text:GetStringWidth() or 0) + 40)
+        row.modeKey = m.key
+        row.isCurrent = (i == cur)
+        row:Show()
+    end
+    for i = #UI_MODES + 1, #p.rows do p.rows[i]:Hide() end
+    p:SetSize(width, 32 + #UI_MODES * 20)
+    p:ClearAllPoints()
+    if owner and owner.GetCenter then
+        p:SetPoint("BOTTOMLEFT", owner, "TOPLEFT", 0, 6)
+    else
+        p:SetPoint("CENTER")
+    end
+    p:SetClampedToScreen(true)
+    modePopup:Show()
 end
 
 local function UIModeMenu(owner)
+    if ns.Client and ns.Client.isForever then
+        UIModeList(owner)
+        return
+    end
     local cur = UIModeIndex()
     if MenuUtil and MenuUtil.CreateContextMenu then
         MenuUtil.CreateContextMenu(owner, function(_, root)
@@ -535,6 +637,178 @@ local function AtlasExists(atlas)
     return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas) ~= nil
 end
 
+-- One icon button of the menu row (also used by the Dock). o: r, g, b = hover colour (0-255),
+-- rest = {r, g, b} colour of the icon at rest (0-1), font, counterSize, counterCorner, tooltipAnchor.
+local function BuildMenuButton(parent, def, size, o)
+    o = o or {}
+    local r, g, b = o.r or 255, o.g or 255, o.b or 255
+    local font = o.font or "Fonts\\FRIZQT__.TTF"
+    local btn
+    local target
+    for _, n in ipairs(SECURE_TARGETS[def.custom or ""] or {}) do
+        if _G[n] then target = _G[n] break end
+    end
+    if target and not InCombatLockdown() then
+        btn = CreateFrame("Button", nil, parent, "SecureActionButtonTemplate")
+        btn:SetAttribute("type", "click")
+        btn:SetAttribute("clickbutton", target)
+        btn:SetAttribute("useOnKeyDown", false)   -- acts on release, like a normal click
+        btn._h3zSecure = true
+    else
+        btn = CreateFrame("Button", nil, parent)
+    end
+    btn:SetSize(size, size)
+
+    local tex = btn:CreateTexture(nil, "ARTWORK")
+    tex:SetAllPoints()
+    local shown = false
+    if def.file == "CLASS" then
+        -- your class icon, in full color
+        local _, classFile = UnitClass("player")
+        local classAtlas = classFile and ("classicon-" .. classFile:lower())
+        if classAtlas and AtlasExists(classAtlas) then
+            tex:SetAtlas(classAtlas)
+            shown = true
+        elseif classFile then
+            tex:SetTexture("Interface\\Icons\\ClassIcon_" .. classFile:sub(1, 1):upper() .. classFile:sub(2):lower())
+            tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            shown = true
+        end
+    elseif def.custom then
+        tex:SetTexture(MENU_ICON_PATH .. ((def.iconFn and def.iconFn()) or def.custom))
+        shown = true
+    elseif def.file then
+        tex:SetTexture(def.file)
+        if not def.noCrop then tex:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+        shown = true
+    elseif def.atlas and AtlasExists(def.atlas) then
+        tex:SetAtlas(def.atlas)
+        shown = true
+    end
+
+    btn._rest = o.rest
+    if shown then
+        tex:SetAlpha(0.85)
+        if def.custom and o.rest then tex:SetVertexColor(o.rest[1], o.rest[2], o.rest[3]) end
+    else
+        tex:Hide()
+        local letter = btn:CreateFontString(nil, "OVERLAY")
+        local fontPath = font
+        letter:SetFont(fontPath, math.max(9, size - 4), "OUTLINE")
+        letter:SetPoint("CENTER")
+        letter:SetText(def.letter)
+        letter:SetTextColor(1, 1, 1, 0.9)
+        btn.letter = letter
+    end
+    btn.tex = tex
+
+    -- thin border so non-custom icons read as buttons (the custom glyphs are drawn on transparent)
+    if not def.custom then
+        local border = btn:CreateTexture(nil, "BORDER")
+        border:SetPoint("TOPLEFT", -1, 1)
+        border:SetPoint("BOTTOMRIGHT", 1, -1)
+        border:SetColorTexture(0, 0, 0, 0.8)
+    end
+
+    -- number above the icon
+    if def.counter then
+        local count = btn:CreateFontString(nil, "OVERLAY")
+        local countFont = font
+        count:SetFont(countFont, (o.counterSize or 11), "OUTLINE")
+        if o.counterCorner then
+            count:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 3, -3)
+        else
+            count:SetPoint("BOTTOM", btn, "TOP", 0, -1)
+        end
+        count:SetTextColor(COUNT_COLOR[1], COUNT_COLOR[2], COUNT_COLOR[3], 1)
+        btn.count = count
+        btn.counterFn = COUNTERS[def.counter]
+    end
+
+    btn:SetScript("OnEnter", function(self)
+        if self.letter then self.letter:SetTextColor(r / 255, g / 255, b / 255, 1)
+        else
+            self.tex:SetAlpha(1)
+            if def.custom then self.tex:SetVertexColor(r / 255, g / 255, b / 255) end
+        end
+        GameTooltip:SetOwner(self, o.tooltipAnchor or "ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        if def.tooltipFn then
+            def.tooltipFn()
+        elseif def.counter == "vault" then
+            FillVaultTooltip(ReadVault())
+        else
+            GameTooltip:AddLine(def.name, 1, 1, 1)
+            if def.counter == "guild" then
+                GameTooltip:AddDoubleLine("Online:", tostring(OnlineGuild()), 0.7, 0.7, 0.7, 1, 1, 1)
+            elseif def.counter == "social" then
+                GameTooltip:AddDoubleLine("Friends online:", tostring(OnlineFriends()), 0.7, 0.7, 0.7, 1, 1, 1)
+            end
+        end
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function(self)
+        if self.letter then self.letter:SetTextColor(1, 1, 1, 0.9)
+        else
+            self.tex:SetAlpha(0.85)
+            if def.custom then
+                local rc = self._rest
+                if rc then self.tex:SetVertexColor(rc[1], rc[2], rc[3]) else self.tex:SetVertexColor(1, 1, 1) end
+            end
+        end
+        GameTooltip:Hide()
+    end)
+    if btn._h3zSecure then
+        btn:RegisterForClicks("AnyUp")
+    elseif def.custom == "menu" then
+        btn:RegisterForClicks("AnyUp")
+        AttachGameMenuButton(btn)
+    else
+        btn:RegisterForClicks("AnyUp")
+        btn:SetScript("OnClick", function(_, mouseButton)
+            if mouseButton == "LeftButton" or def.anyButton then
+                Try(def.click, mouseButton, def.passOwner and btn or nil)
+            end
+        end)
+    end
+    return btn
+end
+
+-- the numbers above the icons (guild / friends online, Great Vault)
+local function UpdateMenuCounts(buttons)
+    for _, btn in ipairs(buttons) do
+        if btn.count and btn.counterFn then
+            local ok, value, color = pcall(btn.counterFn)
+            if ok and value then
+                color = color or COUNT_COLOR
+                btn.count:SetTextColor(color[1], color[2], color[3], 1)
+                btn.count:SetText(value)
+            else
+                btn.count:SetText("")
+            end
+        end
+    end
+end
+
+local MENU_COUNT_EVENTS = { "PLAYER_ENTERING_WORLD", "GUILD_ROSTER_UPDATE", "PLAYER_GUILD_UPDATE", "FRIENDLIST_UPDATE",
+                            "BN_FRIEND_INFO_CHANGED", "BN_FRIEND_ACCOUNT_ONLINE", "BN_FRIEND_ACCOUNT_OFFLINE",
+                            "WEEKLY_REWARDS_UPDATE", "CHALLENGE_MODE_COMPLETED", "ENCOUNTER_END", "UPDATE_INSTANCE_INFO" }
+
+local function RequestMenuData()
+    if C_GuildInfo and C_GuildInfo.GuildRoster and IsInGuild and IsInGuild() then pcall(C_GuildInfo.GuildRoster) end
+    if C_FriendList and C_FriendList.ShowFriends then pcall(C_FriendList.ShowFriends) end
+    if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then pcall(C_WeeklyRewards.OnUIInteract) end
+end
+
+-- shared with the Top Dock (dock.lua): the same icons, buttons and numbers
+ns.H3zMenu = {
+    MICRO = MICRO,
+    CreateButton = BuildMenuButton,
+    UpdateCounts = UpdateMenuCounts,
+    COUNT_EVENTS = MENU_COUNT_EVENTS,
+    RequestData = RequestMenuData,
+}
+
 Register(Datatexts, "h3zmenu", {
     displayName = "Menu Icons (H3z0)",
     category = "System",
@@ -575,156 +849,21 @@ Register(Datatexts, "h3zmenu", {
         local buttons = {}
 
         for i, def in ipairs(MICRO) do
-            local btn
-            local target
-            for _, n in ipairs(SECURE_TARGETS[def.custom or ""] or {}) do
-                if _G[n] then target = _G[n] break end
-            end
-            if target and not InCombatLockdown() then
-                btn = CreateFrame("Button", nil, frame, "SecureActionButtonTemplate")
-                btn:SetAttribute("type", "click")
-                btn:SetAttribute("clickbutton", target)
-                btn:SetAttribute("useOnKeyDown", false)   -- acts on release, like a normal click
-                btn._h3zSecure = true
-            else
-                btn = CreateFrame("Button", nil, frame)
-            end
-            btn:SetSize(size, size)
+            local btn = BuildMenuButton(frame, def, size, { r = r, g = g, b = b, font = text:GetFont(), counterSize = Opt(settings, "menuCounterSize", 11) })
             btn:SetPoint("LEFT", frame, "LEFT", startX + (i - 1) * (size + gap), 0)
-
-            local tex = btn:CreateTexture(nil, "ARTWORK")
-            tex:SetAllPoints()
-            local shown = false
-            if def.file == "CLASS" then
-                -- your class icon, in full color
-                local _, classFile = UnitClass("player")
-                local classAtlas = classFile and ("classicon-" .. classFile:lower())
-                if classAtlas and AtlasExists(classAtlas) then
-                    tex:SetAtlas(classAtlas)
-                    shown = true
-                elseif classFile then
-                    tex:SetTexture("Interface\\Icons\\ClassIcon_" .. classFile:sub(1, 1):upper() .. classFile:sub(2):lower())
-                    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                    shown = true
-                end
-            elseif def.custom then
-                tex:SetTexture(MENU_ICON_PATH .. ((def.iconFn and def.iconFn()) or def.custom))
-                shown = true
-            elseif def.file then
-                tex:SetTexture(def.file)
-                if not def.noCrop then tex:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-                shown = true
-            elseif def.atlas and AtlasExists(def.atlas) then
-                tex:SetAtlas(def.atlas)
-                shown = true
-            end
-
-            if shown then
-                tex:SetAlpha(0.85)
-            else
-                tex:Hide()
-                local letter = btn:CreateFontString(nil, "OVERLAY")
-                local fontPath = text:GetFont() or "Fonts\\FRIZQT__.TTF"
-                letter:SetFont(fontPath, math.max(9, size - 4), "OUTLINE")
-                letter:SetPoint("CENTER")
-                letter:SetText(def.letter)
-                letter:SetTextColor(1, 1, 1, 0.9)
-                btn.letter = letter
-            end
-            btn.tex = tex
-
-            -- thin border so non-custom icons read as buttons (the custom glyphs are drawn on transparent)
-            if not def.custom then
-                local border = btn:CreateTexture(nil, "BORDER")
-                border:SetPoint("TOPLEFT", -1, 1)
-                border:SetPoint("BOTTOMRIGHT", 1, -1)
-                border:SetColorTexture(0, 0, 0, 0.8)
-            end
-
-            -- number above the icon
-            if def.counter then
-                local count = btn:CreateFontString(nil, "OVERLAY")
-                local countFont = text:GetFont() or "Fonts\\FRIZQT__.TTF"
-                count:SetFont(countFont, Opt(settings, "menuCounterSize", 11), "OUTLINE")
-                count:SetPoint("BOTTOM", btn, "TOP", 0, -1)
-                count:SetTextColor(COUNT_COLOR[1], COUNT_COLOR[2], COUNT_COLOR[3], 1)
-                btn.count = count
-                btn.counterFn = COUNTERS[def.counter]
-            end
-
-            btn:SetScript("OnEnter", function(self)
-                if self.letter then self.letter:SetTextColor(r / 255, g / 255, b / 255, 1)
-                else
-                    self.tex:SetAlpha(1)
-                    if def.custom then self.tex:SetVertexColor(r / 255, g / 255, b / 255) end
-                end
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:ClearLines()
-                if def.tooltipFn then
-                    def.tooltipFn()
-                elseif def.counter == "vault" then
-                    FillVaultTooltip(ReadVault())
-                else
-                    GameTooltip:AddLine(def.name, 1, 1, 1)
-                    if def.counter == "guild" then
-                        GameTooltip:AddDoubleLine("Online:", tostring(OnlineGuild()), 0.7, 0.7, 0.7, 1, 1, 1)
-                    elseif def.counter == "social" then
-                        GameTooltip:AddDoubleLine("Friends online:", tostring(OnlineFriends()), 0.7, 0.7, 0.7, 1, 1, 1)
-                    end
-                end
-                GameTooltip:Show()
-            end)
-            btn:SetScript("OnLeave", function(self)
-                if self.letter then self.letter:SetTextColor(1, 1, 1, 0.9)
-                else
-                    self.tex:SetAlpha(0.85)
-                    if def.custom then self.tex:SetVertexColor(1, 1, 1) end
-                end
-                GameTooltip:Hide()
-            end)
-            if btn._h3zSecure then
-                btn:RegisterForClicks("AnyUp")
-            elseif def.custom == "menu" then
-                btn:RegisterForClicks("AnyUp")
-                AttachGameMenuButton(btn)
-            else
-                btn:RegisterForClicks("AnyUp")
-                btn:SetScript("OnClick", function(_, mouseButton)
-                    if mouseButton == "LeftButton" or def.anyButton then
-                        Try(def.click, mouseButton, def.passOwner and btn or nil)
-                    end
-                end)
-            end
             buttons[i] = btn
         end
 
-        local function UpdateCounts()
-            for _, btn in ipairs(buttons) do
-                if btn.count and btn.counterFn then
-                    local ok, value, color = pcall(btn.counterFn)
-                    if ok and value then
-                        color = color or COUNT_COLOR
-                        btn.count:SetTextColor(color[1], color[2], color[3], 1)
-                        btn.count:SetText(value)
-                    else
-                        btn.count:SetText("")
-                    end
-                end
-            end
-        end
+        local function UpdateCounts() UpdateMenuCounts(buttons) end
         frame.Update = UpdateCounts
 
-        for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "GUILD_ROSTER_UPDATE", "PLAYER_GUILD_UPDATE", "FRIENDLIST_UPDATE",
-                             "BN_FRIEND_INFO_CHANGED", "BN_FRIEND_ACCOUNT_ONLINE", "BN_FRIEND_ACCOUNT_OFFLINE",
-                             "WEEKLY_REWARDS_UPDATE", "CHALLENGE_MODE_COMPLETED", "ENCOUNTER_END", "UPDATE_INSTANCE_INFO" }) do
+        for _, e in ipairs(MENU_COUNT_EVENTS) do
             H3z0UI_SafeRegisterEvent(frame, e)
         end
         frame:SetScript("OnEvent", UpdateCounts)
 
         -- ask for fresh data once (guild roster / friends), then the events keep the numbers current
-        if C_GuildInfo and C_GuildInfo.GuildRoster and IsInGuild and IsInGuild() then pcall(C_GuildInfo.GuildRoster) end
-        if C_FriendList and C_FriendList.ShowFriends then pcall(C_FriendList.ShowFriends) end
-        if C_WeeklyRewards and C_WeeklyRewards.OnUIInteract then pcall(C_WeeklyRewards.OnUIInteract) end
+        RequestMenuData()
         UpdateCounts()
 
         frame.buttons = buttons

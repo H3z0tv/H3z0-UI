@@ -63,8 +63,10 @@ function FP.Apply()
     elseif mode == "on" then
         Set(CVAR_NPC, "1")
     end
-    if s.hideFriendlyPlayerNameplates ~= nil then
-        Set(CVAR_PLAYER, s.hideFriendlyPlayerNameplates and "0" or "1")
+    -- only ever turn friendly player plates OFF here; turning them on stays your own choice
+    -- (game options), so they are not forced on again after a reload
+    if s.hideFriendlyPlayerNameplates == true then
+        Set(CVAR_PLAYER, "0")
     end
     -- Forever / Classic: the game has one more switch in front of both ("show friendly nameplates",
     -- Shift+V) and it is off by default there, so no friendly plate is shown at all. It is turned on

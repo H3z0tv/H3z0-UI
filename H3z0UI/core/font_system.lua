@@ -110,6 +110,54 @@ function H3z0UICore:ApplyGlobalFontObjects(shouldApply)
     end
 end
 
+-- The game's own nameplate fonts: the names over friendly players and NPCs (the game keeps those
+-- plates to itself, so this is the only way to reach them) and its enemy plates when ours are off.
+-- Only the font file changes: size and outline stay exactly the game's, because changing the size
+-- made the game draw the names small and scale them up (blurry). When the game sets one of these
+-- again (text size, larger nameplates), the font file is put back on.
+local NAMEPLATE_FONT_SET = {
+    "SystemFont_NamePlate", "SystemFont_NamePlateFixed",
+    "SystemFont_LargeNamePlate", "SystemFont_LargeNamePlateFixed",
+    "SystemFont_NamePlate_Outlined", "SystemFont_LargeNamePlate_Outlined",
+    "SystemFont_NamePlateCastBar", "SystemFont_NamePlateLevel",
+}
+local nameplateFontOriginal = {}
+local nameplateFontOn, nameplateFontBusy = false, false
+local function SetNameplateFont(obj)
+    local f, size, flags = obj:GetFont()
+    if not (size and size > 0) then return end
+    local path = GetGlobalFontPath()
+    if not path or f == path then return end
+    nameplateFontBusy = true
+    obj:SetFont(path, size, flags or "")
+    nameplateFontBusy = false
+end
+function H3z0UICore:ApplyNameplateFontObjects(shouldApply)
+    nameplateFontOn = shouldApply and true or false
+    for _, name in ipairs(NAMEPLATE_FONT_SET) do
+        local obj = _G[name]
+        if obj and obj.GetFont and obj.SetFont then
+            if shouldApply then
+                if not nameplateFontOriginal[obj] then
+                    nameplateFontOriginal[obj] = (obj:GetFont())
+                    hooksecurefunc(obj, "SetFont", function(self)
+                        if nameplateFontOn and not nameplateFontBusy then SetNameplateFont(self) end
+                    end)
+                end
+                SetNameplateFont(obj)
+            else
+                local orig = nameplateFontOriginal[obj]
+                local f, size, flags = obj:GetFont()
+                if orig and f ~= orig and size and size > 0 then
+                    nameplateFontBusy = true
+                    obj:SetFont(orig, size, flags or "")
+                    nameplateFontBusy = false
+                end
+            end
+        end
+    end
+end
+
 local function SetChatFontObject(chatFrame, fontObject, justifyH, justifyV)
     if not (chatFrame and chatFrame.SetFontObject and fontObject) then return false end
     if not ns.SafeCallMethod("best-effort-style", chatFrame, "SetFontObject", fontObject) then return false end
@@ -177,7 +225,12 @@ end
 function H3z0UICore:ApplyGlobalDefaultFont()
     if not self.db or not self.db.profile or not self.db.profile.general then return end
     local glyphFallback = Helpers and Helpers.GetLocaleGlyphFallback and Helpers.GetLocaleGlyphFallback()
-    if IsGlobalFontEnabled() and not glyphFallback then
+    -- The game's controller action bars read this shared font name while they update; once it
+    -- has been written by an addon their updates count as that addon's, and they then fail on
+    -- the game's hidden values. With the controller UI on, it stays the game's own (the font
+    -- objects still carry the H3z0 font, so the look hardly changes).
+    local pad = (C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("GamePadEnable") == "1") and true or false
+    if IsGlobalFontEnabled() and not glyphFallback and not pad then
         if originalStandardTextFont == false then
             originalStandardTextFont = _G.STANDARD_TEXT_FONT
         end
@@ -277,6 +330,7 @@ function H3z0UICore:ApplyGlobalFont()
     do
         local glyphFallback = Helpers and Helpers.GetLocaleGlyphFallback and Helpers.GetLocaleGlyphFallback()
         self:ApplyGlobalFontObjects(shouldApply and not glyphFallback)
+        self:ApplyNameplateFontObjects(shouldApply and not glyphFallback)
     end
 
     self:ApplyGlobalFontToChatFrames(fontPath, shouldApply)

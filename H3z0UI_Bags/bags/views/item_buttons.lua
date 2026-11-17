@@ -114,6 +114,35 @@ local CLASSIC_ITEM_BUTTONS = ns.Client and ns.Client.isClassic
 local function ClassicGetBagID(self) return self._h3zBagID end
 local function ClassicSetBagID(self, id) self._h3zBagID = id end
 
+-- Every bag slot button, so they can all be dimmed or lit again when the game's
+-- item context changes: the Item Upgrade window (only items that can be upgraded
+-- stay lit), the auction house, socketing, and so on. The game's own bags listen
+-- for that change; ours check for it here.
+ItemButtons.allLive = setmetatable({}, { __mode = "k" })
+do
+    local lastContext, lastAuction, acc = false, false, 0
+    local watch = CreateFrame("Frame")
+    watch:SetScript("OnUpdate", function(_, elapsed)
+        acc = acc + elapsed
+        if acc < 0.15 then return end
+        acc = 0
+        if not ItemButtonUtil or not ItemButtonUtil.GetItemContext then return end
+        local ctx = ItemButtonUtil.GetItemContext()
+        local auction = (AuctionHouseFrame and AuctionHouseFrame:IsShown()) and true or false
+        if ctx == lastContext and auction == lastAuction then return end
+        lastContext, lastAuction = ctx, auction
+        local okS, st = pcall(GetSettings)
+        local appearance = okS and st and st.appearance
+        local fading = not (appearance and appearance.contextFading == false)
+        for button in pairs(ItemButtons.allLive) do
+            if button:IsVisible() and button.UpdateItemContextMatching then
+                if button.ItemContextOverlay then button.ItemContextOverlay:SetAlpha(fading and 1 or 0) end
+                if fading then pcall(button.UpdateItemContextMatching, button) end
+            end
+        end
+    end)
+end
+
 function ItemButtons.CreateLive(holder, bagID)
     local button
     if CLASSIC_ITEM_BUTTONS then
@@ -124,6 +153,7 @@ function ItemButtons.CreateLive(holder, bagID)
     end
     button:SetBagID(bagID)
     button.GetItemContextMatchResult = LiveGetItemContextMatchResult
+    ItemButtons.allLive[button] = true
     if button.IconBorder then button.IconBorder:SetAlpha(0) end
     if button.IconOverlay then
         button.IconOverlay:ClearAllPoints()
@@ -141,6 +171,22 @@ function ItemButtons.CreateLive(holder, bagID)
     UIKit.CreateBorderLines(button)
     button:HookScript("OnEnter", function(self)
         ItemButtons.DismissNewItemGlow(self)
+    end)
+    -- Ctrl+Alt+click marks (or unmarks) the item as junk for the Sell Junk button
+    button:HookScript("OnClick", function(self, mouseButton)
+        if mouseButton ~= "LeftButton" or not (IsControlKeyDown() and IsAltKeyDown()) then return end
+        if not Bags.Junk or not Bags.Junk.ToggleMarked then return end
+        local info = C_Container.GetContainerItemInfo(self:GetBagID(), self:GetID())
+        if not (info and info.itemID) then return end
+        if ClearCursor then ClearCursor() end   -- the click picked the item up; put it back
+        if info.hasNoValue then
+            print("|cff60A5FAH3z0UI:|r " .. (ns.L["This item cannot be sold, so it cannot be marked as junk."]))
+            return
+        end
+        local on = Bags.Junk.ToggleMarked(info.itemID)
+        local link = info.hyperlink or ("item:" .. info.itemID)
+        print("|cff60A5FAH3z0UI:|r " .. (on and (ns.L["Marked as junk: "]) or (ns.L["No longer marked as junk: "])) .. link)
+        if _G.H3z0UI_RefreshBags then _G.H3z0UI_RefreshBags() end
     end)
     return button
 end

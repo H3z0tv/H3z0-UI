@@ -3,7 +3,7 @@
 --
 -- A small step-by-step window that sets H3z0 UI up for the way the player plays:
 --   0. Start from   - keep my settings / fresh H3z0 UI defaults / import a profile string
---   1. Look         - Classic / Modern / Modern v2 (preview cards: frame style, rounded corners, window skins)
+--   1. Look         - Legacy / Modern / Modern v2 / Modern v3 (preview cards: frame style, rounded corners, window skins)
 --   1b. Font        - the H3z0 UI font for everything (preview cards)
 --   2. Device       - PC (mouse + keyboard) or Steam Deck / Handheld (controller, compact HUD)
 --   3. Nameplates   - none / Plater / Platynator / BetterBlizzPlates (strings live in importstrings/)
@@ -214,24 +214,29 @@ end
 -- Step 1: the look
 ---------------------------------------------------------------------------
 local LOOKS = {
-    { value = "classic", label = "Classic",
+    { value = "classic", label = "Legacy",
       desc = "Square portraits beside flat, square bars. Plain chat and damage meter." },
     { value = "modern", label = "Modern",
       desc = "Round portraits, soft shadows, rounded corners, dark rounded chat and damage meter." },
     { value = "v2", label = "Modern v2",
       desc = "Bars start under a big round portrait and end round. Party frames match. Plus all of Modern." },
+    { value = "v3", label = "Modern v3",
+      desc = "Slim bars with a round portrait beside them. Elite badge, execute line and the cast icon in the portrait. Plus all of Modern." },
 }
 local LOOK_SETTINGS = {
     classic = { fs = false, modern = false, rounded = false, skins = false, party = "classic" },
     modern  = { fs = true, style = "round", modern = true, rounded = true, skins = true, party = "classic" },
     v2      = { fs = true, style = "roundv2", modern = true, rounded = true, skins = true, party = "v2" },
+    v3      = { fs = true, style = "roundv3", modern = true, rounded = true, skins = true, party = "classic" },
 }
 
 local function CurrentLook()
     local FS = ns.FrameStyle
     local fs = FS and FS.GetSettings and FS.GetSettings()
     if fs and fs.enabled then
-        return fs.style == "roundv2" and "v2" or "modern"
+        if fs.style == "roundv2" then return "v2" end
+        if fs.style == "roundv3" then return "v3" end
+        return "modern"
     end
     local ML = ns.ModernLook
     local ml = ML and ML.GetSettings and ML.GetSettings()
@@ -524,7 +529,7 @@ ApplyChoices = function()
         if hh and hh.SetPCController then hh.SetPCController(hc.pcController, true) end
         result.needReload = true
         result.lines[#result.lines + 1] = hc.pcController
-            and "PC layout with a controller (ConsolePort on, Action Combat Mode off)"
+            and "PC layout with a controller (ConsolePort on, Crosshair Z off)"
             or "PC layout (Handheld Mode OFF)"
     end
 
@@ -833,9 +838,9 @@ local function DrawLookPreview(pv, look, ar, ag, ab)
     local uf = CreateFrame("Frame", nil, pv)
     uf:SetSize(W - 20, 64)
     uf:SetPoint("TOP", 0, -14)
-    local barH = 22
-    local pSize = (look == "v2") and 44 or 34
-    local barLeft = (look == "v2") and (pSize / 2) or (pSize + 4)
+    local barH = (look == "v3") and 14 or 22
+    local pSize = (look == "v2" and 44) or (look == "v3" and 46) or 34
+    local barLeft = (look == "v2") and (pSize / 2) or (look == "v3" and (pSize + 3)) or (pSize + 4)
     local bar = CreateFrame("Frame", nil, uf)
     bar:SetPoint("LEFT", uf, "LEFT", barLeft, 0)
     bar:SetPoint("RIGHT", uf, "RIGHT", 0, 0)
@@ -884,6 +889,14 @@ local function DrawLookPreview(pv, look, ar, ag, ab)
         pw:SetColorTexture(0.1, 0.35, 0.9, 1)
     end
 
+    if look == "v3" then
+        -- the execute line on the bar
+        local ex = bar:CreateTexture(nil, "OVERLAY")
+        ex:SetSize(2, barH)
+        ex:SetColorTexture(1, 1, 1, 0.9)
+        ex:SetPoint("LEFT", bar, "LEFT", (W - 20 - barLeft) * 0.2, 0)
+    end
+
     -- portrait
     local pf = CreateFrame("Frame", nil, uf)
     pf:SetSize(pSize, pSize)
@@ -917,6 +930,15 @@ local function DrawLookPreview(pv, look, ar, ag, ab)
     else
         ring:SetColorTexture(0, 0, 0, 1)
         pic:SetTexCoord(0.12, 0.88, 0.12, 0.88)
+    end
+    if look == "v3" then
+        -- the elite badge on the portrait corner
+        local bd = pf:CreateTexture(nil, "OVERLAY", nil, 7)
+        bd:SetSize(14, 14)
+        bd:SetPoint("TOPRIGHT", pf, "TOPRIGHT", 4, 4)
+        if not (bd.SetAtlas and pcall(bd.SetAtlas, bd, "nameplates-icon-elite-gold")) then
+            bd:SetColorTexture(1, 0.82, 0, 1)
+        end
     end
 
     -- window mock (damage meter)
@@ -1443,7 +1465,7 @@ local function CreateWizard()
         intro:SetWidth(PAGE_W)
         intro:SetText("How should H3z0 UI look? Each style changes the unit frames, corners and window skins together - every part can be changed later.")
         f.lookCards = {}
-        local CW, CH, GAP = 173, 300, 10
+        local CW, CH, GAP = 126, 318, 10
         for i, o in ipairs(LOOKS) do
             local card = MakeLookCard(page, CW, CH, o, ar, ag, ab, function()
                 state.look = o.value
@@ -1494,11 +1516,11 @@ local function CreateWizard()
             RefreshDevicePage(f)
         end
         f.deviceCards.pc = MakeCard(page, PAGE_W, 56, "PC / Desktop",
-            "Mouse and keyboard. The standard H3z0 UI layout with Action Combat Mode.", ar, ag, ab,
+            "Mouse and keyboard. The standard H3z0 UI layout with Crosshair Z.", ar, ag, ab,
             function() Pick("pc") end, 14)
         f.deviceCards.pc:SetPoint("TOPLEFT", 0, -36)
         f.deviceCards.pccontroller = MakeCard(page, PAGE_W, 56, "PC + Controller",
-            "Same PC layout, played with a controller: ConsolePort on, Action Combat Mode off.", ar, ag, ab,
+            "Same PC layout, played with a controller: ConsolePort on, Crosshair Z off.", ar, ag, ab,
             function() Pick("pccontroller") end, 14)
         f.deviceCards.pccontroller:SetPoint("TOPLEFT", f.deviceCards.pc, "BOTTOMLEFT", 0, -8)
         f.deviceCards.handheld = MakeCard(page, PAGE_W, 80, "Steam Deck / Handheld",

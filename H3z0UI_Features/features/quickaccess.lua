@@ -1298,8 +1298,8 @@ ev:SetScript("OnEvent", function(_, event, arg1)
     end
 end)
 
--- Debug: /h3qa scan   (then hover a group listing within 5 seconds)
-SLASH_H3QA1 = "/h3qa"
+-- Debug: /h3z0qa scan   (then hover a group listing within 5 seconds)
+SLASH_H3QA1 = "/h3z0qa"
 SlashCmdList["H3QA"] = function(msg)
     if msg == "scan" then
         print("|cff00ff99H3z0 UI|r: hover a group in the list now... (5 s)")
@@ -1320,7 +1320,7 @@ SlashCmdList["H3QA"] = function(msg)
                 "moved by us:", tostring(rio.moved), "beside panel:", tostring(rio.beside))
         end)
     else
-        print("|cff00ff99H3z0 UI|r: /h3qa scan")
+        print("|cff00ff99H3z0 UI|r: /h3z0qa scan")
     end
 end
 

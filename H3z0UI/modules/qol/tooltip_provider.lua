@@ -163,8 +163,11 @@ end
 
 local cachedSettings = nil
 
+-- Always the CURRENT profile's table. A copy kept from early login went stale when the
+-- profile was switched or replaced after login (WoW: Forever, per-spec profiles): the
+-- tooltip then ran on the old settings until an option was changed, and broke again on
+-- every restart. Two table lookups, so no cache is needed.
 function TooltipProvider:GetSettings()
-    if cachedSettings then return cachedSettings end
     cachedSettings = Helpers.GetModuleDB("tooltip")
     return cachedSettings
 end
@@ -596,7 +599,8 @@ end
 local function ApplyAuraSpellIDCVar()
     local settings = TooltipProvider:GetSettings()
     if not settings or not settings.enabled then return end
-    SetCVar("tooltipShowAuraSpellIDs", settings.showAuraSpellIDs and "1" or "0")
+    local want = settings.showAuraSpellIDs and "1" or "0"
+    if GetCVar("tooltipShowAuraSpellIDs") ~= want then SetCVar("tooltipShowAuraSpellIDs", want) end
 end
 
 if ns.WhenLoggedIn then

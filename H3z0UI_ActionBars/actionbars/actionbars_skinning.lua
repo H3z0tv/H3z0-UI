@@ -759,9 +759,28 @@ end
 
 DRAG_PREVIEW_ALPHA = 0.3
 
+-- Blizzard puts the empty slots back by itself (grid, bar refresh). Undo that at once.
+local emptyGuarded = setmetatable({}, { __mode = "k" })
+local emptyBusy = false
+local function GuardEmptyAlpha(button)
+    if emptyGuarded[button] or not button.SetAlpha then return end
+    emptyGuarded[button] = true
+    hooksecurefunc(button, "SetAlpha", function(self, a)
+        if emptyBusy or (a or 0) <= 0 then return end
+        if ActionBarsOwned.dragPreviewActive or ActionBarsOwned._showGrid then return end
+        local st = GetFrameState(self)
+        if st and st.hiddenEmpty then
+            emptyBusy = true
+            pcall(self.SetAlpha, self, 0)
+            emptyBusy = false
+        end
+    end)
+end
+
 UpdateEmptySlotVisibility = function(button, settings)
     if not settings then return end
     local state = GetFrameState(button)
+    GuardEmptyAlpha(button)
 
     local barKey = GetBarKeyFromButton(button)
 

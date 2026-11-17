@@ -3,7 +3,7 @@
 
     Everything H3z0 UI added on top of the base addon, in one place:
       Combat Mode, Bottom Bar, Steam Deck + PC Controller (moved from General & QoL)
-      UI Look       - pick Classic / Modern / Modern v2, then only that version's options
+      UI Look       - pick Legacy / Modern / Modern v2 / Modern v3, then only that version's options
       Layout & Bars - Layout Mode, Compact Action Bars
       Map           - minimap coordinates
       Extras        - party (ready check, raid manager tab), WoW: Forever, setup wizard
@@ -101,18 +101,14 @@ end
 ---------------------------------------------------------------------------
 -- PORTRAITS
 ---------------------------------------------------------------------------
-local function BuildPortraits(tabContent)
-    GUI:SetSearchContext({tabIndex = 6, tabName = "Unit Frames", subTabIndex = 8, subTabName = "Portraits"})
-    local b = Builder(tabContent)
+local function AddPortraits(b)
     local db = Shared.GetDB()
 
-    b.Info("Square portraits of the Classic look. Modern and Modern v2 portraits are set in H3z0 Features > UI Look.", 22, C.accent)
-
-    -- Classic square portraits of the unit frames (used when Frame Style is off)
+    -- Legacy square portraits of the unit frames (used when Frame Style is off)
     local ufdb = db and db.h3z0uiUnitFrames
     if ufdb then
-        b.Section("Unit Frame Portraits (Classic)")
-        b.Info("The square portrait beside the unit frame. Used by the Classic look (Modern and Modern v2 draw their own portrait).", 22)
+        b.Section("Unit Frame Portraits (Legacy)")
+        b.Info("The square portrait beside the unit frame. Only the Legacy version uses it (Modern, Modern v2 and Modern v3 draw their own portrait).", 34)
         for _, info in ipairs({ { "player", "Player" }, { "target", "Target" }, { "focus", "Focus" } }) do
             local unitKey, title = info[1], info[2]
             local u = ufdb[unitKey]
@@ -147,7 +143,12 @@ local function BuildPortraits(tabContent)
             end
         end
     end
+end
 
+local function BuildPortraits(tabContent)
+    GUI:SetSearchContext({tabIndex = 6, tabName = "Unit Frames", subTabIndex = 8, subTabName = "Version Settings"})
+    local b = Builder(tabContent)
+    AddPortraits(b)
     b.Finish()
 end
 
@@ -178,6 +179,28 @@ local function Fonts()
     return list
 end
 
+local LOOK_NAMES = { classic = "Legacy", modern = "Modern", v2 = "Modern v2", v3 = "Modern v3" }
+
+-- Apply a version everywhere; afterApply runs first (a page redraws itself with the new version)
+local function ChangeLook(value, afterApply)
+    local Setup = ns.SetupWizard or _G.H3z0UI_Setup
+    if Setup and Setup.ApplyLookNow then Setup.ApplyLookNow(value) end
+    RefreshAllLook()
+    if afterApply then afterApply() end
+    -- every tab shows only this version's options: rebuild the whole menu
+    C_Timer.After(0, function()
+        GUI:RebuildOptions()
+        GUI:ShowConfirmation({
+            title = "Version Changed",
+            message = "The new look is applied and the menu now shows only its options. A reload makes sure every frame picks it up.",
+            acceptText = "Reload Now",
+            cancelText = "Later",
+            isDestructive = false,
+            onAccept = function() H3z0UI:SafeReload() end,
+        })
+    end)
+end
+
 local function BuildLookInto(holder, firstBuild)
     local b = Builder(holder)
     local db = Shared.GetDB()
@@ -193,24 +216,10 @@ local function BuildLookInto(holder, firstBuild)
     local looks = {}
     for _, o in ipairs((Setup and Setup.LOOKS) or {}) do looks[#looks + 1] = { value = o.value, text = o.label } end
     if #looks == 0 then
-        looks = { { value = "classic", text = "Classic" }, { value = "modern", text = "Modern" }, { value = "v2", text = "Modern v2" } }
+        looks = { { value = "classic", text = "Legacy" }, { value = "modern", text = "Modern" }, { value = "v2", text = "Modern v2" }, { value = "v3", text = "Modern v3" } }
     end
     b.Drop("UI Version", looks, "look", uiState, function(value)
-        value = value or uiState.look
-        if Setup and Setup.ApplyLookNow then Setup.ApplyLookNow(value) end
-        RefreshAllLook()
-        -- every tab shows only this version's options: rebuild the whole menu
-        C_Timer.After(0, function()
-            GUI:RebuildOptions()
-            GUI:ShowConfirmation({
-                title = "Version Changed",
-                message = "The new look is applied and the menu now shows only its options. A reload makes sure every frame picks it up.",
-                acceptText = "Reload Now",
-                cancelText = "Later",
-                isDestructive = false,
-                onAccept = function() H3z0UI:SafeReload() end,
-            })
-        end)
+        ChangeLook(value or uiState.look)
     end)
     for _, o in ipairs((Setup and Setup.LOOKS) or {}) do
         if o.value == look then b.Info(o.desc, 22) end
@@ -296,37 +305,20 @@ local function BuildLookInto(holder, firstBuild)
         b.Section("Character + Inspect")
         b.Check("Homeland Background (race art)", "h3zBackground", char, RefreshChar)
         b.Check("H3z0 UI Logo in the Corner", "h3zLogo", char, RefreshChar)
+
+        b.Info("What the H3z0 character window shows, and its size: H3z0 Features > Character Window.", 22)
     end
+
+    b.Section("Unit Frames")
+    b.Info("The unit frame settings of this version (portrait, bar height, border" .. (look == "v3" and ", badge, execute line" or "") .. ") are in Unit Frames > Version Settings. That page shows only the version in use.", 34)
 
     if look == "classic" then
-        b.Section("Classic")
-        b.Info("Square portraits beside flat bars, plain chat and damage meter. The square portraits are set in Unit Frames > Portraits.", 34)
+        b.Section("Legacy")
+        b.Info("Square portraits beside flat bars, plain chat and damage meter.", 22)
     end
 
-    -- Modern and Modern v2 -----------------------------------------------
+    -- Modern, Modern v2 and Modern v3 --------------------------------------
     if look ~= "classic" then
-        local FS = ns.FrameStyle
-        local fsdb = FS and FS.GetSettings and FS.GetSettings()
-        if fsdb then
-            b.Section("Unit Frames")
-            if look == "modern" then
-                b.Drop("Portrait", {
-                    { value = "round", text = "Round portrait beside the bar" },
-                    { value = "square", text = "Portrait docked inside the bar" },
-                }, "style", fsdb, RefreshAllLook)
-            else
-                b.Info("Bars start under a big round portrait and end round.", 22)
-            end
-            b.Check("Use on Player", "player", fsdb, RefreshAllLook)
-            b.Check("Use on Target", "target", fsdb, RefreshAllLook)
-            b.Check("Use on Focus", "focus", fsdb, RefreshAllLook)
-            b.Slider("Frame Height (0 = your own)", 0, 60, 1, "height", fsdb, RefreshAllLook)
-            b.Slider("Portrait Size (0 = fit the frame)", 0, 90, 1, "pSize", fsdb, RefreshAllLook)
-            b.Slider("Portrait Border Thickness", 0, 6, 1, "ringThickness", fsdb, RefreshAllLook)
-            b.Check("Class / Reaction Colored Border", "classRing", fsdb, RefreshAllLook)
-            b.Check("Name on Top", "nameAbove", fsdb, RefreshAllLook)
-            b.Check("Pet Bar Under the Player", "dockPet", fsdb, RefreshAllLook)
-        end
 
         local ML = ns.ModernLook
         local mldb = ML and ML.GetSettings and ML.GetSettings()
@@ -382,6 +374,107 @@ local function BuildLook(tabContent)
         holder:SetPoint("TOPRIGHT", 0, 0)
         holder.h3zRebuild = Rebuild
         local ok, h = pcall(BuildLookInto, holder, first)
+        if not ok and geterrorhandler then geterrorhandler()(h) end
+        GUI._suppressSearchRegistration = false
+        first = false
+        h = (ok and h) or 600
+        holder:SetHeight(h)
+        tabContent:SetHeight(h)
+    end
+    Rebuild()
+end
+
+---------------------------------------------------------------------------
+-- UNIT FRAMES > VERSION SETTINGS: only the settings of the version in use.
+-- Legacy, Modern, Modern v2 and Modern v3 each keep their own values.
+---------------------------------------------------------------------------
+local function AddFrameStyleControls(b, look)
+    local FS = ns.FrameStyle
+    local fsdb = FS and FS.GetSettings and FS.GetSettings()
+    local o = FS and FS.Opts and FS.Opts()
+    if not (fsdb and o) then
+        b.Info("The frame style is not loaded.", 22)
+        return
+    end
+    if look == "modern" then
+        b.Drop("Portrait", {
+            { value = "round", text = "Round portrait beside the bar" },
+            { value = "square", text = "Portrait docked inside the bar" },
+        }, "style", fsdb, RefreshAllLook)
+    end
+    b.Check("Use on Player", "player", o, RefreshAllLook)
+    b.Check("Use on Target", "target", o, RefreshAllLook)
+    b.Check("Use on Focus", "focus", o, RefreshAllLook)
+    b.Slider("Frame Height (0 = your own)", 0, 60, 1, "height", o, RefreshAllLook)
+    b.Slider("Portrait Size (0 = fit the frame)", 0, 90, 1, "pSize", o, RefreshAllLook)
+    b.Slider("Portrait Border Thickness", 0, 6, 1, "ringThickness", o, RefreshAllLook)
+    b.Check("Class / Reaction Colored Border", "classRing", o, RefreshAllLook)
+    b.Check("Name on Top", "nameAbove", o, RefreshAllLook)
+    b.Check("Pet Bar Under the Player", "dockPet", o, RefreshAllLook)
+
+    if look == "v3" then
+        b.Section("Modern v3 Extras")
+        b.Check("Percent and Value Inside the Bar", "splitText", o, RefreshAllLook)
+        b.Slider("Text Size (name, percent, value)", 8, 18, 1, "textSize", o, RefreshAllLook)
+        b.Check("Drop Portrait (square corner toward the bar)", "drop", o, RefreshAllLook)
+        b.Check("Elite / Rare / Boss Marking on the Portrait", "badge", o, RefreshAllLook)
+        b.Check("Dragon Around the Portrait (off = small badge)", "dragon", o, RefreshAllLook)
+        b.Check("Execute Line on the Health Bar", "execute", o, RefreshAllLook)
+        b.Slider("Execute Line At (% health)", 5, 50, 1, "executePct", o, RefreshAllLook)
+        b.Check("Execute Line in My Class Colour", "executeClass", o, RefreshAllLook)
+        b.Check("Spell Icon in the Portrait While Casting", "castIcon", o, RefreshAllLook)
+        b.Info("The marking and the execute line show on Target and Focus. The execute line only on units you can attack.", 34)
+    end
+end
+
+local function BuildFrameLookInto(holder, firstBuild, rebuild)
+    local b = Builder(holder)
+    local Setup = ns.SetupWizard or _G.H3z0UI_Setup
+    local look = (Setup and Setup.CurrentLook and Setup.CurrentLook()) or "classic"
+    local uiState = { look = look }
+
+    -- rebuilding the page must not add the same options to search again
+    if not firstBuild then GUI._suppressSearchRegistration = true end
+
+    b.Section("Version")
+    local looks = {}
+    for _, o in ipairs((Setup and Setup.LOOKS) or {}) do looks[#looks + 1] = { value = o.value, text = o.label } end
+    if #looks == 0 then
+        looks = { { value = "classic", text = "Legacy" }, { value = "modern", text = "Modern" }, { value = "v2", text = "Modern v2" }, { value = "v3", text = "Modern v3" } }
+    end
+    b.Drop("UI Version", looks, "look", uiState, function(value)
+        ChangeLook(value or uiState.look, rebuild)
+    end)
+    for _, o in ipairs((Setup and Setup.LOOKS) or {}) do
+        if o.value == look then b.Info(o.desc, 34) end
+    end
+    b.Info("Only the settings of the version in use are shown below. Pick another version and this page switches to that version's own settings.", 34)
+
+    b.Section((LOOK_NAMES[look] or "Version") .. " Settings")
+    if look == "classic" then
+        AddPortraits(b)
+    else
+        AddFrameStyleControls(b, look)
+        if look == "v2" then
+            b.Info("Party frame sizes of this version: Party Frames.", 22)
+        end
+    end
+
+    GUI._suppressSearchRegistration = false
+    b.Finish()
+    return math.abs(b.y) + 40
+end
+
+local function BuildFrameLook(tabContent)
+    GUI:SetSearchContext({tabIndex = 6, tabName = "Unit Frames", subTabIndex = 8, subTabName = "Version Settings"})
+    local holder
+    local first = true
+    local function Rebuild()
+        if holder then holder:Hide(); holder:SetParent(nil) end
+        holder = CreateFrame("Frame", nil, tabContent)
+        holder:SetPoint("TOPLEFT", 0, 0)
+        holder:SetPoint("TOPRIGHT", 0, 0)
+        local ok, h = pcall(BuildFrameLookInto, holder, first, function() C_Timer.After(0, Rebuild) end)
         if not ok and geterrorhandler then geterrorhandler()(h) end
         GUI._suppressSearchRegistration = false
         first = false
@@ -478,7 +571,7 @@ local function BuildExtras(tabContent)
         local function RefreshMT() if MT.Apply then MT.Apply() end end
         b.Section("Map")
         b.Check("Waypoints (/way)", "waypoints", mt, RefreshMT)
-        b.Info("/way 45.2 62.1 Mailbox, /way Elwynn Forest 42 65 Inn or /way #1453 60 70 prints a link; click it to set the map pin. You get a message when you arrive. /way clear forgets them. If another addon already has /way, use /h3way.", 46)
+        b.Info("/way 45.2 62.1 Mailbox, /way Elwynn Forest 42 65 Inn or /way #1453 60 70 prints a link; click it to set the map pin. You get a message when you arrive. /way clear forgets them. If another addon already has /way, use /h3z0way.", 46)
         if ns.Client and ns.Client.isForever then
             b.Check("Show Unexplored Areas on the World Map", "reveal", mt, RefreshMT)
             b.Place(GUI:CreateFormColorPicker(tabContent, "Unexplored Area Colour", "revealColor", mt, RefreshMT))
@@ -488,10 +581,47 @@ local function BuildExtras(tabContent)
         end
     end
 
+    if _G.H3z0UI_ComboPointsSettings then
+        local cp = _G.H3z0UI_ComboPointsSettings()
+        local function Rf() if _G.H3z0UI_RefreshComboPoints then _G.H3z0UI_RefreshComboPoints() end end
+        b.Section("Combo Points")
+        b.Check("Show Combo Points Under the Player Frame", "enabled", cp, Rf)
+        b.Info("Red circles under your player frame for rogues and druids in cat form, for when Crosshair Z is not on (for example with a controller).", 34)
+        b.Check("Hide Them While Crosshair Z Is Loaded", "hideWithCrosshair", cp, Rf)
+        b.Check("Show the Empty Circles Too", "showEmpty", cp, Rf)
+        b.Slider("Circle Size", 8, 32, 1, "size", cp, Rf)
+        b.Slider("Gap Between Circles", 0, 12, 1, "gap", cp, Rf)
+        b.Slider("Distance Under the Frame", -60, 20, 1, "offsetY", cp, Rf)
+    end
+
+    if _G.H3z0UI_DungeonMapSettings then
+        local dm = _G.H3z0UI_DungeonMapSettings()
+        b.Section("Dungeon Map")
+        b.Check("Open the Map on the Dungeon You Are In", "enabled", dm)
+        b.Info("Inside a dungeon the map window opens on that dungeon instead of staying on World.", 22)
+    end
+
     b.Section("WoW: Forever")
     b.Info("On WoW: Forever, H3z0 UI hides the gryphons and bar art, and the character window stays Blizzard's own with item levels on each slot plus your equipped / overall item level.", 34)
     local client = ns.Client
     b.Info("Running on: " .. ((client and client.isForever) and "WoW: Forever" or "Midnight"), 22, C.text)
+
+    if ns.Client and ns.Client.isForever and select(2, UnitClass("player")) == "DRUID" then
+        b.Section("Shapeshift Bars")
+        b.Info("The Shapeshift Bars (Mana, Rage and Energy after shifting) are set up under Unit Frames > Player > Shapeshift Bars.", 34)
+    end
+
+    if ns.Client and not ns.Client.isLegacy and select(2, UnitClass("player")) == "DRUID" and _G.H3z0UI_DruidManaSettings then
+        local dm = _G.H3z0UI_DruidManaSettings()
+        if dm then
+            local function Apply() if _G.H3z0UI_RefreshDruidMana then _G.H3z0UI_RefreshDruidMana() end end
+            b.Section("Druid Mana Bar")
+            b.Info("Cat, Bear and Moonkin druids lose the Mana bar. This shows it as part of your H3z0 player frame, under the health / power bar, lined up with it and inside the frame's border, while Mana is not your main resource. Druids only.", 34)
+            b.Check("Show the Druid Mana Bar", "enabled", dm, Apply)
+            b.Check("Show the Mana Number", "showText", dm, Apply)
+            b.Slider("Bar Height", 4, 30, 1, "height", dm, Apply)
+        end
+    end
 
     b.Section("What's New")
     b.Info("The list of what's new and what's fixed opens once after every update. Open it again here.", 22)
@@ -506,7 +636,107 @@ local function BuildExtras(tabContent)
     end)
 
     b.Section("Chat Commands")
-    b.Info("/h3z0ui layout  -  Layout Mode\n/h3z0ui frames  -  drag the H3z0 unit frames\n/h3z0ui party  /  raid  -  party / raid frame preview\n/h3z0ui style  -  Frame Style on/off\n/h3z0ui modern  -  Modern Look on/off\n/h3z0ui bars  -  Compact Action Bars on/off\n/h3z0ui controller  -  PC Controller on/off\n/h3z0ui pchandheld  -  PC Handheld on/off\n/h3z0ui deck  -  Handheld Mode on/off\n/h3z0ui streamer  -  Streamer Mode on/off\n/h3z0ui girly  -  Girly Look on/off\n/h3z0ui plates  -  H3z0 Nameplates on/off\n/h3z0ui whatsnew  -  What's New window\n/h3z0ui setup  -  Setup Wizard", 192, C.text)
+    b.Info("/h3z0ui layout  -  Layout Mode\n/h3z0ui frames  -  drag the H3z0 unit frames\n/h3z0ui party  /  raid  -  party / raid frame preview\n/h3z0ui style  -  Frame Style on/off\n/h3z0ui modern  -  Modern Look on/off\n/h3z0ui bars  -  Compact Action Bars on/off\n/h3z0ui controller  -  PC Controller on/off\n/h3z0ui pchandheld  -  PC Handheld on/off\n/h3z0ui deck  -  Handheld Mode on/off\n/h3z0ui streamer  -  Streamer Mode on/off\n/h3z0ui girly  -  Girly Look on/off\n/h3z0ui plates  -  H3z0 Nameplates on/off\n/h3z0ui arrow  -  Quest Arrow on/off\n/h3z0ui arrow move  -  move the Quest Arrow\n/h3z0ui whatsnew  -  What's New window\n/h3z0ui setup  -  Setup Wizard", 220, C.text)
+
+    b.Finish()
+end
+
+---------------------------------------------------------------------------
+-- CHARACTER WINDOW (own tab)
+---------------------------------------------------------------------------
+local function BuildCharWindow(tabContent)
+    local b = Builder(tabContent)
+    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 2, subTabName = "Character Window"})
+    local core = ns.Addon
+    local db = core and core.db and core.db.profile
+    if not db then b.Finish() return end
+    db.character = db.character or {}
+    local char = db.character
+    local retail = ns.Client and not ns.Client.isLegacy
+    for k, v in pairs({ h3zWindow = true, h3zInspectWindow = true, cwNames = true, cwItemLevel = true,
+        cwTrack = true, cwNoUpgrade = true, cwMaxGray = true, h3zBackground = true, h3zLogo = true }) do
+        if char[k] == nil then char[k] = v end
+    end
+    if type(char.cwScale) ~= "number" then char.cwScale = 100 end
+    if type(char.cwTextSize) ~= "number" then char.cwTextSize = 0 end
+    local function Apply()
+        if _G.H3z0UI_RefreshCharacterWindow then _G.H3z0UI_RefreshCharacterWindow() end
+        if _G.H3z0UI_RefreshCharacterBackground then _G.H3z0UI_RefreshCharacterBackground() end
+        if _G.H3z0UI_RefreshInspectWindow then _G.H3z0UI_RefreshInspectWindow() end
+    end
+
+    b.Section("Character Window")
+    b.Info("The H3z0 character window (C) and inspect window, one set of settings for both. The Settings button in each window's footer opens the same settings. Changes show straight away.", 34)
+    b.Check("H3z0 Character Window", "h3zWindow", char, Apply)
+    b.Check("H3z0 Inspect Window", "h3zInspectWindow", char)
+    b.Check("Homeland Background (race art)", "h3zBackground", char, Apply)
+    b.Check("H3z0 UI Logo in the Corner", "h3zLogo", char, Apply)
+
+    b.Section("Gear Rows")
+    b.Check("Item Names", "cwNames", char, Apply)
+    b.Check("Item Level", "cwItemLevel", char, Apply)
+    if retail then
+        b.Check("Upgrade Track (Hero 4/6, Myth 2/6...)", "cwTrack", char, Apply)
+        b.Check("Fully Upgraded Items Greyed Out", "cwMaxGray", char, Apply)
+        b.Check("Mark Items That Can't Be Upgraded", "cwNoUpgrade", char, Apply)
+    end
+
+    b.Section("Size")
+    b.Slider("Window Size (%)", 70, 130, 5, "cwScale", char, Apply)
+    b.Slider("Text Size", -2, 4, 1, "cwTextSize", char, Apply)
+    b.Finish()
+end
+
+---------------------------------------------------------------------------
+-- QUEST ARROW (own tab)
+---------------------------------------------------------------------------
+local function BuildArrow(tabContent)
+    local b = Builder(tabContent)
+    GUI:SetSearchContext({tabIndex = TAB_INDEX, tabName = TAB_NAME, subTabIndex = 10, subTabName = "Quest Arrow"})
+    if not _G.H3z0UI_QuestArrowSettings then
+        b.Info("The Quest Arrow is not available on this client.", 22)
+        b.Finish()
+        return
+    end
+    local qa = _G.H3z0UI_QuestArrowSettings()
+    local function Apply() if _G.H3z0UI_RefreshQuestArrow then _G.H3z0UI_RefreshQuestArrow() end end
+
+    b.Section("Quest Arrow")
+    b.Info("An arrow on screen that points to where you have to go and shows how far it is, like TomTom. It follows the quest you have focused (click a quest in the quest tracker or on the map) and the pin on your map, also the one /way sets. It hides when you arrive.", 46)
+    b.Check("Show the Quest Arrow", "enabled", qa, Apply)
+
+    b.Section("What It Points To")
+    b.Check("Follow the Focused Quest", "followQuest", qa, Apply)
+    b.Check("Nothing Focused: Closest Tracked Quest", "nearest", qa, Apply)
+    b.Check("Follow the Map Pin (/way)", "followPin", qa, Apply)
+    b.Check("Clear the Map Pin When You Arrive", "autoClear", qa, Apply)
+    b.Slider("Arrived Distance (Yards)", 3, 60, 1, "arriveDistance", qa, Apply)
+
+    b.Section("Text")
+    b.Check("Show the Distance", "showDistance", qa, Apply)
+    b.Check("Show the Arrival Time", "showETA", qa, Apply)
+    b.Check("Show the Quest Name", "showTitle", qa, Apply)
+    b.Drop("Distance In", { { value = "yd", text = "Yards" }, { value = "m", text = "Metres" } }, "units", qa, Apply)
+    b.Slider("Text Size", 8, 24, 1, "textSize", qa, Apply)
+
+    b.Section("Look")
+    b.Slider("Arrow Size", 0.5, 2.5, 0.05, "scale", qa, Apply)
+    b.Slider("Opacity", 0.2, 1, 0.05, "alpha", qa, Apply)
+    b.Place(GUI:CreateFormColorPicker(tabContent, "Arrow Colour", "color", qa, Apply, { noAlpha = true }))
+    b.Place(GUI:CreateFormColorPicker(tabContent, "Colour When Heading Straight At It", "colorOnTarget", qa, Apply, { noAlpha = true }))
+    b.Check("Hide in Combat", "hideInCombat", qa, Apply)
+
+    b.Section("Position")
+    b.Button("Move the Arrow", "Move", 140, function()
+        if _G.H3z0UI_QuestArrowMove then _G.H3z0UI_QuestArrowMove() end
+    end)
+    b.Info("Move shows a sample arrow: drag it where you want it, then press Move again to lock it.", 22)
+    b.Button("Arrow Position", "Reset", 140, function()
+        if _G.H3z0UI_QuestArrowReset then _G.H3z0UI_QuestArrowReset() end
+    end)
+
+    b.Section("Commands")
+    b.Info("/h3z0arrow  -  Quest Arrow on/off\n/h3z0arrow move  -  move it\n/way 45.2 62.1 Mailbox  -  put a map pin the arrow follows", 46, C.text)
 
     b.Finish()
 end
@@ -523,10 +753,12 @@ local function CreateFeaturesPage(parent)
     local scroll, content = Shared.CreateScrollableContent(parent)
     GUI:CreateSubTabs(content, {
         { name = "UI Look", builder = BuildLook },
-        { name = "True Reticle", builder = function(c) Sub(ns.H3z0UI_CombatModeOptions, "BuildCombatModeTab", c) end },
+        { name = "Character Window", builder = BuildCharWindow },
+        { name = "Crosshair Z", builder = function(c) Sub(ns.H3z0UI_CombatModeOptions, "BuildCombatModeTab", c) end },
         { name = "Bottom Bar", builder = function(c) Sub(ns.H3z0UI_BottomBarOptions, "BuildBottomBarTab", c) end },
         { name = "Steam Deck + PC Controller", builder = function(c) Sub(ns.H3z0UI_HandheldOptions, "BuildHandheldTab", c) end },
         { name = "Layout & Bars", builder = BuildLayout },
+        { name = "Quest Arrow", builder = BuildArrow },
         { name = "Extras", builder = BuildExtras },
     })
     content:SetHeight(600)
@@ -535,9 +767,12 @@ end
 
 ns.H3z0UI_FeaturesOptions = {
     CreateFeaturesPage = CreateFeaturesPage,
-    BuildPortraits = BuildPortraits,   -- shown as Unit Frames > Portraits
+    BuildPortraits = BuildPortraits,   -- the Legacy portrait settings on their own
+    BuildFrameLook = BuildFrameLook,   -- Unit Frames > Version Settings
     BuildLook = BuildLook,
     BuildLayout = BuildLayout,
     BuildExtras = BuildExtras,
+    BuildArrow = BuildArrow,
+    BuildCharWindow = BuildCharWindow,
     BuildStreamer = BuildStreamer,
 }

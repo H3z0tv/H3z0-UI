@@ -30,6 +30,7 @@ local function BuildAutohideTab(tabContent)
 
     local function RefreshUIHider()
         if _G.H3z0UI_RefreshUIHider then _G.H3z0UI_RefreshUIHider() end
+        if _G.H3z0UI_ApplyBannerHiding then _G.H3z0UI_ApplyBannerHiding() end
     end
     local function RefreshNameplateVisibility()
         if ns.H3z0UI_RefreshNameplates then ns.H3z0UI_RefreshNameplates() end
@@ -78,6 +79,8 @@ local function BuildAutohideTab(tabContent)
         {key = "hideBuffCollapseButton", label = ns.L["Hide Buff Frame Collapse Button"], desc = ns.L["Hide the small arrow button above the buff frame that collapses your buffs into a dropdown."]},
         {key = "hideTalkingHead",        label = ns.L["Hide Talking Head Frame"],          desc = ns.L["Hide the talking head frame used by cinematic NPC dialogue."]},
         {key = "muteTalkingHead",        label = ns.L["Mute Talking Head Voice"],          desc = ns.L["Silence the voice audio that plays with talking head events, without hiding the frame itself."]},
+        {key = "hideBossBanner",         label = ns.L["Hide Boss and Event Banners"],      desc = ns.L["Hide the boss kill banner, event toasts and the level-up banner in the middle of the screen."]},
+        {key = "hideAlertPopups",        label = ns.L["Hide Loot and Achievement Pop-ups"], desc = ns.L["Hide the pop-up alerts for loot, achievements, housing and other rewards."]},
         {key = "hideWorldMapBlackout",   label = ns.L["Hide World Map Blackout"],          desc = ns.L["Remove the dark overlay drawn behind the world map so the game world stays visible while it's open."]},
         {key = "hidePlayerFrameInParty", label = ns.L["Hide Player Frame in Party/Raid"],  desc = ns.L["Hide the standalone player unit frame whenever you are in a group, since the raid frames already show you."]},
     }, db.uiHider, RefreshUIHider)

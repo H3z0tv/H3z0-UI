@@ -225,14 +225,46 @@ local function MaskFor(owner, frame, side, inset, field)
     return m
 end
 
+-- health bar, power bar and any sub-bars (druid mana, ...) of a unit frame
+local function FrameBars(frame)
+    local bars = {}
+    if frame.healthBar then bars[#bars + 1] = frame.healthBar end
+    if frame.powerBar then bars[#bars + 1] = frame.powerBar end
+    for _, e in ipairs(frame.h3zSubBars or {}) do
+        if e.bar and e.active then
+            e.bar.h3zSubBar = true
+            bars[#bars + 1] = e.bar
+        end
+    end
+    return bars
+end
+
 local function CollectBarTextures(bar, list)
     if not bar then return end
     for _, r in ipairs({ bar:GetRegions() }) do
         if r and r.IsObjectType and r:IsObjectType("Texture") then list[#list + 1] = r end
     end
     for _, c in ipairs({ bar:GetChildren() }) do
-        if c and c.IsObjectType and c:IsObjectType("StatusBar") then CollectBarTextures(c, list) end
+        -- StatusBars, and the plain frames sub-bars (druid form bars) keep their fills in
+        if c and c.IsObjectType and (c:IsObjectType("StatusBar") or (bar.h3zSubBar and c:IsObjectType("Frame"))) then
+            if c:IsObjectType("Frame") and not c:IsObjectType("StatusBar") then c.h3zSubBar = true end
+            CollectBarTextures(c, list)
+        end
     end
+end
+
+-- the frame's outline: the frame plus the tray of sub-bars under it (see unitframes.lua)
+local function ShapeOf(frame)
+    local shape = frame.h3zShape
+    if shape and frame.h3zTray and frame.h3zTray:IsShown() then return shape end
+    return frame
+end
+
+-- the tray's background / border pieces get the same outer shape as the frame's backdrop
+local function TrayPieces(frame)
+    local tray = frame.h3zTray
+    if tray and tray:IsShown() and tray.pieces then return tray, tray.pieces end
+    return nil, {}
 end
 
 local function SetMasked(tex, mask, on)
@@ -266,7 +298,7 @@ local function ShapeShadow(frame, side, on)
                 m:SetPoint("TOPLEFT", t, "TOPLEFT", 0, 0)
                 m:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", 0, 0)
             end
-            m:SetWidth(math.max(2, (frame:GetHeight() or 20) + i * 2) / 2)
+            m:SetWidth(math.max(2, (ShapeOf(frame):GetHeight() or 20) + i * 2) / 2)
             SetMasked(t, m, true)
         else
             SetMasked(t, nil, false)
@@ -286,11 +318,20 @@ local function Brackets(frame, key, show)
         return
     end
     ShapeShadow(frame, side, true)
-    -- outer shape: the frame's own background + border pieces
-    local outer = MaskFor(frame, frame, side, 0, "h3zV2Outer")
+    -- start clean: bars can have left the frame since the last time
+    for tex in pairs(done) do SetMasked(tex, nil, false) end
+    wipe(done)
+    local shape = ShapeOf(frame)
+    -- outer shape: the frame's own background + border pieces, and the tray's
+    local outer = MaskFor(frame, shape, side, 0, "h3zV2Outer")
     for _, k in ipairs(BACKDROP_PIECES) do
         local t = frame[k]
         if t and t.AddMaskTexture then SetMasked(t, outer, true); done[t] = true end
+    end
+    local tray, pieces = TrayPieces(frame)
+    if tray then
+        local tm = MaskFor(tray, shape, side, 0, "h3zV2Outer")
+        for _, t in ipairs(pieces) do SetMasked(t, tm, true); done[t] = true end
     end
     -- inner shape (inside the border): health / power bars and their fills
     local hb = frame.healthBar
@@ -298,14 +339,14 @@ local function Brackets(frame, key, show)
     if hb and hb:GetTop() and frame:GetTop() then
         inset = math.max(0, frame:GetTop() - hb:GetTop())
     end
-    for _, bar in ipairs({ frame.healthBar, frame.powerBar }) do
+    for _, bar in ipairs(FrameBars(frame)) do
         if bar then
             local list = {}
             CollectBarTextures(bar, list)
             for _, t in ipairs(list) do
                 local owner = t:GetParent()
                 if owner and owner.CreateMaskTexture then
-                    local m = MaskFor(owner, frame, side, inset, "h3zV2Inner")
+                    local m = MaskFor(owner, shape, side, inset, "h3zV2Inner")
                     SetMasked(t, m, true)
                     done[t] = true
                 end
@@ -346,23 +387,38 @@ local function RoundFrame(frame, bars, show)
     local fh = frame:GetHeight() or 20
     radius = math.min(radius, math.max(1, fh / 2))
     RoundShadow(frame, radius, true)
-    local outer = Round.CornerMasks(frame, frame, radius, 0, "h3zRoundOuter")
+    -- start clean: bars can have left the frame since the last time
+    for tex in pairs(done) do Round.Mask(tex, nil, false) end
+    wipe(done)
+    local shape = ShapeOf(frame)
+    local outer = Round.CornerMasks(frame, shape, radius, 0, "h3zRoundOuter")
     for _, k in ipairs(BACKDROP_PIECES) do
         local t = frame[k]
         if t and t.AddMaskTexture then Round.Mask(t, outer, true); done[t] = true end
     end
+    local tray, pieces = TrayPieces(frame)
+    if tray then
+        local tm = Round.CornerMasks(tray, shape, radius, 0, "h3zRoundOuter")
+        for _, t in ipairs(pieces) do Round.Mask(t, tm, true); done[t] = true end
+    end
     for _, bar in ipairs(bars) do
         if bar then
+            -- inset = the border width: distance to the frame's top or side edge,
+            -- whichever is smaller (bars lower in the stack are still 1 border in from the sides)
             local inset = 0
-            if bar:GetTop() and frame:GetTop() then
-                inset = math.max(0, math.min(4, frame:GetTop() - bar:GetTop()))
+            local d
+            if bar:GetTop() and frame:GetTop() then d = frame:GetTop() - bar:GetTop() end
+            if bar:GetLeft() and frame:GetLeft() then
+                local side = bar:GetLeft() - frame:GetLeft()
+                if not d or side < d then d = side end
             end
+            if d then inset = math.max(0, math.min(4, d)) end
             local list = {}
             CollectBarTextures(bar, list)
             for _, t in ipairs(list) do
                 local owner = t:GetParent()
                 if owner and owner.CreateMaskTexture then
-                    local m = Round.CornerMasks(owner, frame, radius, inset, "h3zRoundInner")
+                    local m = Round.CornerMasks(owner, shape, radius, inset, "h3zRoundInner")
                     Round.Mask(t, m, true)
                     done[t] = true
                 end
@@ -382,9 +438,12 @@ function ML.ApplyUnit(key)
     local s = DB()
     if not (frame and s) then return end
     local on = s.enabled
-    Shadow(frame, frame, on and s.shadow)
+    Shadow(frame, ShapeOf(frame), on and s.shadow)
     Sheen(frame.healthBar, on and s.sheen)
     Sheen(frame.powerBar, on and s.sheen)
+    for _, e in ipairs(frame.h3zSubBars or {}) do
+        if e.bar then Sheen(e.bar, on and s.sheen and e.active) end
+    end
     PortraitGlow(frame, on and s.glow)
     -- Frame Style "Round Portrait v2": curved brackets at both bar ends
     local FS = ns.FrameStyle
@@ -392,9 +451,11 @@ function ML.ApplyUnit(key)
     local v2 = fs and fs.enabled and fs.style == "roundv2" and frame.h3zStyled
         and (key == "player" or key == "target" or key == "focus")
     pcall(Brackets, frame, key, v2 and true or false)
-    -- rounded corners (not on v2 frames: they have their own round end)
-    local round = ns.Round and ns.Round.Enabled() and not v2
-    pcall(RoundFrame, frame, { frame.healthBar, frame.powerBar }, round and true or false)
+    -- rounded corners (not on v2 frames: they have their own round end; not on v3 frames: slim flat bars)
+    local v3 = fs and fs.enabled and fs.style == "roundv3" and frame.h3zStyled
+        and (key == "player" or key == "target" or key == "focus")
+    local round = ns.Round and ns.Round.Enabled() and not v2 and not v3
+    pcall(RoundFrame, frame, FrameBars(frame), round and true or false)
 end
 
 local function ApplyMinimap(s)

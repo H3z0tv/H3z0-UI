@@ -144,6 +144,12 @@ local function DecodeH3z0Default()
     if type(payload.mplusTimer) == "table" then payload.mplusTimer.layoutMode = "pro" end
     -- Blizzard Frame Mover starts off (Blizzard's windows can't be dragged until it is turned on)
     if type(payload.blizzardMover) == "table" then payload.blizzardMover.enabled = false end
+    -- 0.28.4: the player's power text sits just past the right end of the frame, next to the bars
+    local ufp = type(payload.h3z0uiUnitFrames) == "table" and payload.h3z0uiUnitFrames.player
+    if type(ufp) == "table" then
+        ufp.showPowerText, ufp.powerTextFormat, ufp.powerTextUsePowerColor = true, "both", true
+        ufp.powerTextAnchor, ufp.powerTextOffsetX, ufp.powerTextOffsetY, ufp.powerTextFontSize = "BOTTOMRIGHT", 69, -5, 13
+    end
     defaultFull = payload
     return payload
 end

@@ -10,7 +10,42 @@ local function ClassColorForGUID(guid)
     return RAID_CLASS_COLORS and RAID_CLASS_COLORS[englishClass] or nil
 end
 
+-- The game icon at the right of a Battle.net friend (WoW, WoW: Forever, App...) could show as a solid
+-- green square on retail: the game's newer per-client icon did not load. Use the plain client icons.
+local CLIENT_ICON = {
+    App = "Interface\\FriendsFrame\\Battlenet-Battleneticon",
+    BSAp = "Interface\\FriendsFrame\\Battlenet-Battleneticon",
+    WoW = "Interface\\FriendsFrame\\Battlenet-WoWicon",
+}
+local function ClientIcon(client)
+    if type(client) ~= "string" then return nil end
+    if CLIENT_ICON[client] then return CLIENT_ICON[client] end
+    if type(_G.BNet_GetClientTexture) == "function" then
+        local ok, tex = pcall(_G.BNet_GetClientTexture, client)
+        if ok and tex then return tex end
+    end
+    -- any World of Warcraft flavour (Forever, Classic...) gets the WoW icon
+    if client:find("^WoW") or client:find("^WTC") or client:find("^WC") then return CLIENT_ICON.WoW end
+    return CLIENT_ICON.App
+end
+
+local function FixGameIcon(button)
+    local icon = button and button.gameIcon
+    if not icon or not icon.IsShown or not icon:IsShown() then return end
+    if button.buttonType ~= FRIENDS_BUTTON_TYPE_BNET then return end
+    local accountInfo = C_BattleNet and C_BattleNet.GetFriendAccountInfo and C_BattleNet.GetFriendAccountInfo(button.id)
+    local ga = accountInfo and accountInfo.gameAccountInfo
+    local client = ga and ga.clientProgram
+    local tex = ClientIcon(client)
+    if not tex then return end
+    icon:SetTexture(tex)
+    icon:SetTexCoord(0, 1, 0, 1)
+    icon:SetVertexColor(1, 1, 1)
+    button.h3zGameIconClient = client
+end
+
 local function DecorateFriendButton(button)
+    pcall(FixGameIcon, button)
     local settings = GetSettings()
     if not settings or settings.friendsClassColor == false then return end
     if not button or not button.name or button.buttonType == nil then return end

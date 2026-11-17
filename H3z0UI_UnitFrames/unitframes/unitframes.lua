@@ -272,19 +272,217 @@ end
 -- HELPER: Get anchor point and justification for text
 -- Maps anchor setting to SetPoint anchor and JustifyH value
 ---------------------------------------------------------------------------
--- the power bar under the health bar: full width of the frame, or a share of it (Power Bar Width)
-local function PlacePowerBar(bar, frame, settings, borderSize)
-    bar:ClearAllPoints()
-    local pct = tonumber(settings and settings.powerBarWidthPct) or 100
-    if pct >= 100 then
-        bar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", borderSize, borderSize)
-        bar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize)
-    else
-        local w = math.max(8, ((frame:GetWidth() or 0) - 2 * borderSize) * math.max(pct, 10) / 100)
-        bar:SetPoint("BOTTOM", frame, "BOTTOM", 0, borderSize)
-        bar:SetWidth(w)
+---------------------------------------------------------------------------
+-- BAR STACK: the health bar on top, the power bar (rage / energy / mana)
+-- under it inside the frame, and any sub-bars (druid form bars, druid mana,
+-- ...) under that. The sub-bars sit in a "tray" that hangs off the bottom of
+-- the frame and continues its border and background, so the frame and the
+-- tray read as ONE box with one outline (and one set of rounded corners).
+-- Every bar hangs off the bar above it:
+--   TOPLEFT  -> above BOTTOMLEFT,  0, -1px
+--   TOPRIGHT -> above BOTTOMRIGHT, 0, -1px
+-- so each one has exactly the health bar's left and right edges on every
+-- frame (player and target alike) - no widths or side margins of their own.
+-- The secure frame itself never changes size (the tray is a plain frame),
+-- so bars can come and go in combat, e.g. when a druid shifts.
+---------------------------------------------------------------------------
+local function ActiveSubBars(frame)
+    local out = {}
+    for _, e in ipairs(frame.h3zSubBars or {}) do
+        if e.active and e.bar then out[#out + 1] = e end
     end
+    return out
 end
+
+-- 1px black line in the gap above a sub-bar (same look as the power bar separator)
+local function SubBarSeparator(bar, px)
+    local sep = bar.h3zSeparator
+    if not sep then
+        sep = bar:CreateTexture(nil, "OVERLAY", nil, 7)
+        sep:SetTexture("Interface\\Buttons\\WHITE8x8")
+        bar.h3zSeparator = sep
+    end
+    sep:SetVertexColor(0, 0, 0, 1)
+    sep:ClearAllPoints()
+    sep:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, 0)
+    sep:SetPoint("BOTTOMRIGHT", bar, "TOPRIGHT", 0, 0)
+    sep:SetHeight(px)
+    sep:Show()
+end
+
+-- The frame's outline as one shape: the frame plus the tray under it. Rounded
+-- corners, round ends and the shadow are drawn on this, not on the frame alone.
+local function GetShape(frame)
+    local shape = frame.h3zShape
+    if not shape then
+        shape = CreateFrame("Frame", nil, frame)
+        shape:EnableMouse(false)
+        shape:SetFrameLevel(frame:GetFrameLevel())
+        frame.h3zShape = shape
+        shape:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        shape:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    end
+    return shape
+end
+
+local TRAY_PIECES = { "bg", "L", "R", "B" }
+
+local function GetTray(frame)
+    local tray = frame.h3zTray
+    if not tray then
+        tray = CreateFrame("Frame", nil, frame)
+        tray:EnableMouse(false)
+        tray.bg = tray:CreateTexture(nil, "BACKGROUND")
+        tray.bg:SetAllPoints()
+        for _, k in ipairs({ "L", "R", "B" }) do
+            local t = tray:CreateTexture(nil, "BORDER")
+            t:SetTexture("Interface\\Buttons\\WHITE8x8")
+            tray[k] = t
+        end
+        tray.bg:SetTexture("Interface\\Buttons\\WHITE8x8")
+        tray.pieces = {}
+        for _, k in ipairs(TRAY_PIECES) do tray.pieces[#tray.pieces + 1] = tray[k] end
+        frame.h3zTray = tray
+    end
+    return tray
+end
+
+local function BorderSizeOf(frame)
+    local settings = frame.unitKey and GetUnitSettings(frame.unitKey)
+    local borderPx = (settings and settings.borderSize) or 1
+    return borderPx > 0 and H3z0UICore:Pixels(borderPx, frame) or 0
+end
+
+-- height the sub-bars take under the frame (bars, 1px separators, bottom border)
+local function SubBarStackHeight(frame)
+    local px = H3z0UICore:GetPixelSize(frame)
+    local list = ActiveSubBars(frame)
+    if #list == 0 then return 0 end
+    local h = BorderSizeOf(frame)
+    for i, e in ipairs(list) do
+        h = h + H3z0UICore:PixelRound(e.height or 4, frame) + (i > 1 and px or 0)
+    end
+    return h
+end
+
+-- chain the sub-bars under `above` (the health bar, or the power bar when it is shown)
+-- and size the tray around them
+local function StackSubBars(frame, above, borderSize)
+    borderSize = borderSize or BorderSizeOf(frame)
+    local px = H3z0UICore:GetPixelSize(frame)
+    local list = ActiveSubBars(frame)
+    local shape = GetShape(frame)
+    local tray = frame.h3zTray
+    if #list == 0 then
+        if tray then tray:Hide() end
+        shape:ClearAllPoints()
+        shape:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        shape:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        return above
+    end
+    tray = GetTray(frame)
+
+    local hbTex = frame.healthBar and frame.healthBar.GetStatusBarTexture and frame.healthBar:GetStatusBarTexture()
+    local path = hbTex and hbTex:GetTexture()
+    if path and issecretvalue and issecretvalue(path) then path = nil end
+    local level = (frame.powerBar or frame.healthBar):GetFrameLevel()
+
+    for i, e in ipairs(list) do
+        local bar = e.bar
+        -- the first bar sits right under the frame's own bottom border line
+        -- (that line is its separator); the next ones get a 1px line of their own
+        local gap = (i == 1) and borderSize or px
+        if bar:GetParent() ~= frame then bar:SetParent(frame) end
+        if bar:GetFrameLevel() ~= level + 1 then bar:SetFrameLevel(level + 1) end
+        bar:ClearAllPoints()
+        bar:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -gap)
+        bar:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT", 0, -gap)
+        bar:SetHeight(H3z0UICore:PixelRound(e.height or 4, frame))
+        -- same bar texture and opacity as the health bar
+        if path and bar.GetStatusBarTexture and not e.ownTexture then
+            local own = bar:GetStatusBarTexture()
+            if own then own:SetTexture(path) end
+        end
+        if frame.healthBar then bar:SetAlpha(frame.healthBar:GetAlpha() or 1) end
+        if i > 1 then
+            SubBarSeparator(bar, px)
+        elseif bar.h3zSeparator then
+            bar.h3zSeparator:Hide()
+        end
+        bar:Show()
+        if e.onLayout then pcall(e.onLayout, bar) end
+        above = bar
+    end
+
+    -- tray: the frame's background and border, continued around the sub-bars
+    local r, g, b, a = 0.1, 0.1, 0.1, 0.9
+    if frame.GetBackdropColor then
+        local ok, cr, cg, cb, ca = pcall(frame.GetBackdropColor, frame)
+        if ok and cr then r, g, b, a = cr, cg, cb, ca or 1 end
+    end
+    local br, bg_, bb, ba = 0, 0, 0, 1
+    if frame.GetBackdropBorderColor then
+        local ok, cr, cg, cb, ca = pcall(frame.GetBackdropBorderColor, frame)
+        if ok and cr then br, bg_, bb, ba = cr, cg, cb, ca or 1 end
+    end
+    tray:SetFrameLevel(frame:GetFrameLevel())
+    tray:ClearAllPoints()
+    tray:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, 0)
+    tray:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    tray:SetPoint("BOTTOM", above, "BOTTOM", 0, -borderSize)
+    tray.bg:SetVertexColor(r, g, b, a)
+    local edge = math.max(borderSize, 0)
+    tray.L:ClearAllPoints()
+    tray.L:SetPoint("TOPLEFT", tray, "TOPLEFT", 0, 0)
+    tray.L:SetPoint("BOTTOMLEFT", tray, "BOTTOMLEFT", 0, 0)
+    tray.L:SetWidth(math.max(edge, 0.001))
+    tray.R:ClearAllPoints()
+    tray.R:SetPoint("TOPRIGHT", tray, "TOPRIGHT", 0, 0)
+    tray.R:SetPoint("BOTTOMRIGHT", tray, "BOTTOMRIGHT", 0, 0)
+    tray.R:SetWidth(math.max(edge, 0.001))
+    tray.B:ClearAllPoints()
+    tray.B:SetPoint("BOTTOMLEFT", tray, "BOTTOMLEFT", 0, 0)
+    tray.B:SetPoint("BOTTOMRIGHT", tray, "BOTTOMRIGHT", 0, 0)
+    tray.B:SetHeight(math.max(edge, 0.001))
+    for _, k in ipairs({ "L", "R", "B" }) do
+        tray[k]:SetVertexColor(br, bg_, bb, ba)
+        tray[k]:SetShown(edge > 0)
+    end
+    tray:Show()
+
+    shape:ClearAllPoints()
+    shape:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    shape:SetPoint("BOTTOMRIGHT", tray, "BOTTOMRIGHT", 0, 0)
+    return above
+end
+
+local function LayoutBarStack(frame, settings, borderSize)
+    local hb = frame.healthBar
+    if not hb then return end
+    local pb = frame.powerBar
+    local showPower = settings and settings.showPowerBar and pb and true or false
+    local powerHeight = showPower and H3z0UICore:PixelRound(settings.powerBarHeight or 4, frame) or 0
+    local powerSep = (showPower and settings.powerBarBorder ~= false) and H3z0UICore:GetPixelSize(frame) or 0
+
+    hb:ClearAllPoints()
+    hb:SetPoint("TOPLEFT", frame, "TOPLEFT", borderSize, -borderSize)
+    hb:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize + powerHeight + powerSep)
+
+    local above = hb
+    if showPower then
+        pb:ClearAllPoints()
+        pb:SetPoint("TOPLEFT", hb, "BOTTOMLEFT", 0, -powerSep)
+        pb:SetPoint("TOPRIGHT", hb, "BOTTOMRIGHT", 0, -powerSep)
+        pb:SetHeight(powerHeight)
+        above = pb
+    end
+    StackSubBars(frame, above, borderSize)
+end
+
+H3z0UI_UF.ActiveSubBars = ActiveSubBars
+H3z0UI_UF.SubBarStackHeight = SubBarStackHeight
+H3z0UI_UF.StackSubBars = StackSubBars
+H3z0UI_UF.GetShape = GetShape
 
 local function GetTextAnchorInfo(anchor)
     local anchorMap = {
@@ -600,6 +798,10 @@ local function GetUnitPowerColor(unit)
 end
 
 
+-- used by the Modern v3 frames (percent and value on the two sides of the bar)
+H3z0UI_UF.FormatHealthText = FormatHealthText
+H3z0UI_UF.GetHealthPct = GetHealthPct
+
 ---------------------------------------------------------------------------
 -- UPDATE: Health bar (no comparisons, just pass values directly)
 ---------------------------------------------------------------------------
@@ -661,6 +863,8 @@ local function UpdateHealth(frame)
         end
     end
     
+    if frame.h3zSplitHealth then pcall(frame.h3zSplitHealth, frame, hp, maxHP) end
+
     -- Update health bar color using unit-specific settings
     local general = GetGeneralSettings()
     local settings = GetUnitSettings(frame.unitKey)
@@ -1531,8 +1735,8 @@ local function CreateBossFrame(unit, frameKey, bossIndex)
     -- Power bar
     if settings.showPowerBar then
         local powerBar = CreateFrame("StatusBar", nil, frame)
-        PlacePowerBar(powerBar, frame, settings, borderSize)
-        powerBar:SetHeight(powerHeight)
+        frame.powerBar = powerBar
+        LayoutBarStack(frame, settings, borderSize)
         powerBar:SetStatusBarTexture(GetTexturePath(settings.texture))
         local powerColor = settings.powerBarColor or { 0, 0.5, 1, 1 }
         powerBar:SetStatusBarColor(powerColor[1], powerColor[2], powerColor[3], powerColor[4] or 1)
@@ -1834,8 +2038,8 @@ local function CreateUnitFrame(unit, unitKey)
     -- Power bar (inside the frame, at the bottom, pixel-perfect)
     if settings.showPowerBar then
         local powerBar = CreateFrame("StatusBar", nil, frame)
-        PlacePowerBar(powerBar, frame, settings, borderSize)
-        powerBar:SetHeight(powerHeight)
+        frame.powerBar = powerBar
+        LayoutBarStack(frame, settings, borderSize)
         powerBar:SetStatusBarTexture(GetTexturePath(settings.texture))
         powerBar:SetMinMaxValues(0, 100)
         powerBar:SetValue(100)
@@ -2159,8 +2363,12 @@ local function CreateUnitFrame(unit, unitKey)
             end
         elseif event == "UPDATE_SHAPESHIFT_FORM" then
             -- Stance/form text (player only)
-            if self.unitKey == "player" then
-                UpdateStance(self)
+            -- a few frames after the form change, so it does not add to the frame the action bars
+            -- and the form bars are working in
+            if self.unitKey == "player" and not self.h3zStanceQueued then
+                self.h3zStanceQueued = true
+                local fr = self
+                C_Timer.After(0.12, function() fr.h3zStanceQueued = nil UpdateStance(fr) end)
             end
         elseif event == "RAID_TARGET_UPDATE" then
             -- Target marker changed on any unit
@@ -3419,16 +3627,12 @@ function H3z0UI_UF:RefreshFrame(unitKey)
 
                 -- Update health bar texture and position
                 frame.healthBar:SetStatusBarTexture(texturePath)
-                frame.healthBar:ClearAllPoints()
-                frame.healthBar:SetPoint("TOPLEFT", frame, "TOPLEFT", borderSize, -borderSize)
-                frame.healthBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize + powerHeight + separatorHeight)
+                LayoutBarStack(frame, settings, borderSize)
                 
                 -- Update power bar
                 if frame.powerBar then
                     if settings.showPowerBar then
                         frame.powerBar:SetStatusBarTexture(texturePath)
-                        PlacePowerBar(frame.powerBar, frame, settings, borderSize)
-                        frame.powerBar:SetHeight(powerHeight)
                         frame.powerBar:Show()
                     else
                         frame.powerBar:Hide()
@@ -3648,18 +3852,12 @@ function H3z0UI_UF:RefreshFrame(unitKey)
     local texturePath = GetTexturePath(settings.texture)
     frame.healthBar:SetStatusBarTexture(texturePath)
 
-    -- Resize health bar (pixel-perfect)
-    frame.healthBar:ClearAllPoints()
-    frame.healthBar:SetPoint("TOPLEFT", frame, "TOPLEFT", borderSize, -borderSize)
-    frame.healthBar:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -borderSize, borderSize + powerHeight + separatorHeight)
     
     -- Update power bar (create dynamically if needed)
     if settings.showPowerBar then
         if not frame.powerBar then
             -- Create power bar dynamically when setting is enabled
             local powerBar = CreateFrame("StatusBar", nil, frame)
-            PlacePowerBar(powerBar, frame, settings, borderSize)
-            powerBar:SetHeight(powerHeight)
             powerBar:SetStatusBarTexture(texturePath)
             powerBar:SetMinMaxValues(0, 100)
             powerBar:SetValue(100)
@@ -3670,12 +3868,12 @@ function H3z0UI_UF:RefreshFrame(unitKey)
         end
         -- Update existing power bar
         frame.powerBar:SetStatusBarTexture(texturePath)
-        PlacePowerBar(frame.powerBar, frame, settings, borderSize)
-        frame.powerBar:SetHeight(powerHeight)
         frame.powerBar:Show()
     elseif frame.powerBar then
         frame.powerBar:Hide()
     end
+    -- Health bar, power bar and sub-bars in one stack inside the border (pixel-perfect)
+    LayoutBarStack(frame, settings, borderSize)
 
     -- Update power bar separator (create dynamically if needed)
     if settings.showPowerBar and settings.powerBarBorder ~= false then
@@ -3947,6 +4145,101 @@ end
 -- EDIT MODE: Toggle draggable frames with arrow nudge buttons
 ---------------------------------------------------------------------------
 H3z0UI_UF.editModeActive = false
+
+---------------------------------------------------------------------------
+-- SUB-BARS: other modules (druid mana, ...) put a bar into a unit frame's
+-- bar stack. The bar becomes part of the frame: it hangs under the health /
+-- power bar with the same left and right edges, in the tray that continues
+-- the frame's border. Only anchors change, never the secure frame's size, so
+-- this also works in combat.
+---------------------------------------------------------------------------
+-- Several bars put in or taken out in one go (a form change swaps up to three) lay the frame out
+-- once at the end instead of once per bar.
+function H3z0UI_UF:BeginSubBarBatch()
+    self.subBarBatch = (self.subBarBatch or 0) + 1
+end
+function H3z0UI_UF:EndSubBarBatch()
+    self.subBarBatch = math.max(0, (self.subBarBatch or 1) - 1)
+    if self.subBarBatch == 0 and self.subBarBatchDirty then
+        local dirty = self.subBarBatchDirty
+        self.subBarBatchDirty = nil
+        for unitKey in pairs(dirty) do self:RelayoutBars(unitKey) end
+    end
+end
+_G.H3z0UI_BeginUnitSubBarBatch = function() return H3z0UI_UF:BeginSubBarBatch() end
+_G.H3z0UI_EndUnitSubBarBatch = function() return H3z0UI_UF:EndSubBarBatch() end
+
+function H3z0UI_UF:RelayoutBars(unitKey)
+    if (self.subBarBatch or 0) > 0 then
+        self.subBarBatchDirty = self.subBarBatchDirty or {}
+        self.subBarBatchDirty[unitKey] = true
+        return
+    end
+    local frame = self.frames[unitKey]
+    if not (frame and frame.healthBar) then return end
+    local settings = GetUnitSettings(unitKey)
+    if not settings then return end
+    local FS = ns.FrameStyle
+    if not (frame.h3zStyled and FS and FS.RelayoutBars and FS.RelayoutBars(frame, unitKey)) then
+        local borderPx = settings.borderSize or 1
+        local borderSize = borderPx > 0 and H3z0UICore:Pixels(borderPx, frame) or 0
+        LayoutBarStack(frame, settings, borderSize)
+    end
+    -- rounded corners / round ends follow the new bottom bar
+    local ML = ns.ModernLook
+    if ML and ML.ApplyUnit then pcall(ML.ApplyUnit, unitKey) end
+end
+
+-- height: bar height in virtual units (snapped to the pixel grid); nil keeps the last one
+-- opts (optional): order = place in the stack (lower is higher up, default 100),
+-- onLayout = function(bar) called after the bar got its place and size
+function H3z0UI_UF:SetSubBar(unitKey, key, bar, height, opts)
+    local frame = self.frames[unitKey]
+    if not (frame and bar and key) then return false end
+    frame.h3zSubBars = frame.h3zSubBars or {}
+    local entry
+    for _, e in ipairs(frame.h3zSubBars) do
+        if e.key == key then entry = e break end
+    end
+    if not entry then
+        entry = { key = key, order = 100 }
+        frame.h3zSubBars[#frame.h3zSubBars + 1] = entry
+    end
+    if opts then
+        if opts.order and opts.order ~= entry.order then
+            entry.order = opts.order
+            entry.active = false -- forces a relayout below
+        end
+        entry.onLayout = opts.onLayout or entry.onLayout
+    end
+    table.sort(frame.h3zSubBars, function(x, y)
+        if (x.order or 100) ~= (y.order or 100) then return (x.order or 100) < (y.order or 100) end
+        return tostring(x.key) < tostring(y.key)
+    end)
+    local changed = (not entry.active) or entry.bar ~= bar or (height and entry.height ~= height)
+    entry.bar, entry.active = bar, true
+    if height then entry.height = height end
+    if changed then self:RelayoutBars(unitKey) else bar:Show() end
+    return true
+end
+
+function H3z0UI_UF:RemoveSubBar(unitKey, key)
+    local frame = self.frames[unitKey]
+    if not (frame and frame.h3zSubBars) then return end
+    for _, e in ipairs(frame.h3zSubBars) do
+        if e.key == key then
+            if e.bar then e.bar:Hide() end
+            if e.active then
+                e.active = false
+                self:RelayoutBars(unitKey)
+            end
+            return
+        end
+    end
+end
+
+_G.H3z0UI_SetUnitSubBar = function(unitKey, key, bar, height, opts) return H3z0UI_UF:SetSubBar(unitKey, key, bar, height, opts) end
+_G.H3z0UI_RemoveUnitSubBar = function(unitKey, key) return H3z0UI_UF:RemoveSubBar(unitKey, key) end
 
 -- Register slider references for real-time sync during edit mode
 function H3z0UI_UF:RegisterEditModeSliders(unitKey, xSlider, ySlider)

@@ -463,25 +463,8 @@ local function ApplyHideSettings()
         end
     end
 
-    do
-        local profile = Helpers.GetProfile()
-        local friendly = profile and profile.nameplates and profile.nameplates.friendly
-        local showPlayers = not friendly or friendly.enabled ~= false
-        local showNPCs = showPlayers and (not friendly or friendly.showNPCs ~= false)
-        C_Timer.After(0, function()
-            -- H3z0 UI: friendly nameplates follow the H3z0 setting (Nameplates page)
-            if _G.H3z0UI_ApplyFriendlyPlates then
-                _G.H3z0UI_ApplyFriendlyPlates()
-                return
-            end
-            local npCVars = ns.H3z0UI_NameplatesCVars
-            if npCVars and npCVars.IsActive and npCVars:IsActive() then
-                return
-            end
-            SetCVar("nameplateShowFriendlyPlayers", showPlayers and "1" or "0")
-            SetCVar("nameplateShowFriendlyNpcs", showNPCs and "1" or "0")
-        end)
-    end
+    -- Friendly nameplates are no longer set here: nameplates are the separate H3z0 Nameplates addon,
+    -- and the game's own Friendly Player / Friendly NPC Nameplates options are left as you set them.
 
     if TalkingHeadFrame then
         local thState = hookedSecureFrames[TalkingHeadFrame]

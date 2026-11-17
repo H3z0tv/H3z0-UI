@@ -1364,6 +1364,13 @@ local function CreateCDMSetupPage(parent)
             y = y - FORM_ROW
             tabContent._currentY = y
 
+            -- hide the abilities that cannot be used in the form or stance you are in
+            local formCheck = GUI:CreateFormCheckbox(tabContent, "Hide Abilities You Can't Use in Your Current Form or Stance", "hideOutsideForm", ess, RefreshNCDM)
+            formCheck:SetPoint("TOPLEFT", PAD, y)
+            formCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+            tabContent._currentY = y
+
             -- Layout Direction dropdown
             ess.layoutDirection = ess.layoutDirection or "HORIZONTAL"
             local directionOptions = {
@@ -1440,6 +1447,13 @@ local function CreateCDMSetupPage(parent)
             end)
             rhCheck:SetPoint("TOPLEFT", PAD, y)
             rhCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
+            y = y - FORM_ROW
+            tabContent._currentY = y
+
+            -- hide the abilities that cannot be used in the form or stance you are in
+            local formCheck = GUI:CreateFormCheckbox(tabContent, "Hide Abilities You Can't Use in Your Current Form or Stance", "hideOutsideForm", util, RefreshNCDM)
+            formCheck:SetPoint("TOPLEFT", PAD, y)
+            formCheck:SetPoint("RIGHT", tabContent, "RIGHT", -PAD, 0)
             y = y - FORM_ROW
             tabContent._currentY = y
 

@@ -429,7 +429,7 @@ ProviderPanels:RegisterAfterLoad(function(ctx)
             L.headerAt(ns.L["Junk"])
             local s4 = L.sectionAt()
             local junkDimW = GUI:CreateFormCheckbox(s4.frame, nil, "dim", behavior.junk, Refresh,
-                { description = ns.L["Desaturate junk (gray) items and overlay a coin icon in the bag window."] })
+                { description = ns.L["Desaturate junk (gray) items and overlay a coin icon in the bag window. Ctrl+Alt+click any item to mark it as junk yourself (click again to unmark)."] })
             local sellButtonW = GUI:CreateFormCheckbox(s4.frame, nil, "sellButton", behavior.junk, Refresh,
                 { description = ns.L["Show a Sell Junk button in the bag window while a merchant is open."] })
             s4.AddRow(row(s4.frame, ns.L["Dim Junk Items"], junkDimW), row(s4.frame, ns.L["Sell Junk Button"], sellButtonW))

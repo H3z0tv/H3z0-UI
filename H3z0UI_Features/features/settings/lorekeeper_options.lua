@@ -98,7 +98,7 @@ local function Build(tabContent)
     if scroll then
         Buttons({
             { "Show a Preview", function() if _G.H3z0UI_LorekeeperTest then _G.H3z0UI_LorekeeperTest() end end },
-            { "Run the Setup Again", function() if _G.H3z0UI_LorekeeperSetup then _G.H3z0UI_LorekeeperSetup() end end },
+            { "Run the Setup Again", function() if _G.H3z0UI_ShowLorekeeperSetup then _G.H3z0UI_ShowLorekeeperSetup() end end },
         })
     else
         Buttons({
@@ -131,7 +131,7 @@ local function Build(tabContent)
     Slider("Camera Distance", 1, 20, 1, "cameraDistance")
     Check("Turn the Camera Toward the NPC", "cameraFocus")
     if scroll then Check("Hide the Rest of the UI While Talking", "hideUI") end
-    Info("The camera turns toward the NPC (the game's own interact camera focus) and goes back to where it was when you stop talking. If another camera addon (DynamicCam, True Reticle) controls this, turn the option off. The UI is never hidden in combat.", 52)
+    Info("The camera turns toward the NPC (the game's own interact camera focus) and goes back to where it was when you stop talking. If another camera addon (DynamicCam, Crosshair Z) controls this, turn the option off. The UI is never hidden in combat.", 52)
 
     if scroll then
         Section("Transitions")
@@ -178,9 +178,12 @@ local function Build(tabContent)
         }, "inputDevice", d, Refresh))
         Info("The confirm and cancel hints on the two big buttons. Automatic shows Xbox letters when a game controller is on (and ConsolePort is not), keys otherwise.", 34)
 
+        Check("Put Quests You Already Took (Not Finished) at the Bottom", "waitingLast")
+
         Section("Rewards")
         Check("Mark the Choice That Sells for the Most (gold coin)", "markSellPrice")
         Check("Mark Gear That Is Better Than What You Wear (green arrow)", "markUpgrade")
+        Check("Mark the Best Weapon for Your Class (gold star) and Dim Weapons It Cannot Use", "markBestWeapon")
         Check("Smaller Currency Rewards (icon and amount only)", "simpleCurrency")
 
         Section("Focus While Talking")

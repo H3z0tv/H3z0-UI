@@ -59,8 +59,8 @@ local function ApplyReticleLayering()
     end
 end
 
+-- always the current profile's table (a copy from early login goes stale on a profile switch)
 local function GetSettings()
-    if cachedSettings then return cachedSettings end
     cachedSettings = Helpers.GetModuleDB("reticle")
     return cachedSettings
 end

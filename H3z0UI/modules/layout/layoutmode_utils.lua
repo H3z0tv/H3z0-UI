@@ -43,7 +43,7 @@ Utils.FALLBACK_ROUTES = {
     h3zPlayerCastbar = { "h3z_unitframes", 2 }, h3zTargetCastbar = { "h3z_unitframes", 3 },
     h3zFocusCastbar = { "h3z_unitframes", 6 },
     h3zPartyFrames = { "h3z_partyframes", 1 }, h3zRaidFrames = { "h3z_partyframes", 2 },
-    h3zHerald = { "h3z_herald", 1 }, h3zLorekeeper = { "h3z_lorekeeper", 1 },
+    h3zHerald = { "h3z_herald", 1 }, h3zDock = { "infobar", 3 }, h3zLorekeeper = { "h3z_lorekeeper", 1 },
     h3zArcanumToasts = { "h3z_arcanum", 1 },
     chatFrame1 = { "h3z_chat", 1 },
     minimap = { "minimap", 1 },
@@ -52,6 +52,16 @@ Utils.FALLBACK_ROUTES = {
     topCenterWidgets = { "appearance", 9 }, belowMinimapWidgets = { "appearance", 9 },
     equipmentDurability = { "appearance", 9 },
     missingRaidBuffs = { "gameplay", 5 }, rangeCheck = { "gameplay", 6 }, healerMana = { "gameplay", 6 },
+    -- page only (no tab number): used when the element has no page of its own, so it always lands on a real page
+    totemBar = { "action_bars" }, raidMarkersBar = { "action_bars" }, extraActionButton = { "action_bars" },
+    zoneAbility = { "action_bars" }, buffFrame = { "auras" }, debuffFrame = { "auras" }, incomingCasts = { "auras" },
+    tooltipAnchor = { "chat_tooltips" },
+    xpTracker = { "gameplay" }, skyriding = { "gameplay" }, crosshair = { "gameplay" }, preyTracker = { "gameplay" },
+    rotationAssistIcon = { "gameplay" }, mplusTimer = { "gameplay" }, brezCounter = { "gameplay" },
+    lustTimer = { "gameplay" }, combatTimer = { "gameplay" }, actionTracker = { "gameplay" },
+    atonementCounter = { "gameplay" }, noTargetWarning = { "gameplay" }, focusCastAlert = { "gameplay" },
+    deathAlert = { "gameplay" }, readyCheck = { "gameplay" }, petWarning = { "gameplay" }, consumables = { "gameplay" },
+    partyKeystones = { "gameplay" }, bonusRollFrame = { "appearance" }, objectiveTracker = { "appearance" },
 }
 
 -- returns a route table { tileId, subPageIndex } or nil
@@ -64,7 +74,7 @@ function Utils.ResolveOptionsRoute(key)
     route = Utils.PROVIDER_TO_V2 and Utils.PROVIDER_TO_V2[key]
     if route then return route end
     local fb = Utils.FALLBACK_ROUTES[key]
-    if fb then return { tileId = fb[1], subPageIndex = fb[2] } end
+    if fb then return { tileId = fb[1], subPageIndex = fb[2] } end  -- fb[2] is nil for page-only routes
     local s = tostring(key)
     if s:find("^chatFrame%d") or s:find("^h3zMeterWin") or s:find("^chat") then return { tileId = "h3z_chat", subPageIndex = 1 } end
     if s:find("^h3zBar") or s:find("^bar%d") then return { tileId = "action_bars", subPageIndex = 2 } end
@@ -74,21 +84,85 @@ function Utils.ResolveOptionsRoute(key)
     return nil
 end
 
--- close Edit Mode, open the H3z0 UI menu and jump to the route
+-- Open the H3z0 UI menu on the route and keep Edit Mode open, so you can change a setting and see it
+-- on the screen right away. The menu is lifted above the Edit Mode panels while Edit Mode is on.
+-- The menu may not be built yet and may already be open (a toggle would close it), so this shows it
+-- (never toggles) and retries until the page exists.
 function Utils.OpenOptionsRoute(route)
     if not route then return end
+    local function go(tries)
+        if InCombatLockdown() then return end
+        if H3z0UI and H3z0UI.EnsureOptionsLoaded then pcall(H3z0UI.EnsureOptionsLoaded, H3z0UI) end
+        local GUI = H3z0UI and H3z0UI.GUI
+        if not GUI then
+            if tries < 10 then C_Timer.After(0.15, function() go(tries + 1) end) end
+            return
+        end
+        if GUI.Show then pcall(GUI.Show, GUI) end
+        local frame = GUI.MainFrame
+        local LM = ns.H3z0UI_LayoutMode
+        if frame and LM and LM.isActive and frame.SetFrameStrata then
+            if not frame._h3zRaisedHook and frame.HookScript then
+                frame._h3zRaisedHook = true
+                frame:HookScript("OnHide", function(f)
+                    if f._h3zOrigStrata then f:SetFrameStrata(f._h3zOrigStrata) end
+                end)
+            end
+            frame._h3zOrigStrata = frame._h3zOrigStrata or frame:GetFrameStrata()
+            frame:SetFrameStrata("TOOLTIP")
+            frame:Raise()
+        end
+        local _, idx
+        if frame and GUI.FindV2TileByID then _, idx = GUI:FindV2TileByID(frame, route.tileId) end
+        if idx and GUI.SelectFeatureTile then
+            if frame._searchResultsArea then frame._searchResultsArea:Hide() end
+            if frame._tileContent then frame._tileContent:Show() end
+            pcall(GUI.SelectFeatureTile, GUI, frame, idx, { subPageIndex = route.subPageIndex })
+            return
+        end
+        if tries < 10 then C_Timer.After(0.15, function() go(tries + 1) end) end
+    end
+    C_Timer.After(0.1, function() go(0) end)
+end
+
+-- /h3z0 layoutroutes: checks that every Layout Mode element opens a real page of the menu
+function Utils.AuditRoutes(say)
+    say = say or print
+    local LM = ns.H3z0UI_LayoutMode
+    if H3z0UI and H3z0UI.EnsureOptionsLoaded then pcall(H3z0UI.EnsureOptionsLoaded, H3z0UI) end
     local GUI = H3z0UI and H3z0UI.GUI
-    if _G.H3z0UI_ToggleLayoutMode then ns.SafeCall("bulkhead", _G.H3z0UI_ToggleLayoutMode) end
-    if H3z0UI and H3z0UI.SlashCommandOpen then
-        H3z0UI:SlashCommandOpen("")
-    elseif GUI and GUI.Toggle then
-        GUI:Toggle()
-    end
+    if GUI and not GUI.MainFrame and GUI.InitializeOptions then pcall(GUI.InitializeOptions, GUI) end
     local frame = GUI and GUI.MainFrame
-    if frame and GUI.FindV2TileByID and GUI.SelectFeatureTile then
-        local _, idx = GUI:FindV2TileByID(frame, route.tileId)
-        if idx then GUI:SelectFeatureTile(frame, idx, { subPageIndex = route.subPageIndex }) end
+    if not (LM and LM._elements) then say("Layout Mode has no elements yet.") return end
+    if not (frame and GUI.FindV2TileByID) then say("The options window could not be built.") return end
+    local keys = {}
+    for key in pairs(LM._elements) do keys[#keys + 1] = tostring(key) end
+    table.sort(keys)
+    local bad, good = 0, 0
+    for _, key in ipairs(keys) do
+        local route = Utils.ResolveOptionsRoute(key)
+        local why
+        if not route then
+            why = "no settings page set"
+        else
+            local tile = GUI:FindV2TileByID(frame, route.tileId)
+            if not tile then
+                why = "page '" .. tostring(route.tileId) .. "' does not exist"
+            elseif route.subPageIndex then
+                local subs = tile.config and tile.config.subPages
+                if not (subs and subs[route.subPageIndex]) then
+                    why = "tab " .. tostring(route.subPageIndex) .. " of '" .. tostring(route.tileId) .. "' does not exist"
+                end
+            end
+        end
+        if why then
+            bad = bad + 1
+            say(key .. ": " .. why)
+        else
+            good = good + 1
+        end
     end
+    say(good .. " elements open a settings page, " .. bad .. " do not.")
 end
 
 function Utils.GetProfileDB()
@@ -502,21 +576,7 @@ function Utils.BuildOpenFullSettingsLink(content, providerKey, sections, relayou
                 source = "layoutmode",
             })
         end
-        if _G.H3z0UI_ToggleLayoutMode then
-            ns.SafeCall("bulkhead", _G.H3z0UI_ToggleLayoutMode)
-        end
-        if H3z0UI and H3z0UI.SlashCommandOpen then
-            H3z0UI:SlashCommandOpen("")
-        elseif GUI and GUI.Toggle then
-            GUI:Toggle()
-        end
-        local frame = GUI and GUI.MainFrame
-        if frame and GUI.FindV2TileByID and GUI.SelectFeatureTile then
-            local _, idx = GUI:FindV2TileByID(frame, route.tileId)
-            if idx then
-                GUI:SelectFeatureTile(frame, idx, { subPageIndex = route.subPageIndex })
-            end
-        end
+        Utils.OpenOptionsRoute(route)
     end)
 
     if relayout then relayout() end

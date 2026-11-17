@@ -75,14 +75,38 @@ Build = function(tabContent)
     end
 
     ---------------------------------------------------------------------
+    Section("Controller in H3z0 UI Windows")
+    Info("With a game controller on, the D-pad moves a highlight through this options window, its lists and popups, and the bag and bank windows. A clicks (in bags: uses the item), B goes back or closes, X picks an item up, and Left / Right changes a slider. Only the D-pad, A, B and X are used, and only while one of these windows is open.", 46)
+    db.padNav = db.padNav or {}
+    if db.padNav.enabled == nil then db.padNav.enabled = true end
+    if db.padNav.bags == nil then db.padNav.bags = true end
+    Place(GUI:CreateFormCheckbox(tabContent, "Use the Controller in H3z0 UI Windows", "enabled", db.padNav))
+    Place(GUI:CreateFormCheckbox(tabContent, "Also in the Bag and Bank Windows (press the D-pad to start)", "bags", db.padNav))
+
     Section("PC Controller")
-    Info("Play on your PC with a controller: keeps your normal PC layout (same positions, sizes and scale) and only swaps the addons - ConsolePort on, Action Combat Mode off - then reloads. Untick to go back to mouse and keyboard (Action Combat Mode on, ConsolePort off). Only one of PC Controller, PC Handheld and Steam Deck can be on: turning one on turns the others off.", 58)
-    Place(GUI:CreateFormCheckbox(tabContent, "PC Controller (ConsolePort instead of Action Combat Mode)", "pcController", cfg, function()
+    Info("Play on your PC with a controller: keeps your normal PC layout (same positions, sizes and scale) and only swaps the addons - ConsolePort on, Crosshair Z off - then reloads. Untick to go back to mouse and keyboard (Crosshair Z on, ConsolePort off). Only one of PC Controller, PC Handheld and Steam Deck can be on: turning one on turns the others off.", 58)
+    Place(GUI:CreateFormCheckbox(tabContent, "PC Controller (ConsolePort instead of Crosshair Z)", "pcController", cfg, function()
         handheld.SetPCController(cfg.pcController)
     end))
 
+    if ns.Client and ns.Client.isForever then
+        Section("Controller (game UI)")
+        Info("WoW: Forever has its own controller UI with its own action bars. This mode turns it on (Gamepad in the game's options), switches ConsolePort and Crosshair Z off and reloads. While the game's controller UI is active, H3z0 UI's action bars 1-3 are hidden; they come back when you go back to mouse and keyboard. Also on the UI Mode button of the bottom bar.", 58)
+        if cfg.gamepadUI == nil then cfg.gamepadUI = false end
+        if cfg.hideBarsWithGamepadUI == nil then cfg.hideBarsWithGamepadUI = true end
+        Place(GUI:CreateFormCheckbox(tabContent, "Controller (the game's own controller UI)", "gamepadUI", cfg, function()
+            local want = cfg.gamepadUI
+            cfg.gamepadUI = not want
+            handheld.SetGamepadUI(want, true)
+            if handheld.Reload then handheld.Reload() else ReloadUI() end
+        end))
+        Place(GUI:CreateFormCheckbox(tabContent, "Hide Action Bars 1-3 While the Game's Controller UI Is Active", "hideBarsWithGamepadUI", cfg, function()
+            if _G.H3z0UI_ApplyConsoleBarHide then pcall(_G.H3z0UI_ApplyConsoleBarHide) end
+        end))
+    end
+
     Section("PC Handheld")
-    Info("The Steam Deck setup on your PC: Steam Deck HUD and frame positions, and ConsolePort (Action Combat Mode off) - but your normal PC UI scale. Reloads when switched. Only one of PC Controller, PC Handheld and Steam Deck can be on.", 46)
+    Info("The Steam Deck setup on your PC: Steam Deck HUD and frame positions, and ConsolePort (Crosshair Z off) - but your normal PC UI scale. Reloads when switched. Only one of PC Controller, PC Handheld and Steam Deck can be on.", 46)
     Place(GUI:CreateFormCheckbox(tabContent, "PC Handheld (Steam Deck layout, PC scale)", "pcHandheld", cfg, function()
         handheld.SetPCHandheld(cfg.pcHandheld)
     end))
@@ -110,7 +134,7 @@ Build = function(tabContent)
     Place(GUI:CreateFormCheckbox(tabContent, "Enable Handheld Mode (Steam Deck)", "deckChoice", cfg, function()
         handheld.SetSteamDeck(cfg.deckChoice)
     end))
-    Info("Turning it on disables Action Combat Mode, enables ConsolePort, switches to the Deck positions and reloads. Turning it off enables Action Combat Mode, disables ConsolePort, switches to the PC positions and reloads. PC and Deck each keep their own frame positions: move frames in H3z0 UI Layout Mode while in that mode.", 46)
+    Info("Turning it on disables Crosshair Z, enables ConsolePort, switches to the Deck positions and reloads. Turning it off enables Crosshair Z, disables ConsolePort, switches to the PC positions and reloads. PC and Deck each keep their own frame positions: move frames in H3z0 UI Layout Mode while in that mode.", 46)
     Place(GUI:CreateFormCheckbox(tabContent, "Auto-enable on a small screen (<= 800p), first launch only", "autoDetect", cfg))
 
     ---------------------------------------------------------------------

@@ -94,6 +94,23 @@ local function AreCharacterStatsSecretsDisabled()
     return false
 end
 
+-- WoW: Forever / Classic: item rows read like the game's own window there (slot name and "Empty" on
+-- empty slots, "Item Level N" in grey, no "No Enchant" on every levelling item)
+local LEGACY_ROWS = ns.Client and ns.Client.isLegacy and true or false
+local SLOT_LABEL_GLOBAL = {
+    Head = "HEADSLOT", Neck = "NECKSLOT", Shoulder = "SHOULDERSLOT", Back = "BACKSLOT", Chest = "CHESTSLOT",
+    Shirt = "SHIRTSLOT", Tabard = "TABARDSLOT", Wrist = "WRISTSLOT", MainHand = "MAINHANDSLOT",
+    SecondaryHand = "SECONDARYHANDSLOT", Hands = "HANDSSLOT", Waist = "WAISTSLOT", Legs = "LEGSSLOT",
+    Feet = "FEETSLOT", Finger0 = "FINGER0SLOT", Finger1 = "FINGER1SLOT", Trinket0 = "TRINKET0SLOT",
+    Trinket1 = "TRINKET1SLOT", Ranged = "RANGEDSLOT",
+}
+local function SlotLabel(info)
+    local g = info and SLOT_LABEL_GLOBAL[info.name]
+    local text = g and _G[g]
+    if type(text) == "string" and text ~= "" then return text end
+    return info and info.name or ""
+end
+
 local EQUIPMENT_SLOTS = {
     { name = "Head", id = INVSLOT_HEAD, side = "left" },
     { name = "Neck", id = INVSLOT_NECK, side = "left" },
@@ -1139,6 +1156,19 @@ local function UpdateSlotOverlay(overlay, unit)
     local itemLink = GetReadableInventoryItemLink(unit, slotId)
 
     if not itemLink then
+        if LEGACY_ROWS and settings.showItemName ~= false and overlay.itemName then
+            overlay:Show()
+            overlay.itemName:SetText(SlotLabel(overlay.slotInfo))
+            overlay.itemName:SetTextColor(0.55, 0.57, 0.6, 1)
+            overlay.itemName:Show()
+            overlay.itemLevel:SetText(_G.EMPTY or "Empty")
+            overlay.itemLevel:SetTextColor(0.45, 0.47, 0.5, 1)
+            overlay.itemLevel:Show()
+            overlay.enchant:Hide()
+            if overlay.gems then for _, t in ipairs(overlay.gems) do t:Hide() end end
+            if overlay.durabilityBar then overlay.durabilityBar:Hide() end
+            return
+        end
         overlay:Hide()
         return
     end
@@ -1194,9 +1224,18 @@ local function UpdateSlotOverlay(overlay, unit)
             else
                 ilvlText = tostring(itemLevel)
             end
+            if LEGACY_ROWS and not (track and current and max) then
+                local fmt = _G.ITEM_LEVEL or "Item Level %d"
+                local ok, txt = pcall(string.format, fmt, itemLevel)
+                ilvlText = ok and txt or ilvlText
+                overlay.itemLevel:SetText(ilvlText)
+                overlay.itemLevel:SetTextColor(0.72, 0.74, 0.78, 1)
+                overlay.itemLevel:Show()
+            else
             overlay.itemLevel:SetText(ilvlText)
             overlay.itemLevel:SetTextColor(1, 1, 1, 1)
             overlay.itemLevel:Show()
+            end
         else
             overlay.itemLevel:Hide()
         end
@@ -1230,6 +1269,8 @@ local function UpdateSlotOverlay(overlay, unit)
             if enchantText then
                 overlay.enchant:SetText(enchantText)
                 overlay.enchant:SetTextColor(enchantColor[1], enchantColor[2], enchantColor[3], 1)
+            elseif LEGACY_ROWS then
+                overlay.enchant:SetText("")
             else
                 overlay.enchant:SetText(ns.L["No Enchant"])
                 overlay.enchant:SetTextColor(noEnchantColor[1], noEnchantColor[2], noEnchantColor[3], 1)
@@ -2221,7 +2262,14 @@ local function UpdateForeverStatsPanel(scrollChild, unit, y)
                         okStat, value = pcall(_G.PAPERDOLL_STATINFO[stat.stat].updateFunc, row, unit, stat.id)
                     end
                     if not okStat then row:Hide() value = nil end
-                    if okStat and row:IsShown() and (stat.hideAt == nil or value ~= stat.hideAt) then
+                    -- a secret value can't be compared (or even tested ~=) from our code: it is
+                    -- shown as the game drew it, never hidden by hideAt
+                    local hidden = false
+                    local secret = _G.issecretvalue and _G.issecretvalue(value) or false
+                    if okStat and stat.hideAt ~= nil and not secret and value ~= nil then
+                        hidden = (value == stat.hideAt)
+                    end
+                    if okStat and row:IsShown() and not hidden then
                         if not hasHeader then
                             local _, headerHeight = CreateSectionHeader(scrollChild, category.categoryName, y)
                             y = y - headerHeight

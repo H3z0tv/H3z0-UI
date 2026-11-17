@@ -1,7 +1,7 @@
 --[[
-    H3z0UI Options - Combat Mode Tab
-    Control panel for the bundled Combat Mode addon (djsmithdev/combatmode).
-    Combat Mode ships as its own addon folder (CombatMode) next to H3z0UI;
+    H3z0UI Options - Crosshair Z Tab
+    Control panel for the Crosshair Z addon (action camera / free look / reticle).
+    Crosshair Z is its own addon folder (CrosshairZ) next to H3z0UI;
     this tab shows its status and lets you open its settings, enable/disable it
     and avoid a double crosshair.
 ]]
@@ -12,9 +12,8 @@ local GUI = H3z0UI.GUI
 local C = GUI.Colors
 local Shared = ns.H3z0UI_Options
 
--- Folder of the Combat Mode addon (now titled "Action Combat Mode"); found by name or title
-local CM_NAME = "TrueReticle"
-local isTR = true
+-- Folder of the Crosshair Z addon; found by name or title
+local CM_NAME = "CrosshairZ"
 local function FindCM()
     local hh = _G.H3z0UI_Handheld
     local list = hh and hh.FindReticleAddOns and hh.FindReticleAddOns()
@@ -22,10 +21,11 @@ local function FindCM()
     return CM_NAME
 end
 
--- opens True Reticle's own settings by running its slash command (/tr)
-local function OpenTrueReticle()
+-- opens Crosshair Z's own settings by running its slash command
+local function OpenCrosshairZ()
+    local wanted = { ["/cz"] = true, ["/crosshairz"] = true }
     for k, v in pairs(_G) do
-        if type(k) == "string" and k:match("^SLASH_.+%d$") and v == "/tr" then
+        if type(k) == "string" and k:match("^SLASH_.+%d$") and wanted[v] then
             local fn = _G.SlashCmdList and _G.SlashCmdList[k:match("^SLASH_(.-)%d+$")]
             if fn then fn("") return true end
         end
@@ -61,10 +61,10 @@ local function BuildCombatModeTab(tabContent)
     local PADDING = Shared.PADDING
     local db = Shared.GetDB()
 
-    GUI:SetSearchContext({tabIndex = 1, tabName = "H3z0 Features", subTabIndex = 2, subTabName = "True Reticle"})
+    GUI:SetSearchContext({tabIndex = 1, tabName = "H3z0 Features", subTabIndex = 2, subTabName = "Crosshair Z"})
 
-    GUI:SetSearchSection("True Reticle")
-    local header = GUI:CreateSectionHeader(tabContent, "True Reticle")
+    GUI:SetSearchSection("Crosshair Z")
+    local header = GUI:CreateSectionHeader(tabContent, "Crosshair Z")
     header:SetPoint("TOPLEFT", PADDING, y)
     y = y - header.gap
 
@@ -77,7 +77,7 @@ local function BuildCombatModeTab(tabContent)
         return label
     end
 
-    Text("True Reticle (type /tr) adds action-camera controls: free look, a reticle, soft targeting and click casting. It is a separate addon that is not included in H3z0 UI; install it from CurseForge if you want it. With a controller (Handheld Mode, PC Controller) H3z0 UI switches it off, with mouse and keyboard it switches it on.", 70)
+    Text("Crosshair Z adds action-camera controls: free look, a reticle, soft targeting and click casting. It is a separate addon that is not included in H3z0 UI; install it from CurseForge if you want it. With a controller (Handheld Mode, PC Controller) H3z0 UI switches it off, with mouse and keyboard it switches it on.", 70)
 
     local status = Text("", 20, C.text)
     local hint = Text("", 36)
@@ -85,13 +85,13 @@ local function BuildCombatModeTab(tabContent)
     local function Refresh()
         if not CMInstalled() then
             status:SetText("Status: |cffff5555Not installed|r")
-            hint:SetText("Install the True Reticle addon (CurseForge) into Interface\\AddOns, then restart the game.")
+            hint:SetText("Install the Crosshair Z addon (CurseForge) into Interface\\AddOns, then restart the game.")
         elseif CMLoaded() then
             status:SetText("Status: |cff55ff55Active|r")
-            hint:SetText("Open the True Reticle settings below, or type /tr in chat.")
+            hint:SetText("Open the Crosshair Z settings below, or type /cz in chat.")
         elseif CMEnabled() then
             status:SetText("Status: |cffffff55Enabled - reload to activate|r")
-            hint:SetText("Press Reload UI to load True Reticle.")
+            hint:SetText("Press Reload UI to load Crosshair Z.")
         else
             status:SetText("Status: |cffaaaaaaDisabled|r")
             hint:SetText("Use the button below to enable it, then reload the UI.")
@@ -101,18 +101,18 @@ local function BuildCombatModeTab(tabContent)
 
     y = y - 4
 
-    local openBtn = GUI:CreateButton(tabContent, "Open True Reticle Settings", 220, 28, function()
-        if CMLoaded() and OpenTrueReticle() then
+    local openBtn = GUI:CreateButton(tabContent, "Open Crosshair Z Settings", 220, 28, function()
+        if CMLoaded() and OpenCrosshairZ() then
             return
         else
-            print("|cff00ff99H3z0 UI|r: True Reticle is not active. Enable it and reload the UI first.")
+            print("|cff00ff99H3z0 UI|r: Crosshair Z is not active. Enable it and reload the UI first.")
         end
     end)
     openBtn:SetPoint("TOPLEFT", PADDING, y)
     y = y - 36
 
     local toggleBtn
-    toggleBtn = GUI:CreateButton(tabContent, "Enable / Disable True Reticle", 220, 28, function()
+    toggleBtn = GUI:CreateButton(tabContent, "Enable / Disable Crosshair Z", 220, 28, function()
         if not CMInstalled() then Refresh() return end
         local hh = _G.H3z0UI_Handheld
         if hh and hh.SetAddOnEnabled then
@@ -123,7 +123,7 @@ local function BuildCombatModeTab(tabContent)
             C_AddOns.EnableAddOn(CM_NAME)
         end
         Refresh()
-        print("|cff00ff99H3z0 UI|r: True Reticle setting changed - press Reload UI to apply.")
+        print("|cff00ff99H3z0 UI|r: Crosshair Z setting changed - press Reload UI to apply.")
     end)
     toggleBtn:SetPoint("TOPLEFT", PADDING, y)
     y = y - 36
@@ -138,7 +138,7 @@ local function BuildCombatModeTab(tabContent)
     header2:SetPoint("TOPLEFT", PADDING, y)
     y = y - header2.gap
 
-    Text("True Reticle draws its own crosshair. If you use it, turn off the H3z0 UI crosshair (Cursor & Crosshair tab) to avoid seeing two.", 40)
+    Text("Crosshair Z draws its own crosshair. If you use it, turn off the H3z0 UI crosshair (Cursor & Crosshair tab) to avoid seeing two.", 40)
 
     local ch = db and db.crosshair
     if ch then

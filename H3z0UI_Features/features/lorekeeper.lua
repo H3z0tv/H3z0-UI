@@ -37,8 +37,8 @@ local DEFAULTS = {
     pageSound = true,
     controller = true,
     inputDevice = "auto",
-    markSellPrice = true, markUpgrade = true, simpleCurrency = false,
-    hideNames = false, cameraFocus = true,
+    markSellPrice = true, markUpgrade = true, markBestWeapon = true, simpleCurrency = false,
+    hideNames = false, cameraFocus = true, waitingLast = true,
 }
 
 local function DB()
@@ -487,8 +487,12 @@ local function RewardButton(i)
     b.bg = b:CreateTexture(nil, "BACKGROUND")
     b.bg:SetAllPoints()
     b.bg:SetColorTexture(1, 1, 1, 0.04)
+    -- the chosen reward: an ink brush stroke behind it (a little wider than the button)
     b.sel = b:CreateTexture(nil, "BORDER")
-    b.sel:SetAllPoints()
+    b.sel:SetTexture(ART .. "lore_select")
+    b.sel:SetPoint("TOPLEFT", -8, 6)
+    b.sel:SetPoint("BOTTOMRIGHT", 8, -6)
+    b.sel:SetVertexColor(1, 1, 1, 0)
     -- a frame around the reward: faint on a reward you can choose, strong on the chosen one
     b.edges = {}
     for _, e in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 2 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 2 },
@@ -499,10 +503,16 @@ local function RewardButton(i)
         tx:SetColorTexture(1, 1, 1, 0)
         b.edges[#b.edges + 1] = tx
     end
+    -- a dark stamp with a big tick on the right end of the chosen reward
+    b.stamp = b:CreateTexture(nil, "OVERLAY", nil, 2)
+    b.stamp:SetTexture(ART .. "lore_stamp")
+    b.stamp:SetSize(34, 34)
+    b.stamp:SetPoint("RIGHT", b, "RIGHT", -3, 0)
+    b.stamp:Hide()
     b.check = b:CreateTexture(nil, "OVERLAY", nil, 3)
     b.check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
-    b.check:SetSize(22, 22)
-    b.check:SetPoint("TOPRIGHT", b, "TOPRIGHT", 2, 2)
+    b.check:SetSize(40, 40)
+    b.check:SetPoint("CENTER", b.stamp, "CENTER", 0, 0)
     b.check:Hide()
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.icon:SetSize(30, 30)
@@ -522,6 +532,12 @@ local function RewardButton(i)
     b.up:SetSize(16, 16)
     b.up:SetPoint("TOPRIGHT", b.icon, "TOPRIGHT", 3, 3)
     b.up:Hide()
+    b.star = b:CreateTexture(nil, "OVERLAY", nil, 5)
+    b.star:SetTexture("Interface\\COMMON\\ReputationStar")
+    b.star:SetTexCoord(0, 0.5, 0, 0.5)
+    b.star:SetSize(16, 16)
+    b.star:SetPoint("BOTTOMLEFT", b.icon, "BOTTOMLEFT", -3, -3)
+    b.star:Hide()
     b.name = b:CreateFontString(nil, "OVERLAY")
     b.name:SetPoint("LEFT", b.icon, "RIGHT", 6, 0)
     b.name:SetPoint("RIGHT", -4, 0)
@@ -538,6 +554,8 @@ local function RewardButton(i)
                     or "This item fits an empty slot", 0.3, 1, 0.3)
             end
             if self.bestSell then GameTooltip:AddLine("Sells for the most of your choices", 1, 0.82, 0.2) end
+            if self.bestWeapon then GameTooltip:AddLine("Best weapon of your choices for your class", 1, 0.82, 0.2) end
+            if self.cantUse then GameTooltip:AddLine("Your class cannot use this weapon", 1, 0.3, 0.3) end
         else
             GameTooltip:SetText(self.name and self.name:GetText() or "")
         end
@@ -1073,6 +1091,18 @@ local function ActiveIcon(questID, q, complete)
     return FirstAtlas({ "QuestTurnin", "UI-QuestPoiNormal-QuestTurnIn" }) or QUEST_ICON_ACTIVE
 end
 
+-- Quests you already took and have not finished go to the bottom, so the first choice (the one
+-- Space takes) is the next thing to do: a quest to hand in, a new quest, or something to say.
+local function WaitingLast(list)
+    if Get("waitingLast") == false then return list end
+    local first, last = {}, {}
+    for _, o in ipairs(list) do
+        if o.waiting then last[#last + 1] = o else first[#first + 1] = o end
+    end
+    for _, o in ipairs(last) do first[#first + 1] = o end
+    return first
+end
+
 -- builds state.options = { { text, icon, run }, ... }
 local function GossipOptions()
     local list = {}
@@ -1081,7 +1111,8 @@ local function GossipOptions()
     for _, q in ipairs(GI.GetActiveQuests and GI.GetActiveQuests() or {}) do
         local id = q.questID
         list[#list + 1] = { text = Str(q.title) ~= "" and q.title or "?", secretText = IsSecret(q.title) and q.title or nil, icon = ActiveIcon(id, q, q.isComplete),
-            run = function() GI.SelectActiveQuest(id) end, quest = true }
+            run = function() GI.SelectActiveQuest(id) end, quest = true,
+            waiting = (not IsSecret(q.isComplete)) and not q.isComplete }
     end
     for _, q in ipairs(GI.GetAvailableQuests and GI.GetAvailableQuests() or {}) do
         local id = q.questID
@@ -1095,7 +1126,7 @@ local function GossipOptions()
         list[#list + 1] = { text = Str(o.name) ~= "" and o.name or "?", secretText = IsSecret(o.name) and o.name or nil, icon = (not IsSecret(o.icon)) and o.icon or nil,
             run = function() GI.SelectOption(id) end }
     end
-    return list
+    return WaitingLast(list)
 end
 
 local function GreetingOptions()
@@ -1105,7 +1136,8 @@ local function GreetingOptions()
         local title, isComplete = GetActiveTitle(i)
         local qid = GetActiveQuestID and GetActiveQuestID(i)
         list[#list + 1] = { text = Str(title) ~= "" and title or "?", secretText = IsSecret(title) and title or nil, icon = ActiveIcon(qid, nil, isComplete),
-            run = function() SelectActiveQuest(idx) end, quest = true }
+            run = function() SelectActiveQuest(idx) end, quest = true,
+            waiting = (not IsSecret(isComplete)) and not isComplete }
     end
     for i = 1, (GetNumAvailableQuests and GetNumAvailableQuests() or 0) do
         local idx = i
@@ -1116,7 +1148,7 @@ local function GreetingOptions()
         list[#list + 1] = { text = Str(GetAvailableTitle(i)) ~= "" and GetAvailableTitle(i) or "?", secretText = IsSecret(GetAvailableTitle(i)) and GetAvailableTitle(i) or nil, icon = OfferIcon(qid, info),
             run = function() SelectAvailableQuest(idx) end, quest = true }
     end
-    return list
+    return WaitingLast(list)
 end
 
 -- rewards: { { kind, qtype, index, name, texture, count, quality, choice } }
@@ -1169,6 +1201,42 @@ local function UpgradeDelta(rw)
     if worst == 0 then return 0 end
     if ilvl > worst then return ilvl - worst end
     return nil
+end
+
+-- weapons: which weapon types each class can use (item subclass ids). A class that is not listed,
+-- or an item that is not a weapon, is never judged.
+local WEAPON_LOCS = { INVTYPE_WEAPON = true, INVTYPE_2HWEAPON = true, INVTYPE_WEAPONMAINHAND = true,
+    INVTYPE_WEAPONOFFHAND = true, INVTYPE_RANGED = true, INVTYPE_RANGEDRIGHT = true }
+local function Set(...) local t = {} for _, v in ipairs({ ... }) do t[v] = true end return t end
+local CLASS_WEAPONS = {
+    WARRIOR = Set(0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 16, 17, 18),
+    PALADIN = Set(0, 1, 4, 5, 6, 7, 8, 17),
+    HUNTER = Set(0, 1, 2, 3, 6, 7, 8, 10, 13, 15, 17, 18),
+    ROGUE = Set(0, 2, 3, 4, 7, 13, 15, 16, 18),
+    PRIEST = Set(4, 10, 15, 19),
+    DEATHKNIGHT = Set(0, 1, 4, 5, 6, 7, 8, 17),
+    SHAMAN = Set(0, 1, 4, 5, 10, 13, 15),
+    MAGE = Set(7, 10, 15, 19),
+    WARLOCK = Set(7, 10, 15, 19),
+    MONK = Set(0, 4, 6, 7, 10, 13, 17),
+    DRUID = Set(4, 5, 6, 10, 13, 15, 17),
+    DEMONHUNTER = Set(0, 7, 9, 13),
+    EVOKER = Set(0, 1, 4, 5, 7, 8, 10, 13, 15),
+}
+
+-- nil = not a weapon (or not known), true = your class can use it, false = it cannot
+local function WeaponUsable(rw)
+    if rw.kind ~= "item" or not GetQuestItemLink then return nil end
+    local link = GetQuestItemLink(rw.qtype, rw.index)
+    if not link then return nil end
+    local getInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if not getInstant then return nil end
+    local _, _, _, loc, _, classID, subID = getInstant(link)
+    if not loc or not WEAPON_LOCS[loc] or classID ~= 2 or type(subID) ~= "number" then return nil end
+    local _, class = UnitClass("player")
+    local ok = class and CLASS_WEAPONS[class]
+    if not ok then return nil end
+    return ok[subID] == true
 end
 
 local function RewardEntry(qtype, i, isChoice)
@@ -1670,6 +1738,24 @@ Render = function(typeIt)
             for _, rw in ipairs(c.rewards) do if rw.choice then nChoices = nChoices + 1 end end
             if known < nChoices or best <= 0 or ties > 1 then bestIdx = nil end
         end
+        -- best weapon for your class among the choices (an upgrade, or one that fills an empty slot)
+        local bestWeapon
+        if Get("markBestWeapon") ~= false then
+            local bestScore, nChoice = 0, 0
+            for i, rw in ipairs(c.rewards) do
+                if rw.choice then
+                    nChoice = nChoice + 1
+                    if WeaponUsable(rw) == true then
+                        local d = UpgradeDelta(rw)
+                        if d then
+                            local score = (d == 0) and 1000 or d
+                            if score > bestScore then bestScore, bestWeapon = score, i end
+                        end
+                    end
+                end
+            end
+            if nChoice < 2 then bestWeapon = nil end
+        end
         for i, rw in ipairs(c.rewards) do
             used = i
             local b = RewardButton(i)
@@ -1686,7 +1772,13 @@ Render = function(typeIt)
             b.name:SetText(simple and "" or (rw.name or ""))
             b.bestSell = (bestIdx == i) or nil
             b.coin:SetShown(b.bestSell and true or false)
-            local delta = rw.choice and Get("markUpgrade") ~= false and UpgradeDelta(rw) or nil
+            local usable = (Get("markBestWeapon") ~= false) and WeaponUsable(rw) or nil
+            b.cantUse = (usable == false) or nil
+            b.bestWeapon = (bestWeapon == i) or nil
+            b.star:SetShown(b.bestWeapon and true or false)
+            b.icon:SetDesaturated(usable == false)
+            b.icon:SetAlpha(usable == false and 0.55 or 1)
+            local delta = rw.choice and usable ~= false and Get("markUpgrade") ~= false and UpgradeDelta(rw) or nil
             b.upDelta = delta
             b.up:SetShown(delta ~= nil)
             local q = rw.quality
@@ -1695,11 +1787,18 @@ Render = function(typeIt)
             if qc then b.name:SetTextColor(qc.r * 0.6, qc.g * 0.6, qc.b * 0.6) else b.name:SetTextColor(INK[1], INK[2], INK[3]) end
             local selected = rw.choice and state.choice == rw.index
             local r, g, bb = Accent()
-            b.sel:SetColorTexture(r, g, bb, selected and 0.45 or 0)
+            -- the chosen reward: a deep red brush stroke (the red of the scroll's headers), light text on it
+            b.sel:SetVertexColor(0.62, 0.1, 0.08, selected and 0.92 or 0)
+            if selected then b.name:SetTextColor(1, 0.95, 0.84) end
             -- chosen: bright frame and a check mark; a choosable one gets a faint frame
             local ea = selected and 1 or (rw.choice and 0.28 or 0)
-            for _, e in ipairs(b.edges) do e:SetColorTexture(selected and r or 0.3, selected and g or 0.2, selected and bb or 0.1, ea) end
+            for _, e in ipairs(b.edges) do e:SetColorTexture(selected and 0.45 or 0.3, selected and 0.06 or 0.2, selected and 0.05 or 0.1, ea) end
             b.check:SetShown(selected and true or false)
+            b.stamp:SetShown(selected and true or false)
+            -- keep the name clear of the stamp
+            b.name:ClearAllPoints()
+            b.name:SetPoint("LEFT", b.icon, "RIGHT", 6, 0)
+            b.name:SetPoint("RIGHT", selected and -40 or -4, 0)
             local col = (i - 1) % 2
             local rowI = math.floor((i - 1) / 2)
             b:ClearAllPoints()
@@ -2061,8 +2160,8 @@ _G.H3z0UI_LorekeeperCheck = function(say)
     say("Received " .. seen .. " window event(s), last: " .. tostring(lastEvent))
     say("Scroll shown: " .. tostring(panel and panel:IsShown() and true or false)
         .. "  Blizzard gossip frame shown: " .. tostring(_G.GossipFrame and _G.GossipFrame:IsShown() and true or false))
-    say("Other addons: TrueReticle=" .. tostring(loaded("TrueReticle")) .. " DynamicCam=" .. tostring(loaded("DynamicCam"))
-        .. " CombatMode=" .. tostring(loaded("CombatMode")) .. " ConsolePort=" .. tostring(loaded("ConsolePort")))
+    say("Other addons: CrosshairZ=" .. tostring(loaded("CrosshairZ")) .. " DynamicCam=" .. tostring(loaded("DynamicCam"))
+        .. " ConsolePort=" .. tostring(loaded("ConsolePort")))
     say("Last error: " .. tostring(lastErr or lkErr))
 end
 
@@ -2200,7 +2299,7 @@ function Lorekeeper.ShowSetup()
     for _, row in ipairs(setup.rows) do row:SetChecked(Get(row.key) and true or false) end
     setup:Show()
 end
-_G.H3z0UI_LorekeeperSetup = function() Lorekeeper.ShowSetup() end
+_G.H3z0UI_ShowLorekeeperSetup = function() Lorekeeper.ShowSetup() end
 
 ---------------------------------------------------------------------------
 -- The scroll is placed only with the Lorekeeper sliders in the H3z0 UI menu

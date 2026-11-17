@@ -569,11 +569,34 @@ end
 ---------------------------------------------------------------------------
 -- HELPER: Collect visible icons from viewer (stable order using layoutIndex)
 ---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+-- HELPER: "Hide Abilities You Can't Use in Your Current Form or Stance"
+-- An ability the game says cannot be used right now, for a reason other than missing
+-- resources, is left out of the row (a druid in cat form does not see the bear spells).
+-- Anything unclear (secret values, no forms, rogues' stealth) stays visible.
+---------------------------------------------------------------------------
+local FORM_SKIP_CLASS = { ROGUE = true }
+local function FormBlocked(icon)
+    if not GetNumShapeshiftForms or (GetNumShapeshiftForms() or 0) < 1 then return false end
+    local _, class = UnitClass("player")
+    if FORM_SKIP_CLASS[class] then return false end
+    if not (C_Spell and C_Spell.IsSpellUsable) or not icon.GetSpellID then return false end
+    local ok, spellID = pcall(icon.GetSpellID, icon)
+    if not ok or type(spellID) ~= "number" then return false end
+    if issecretvalue and issecretvalue(spellID) then return false end
+    local ok2, usable, noPower = pcall(C_Spell.IsSpellUsable, spellID)
+    if not ok2 then return false end
+    if issecretvalue and (issecretvalue(usable) or issecretvalue(noPower)) then return false end
+    return usable == false and not noPower
+end
+
 local function CollectIcons(viewer, trackerKey)
     local icons = {}
     if not viewer or not viewer.GetNumChildren then return icons end
 
     local numChildren = viewer:GetNumChildren()
+    local trackerSettings = trackerKey and GetTrackerSettings(trackerKey)
+    local formFilter = trackerSettings and trackerSettings.hideOutsideForm == true
     local kids = { viewer:GetChildren() }   -- 0.24.2: one call instead of one per child
     for i = 1, numChildren do
         local child = kids[i]
@@ -582,7 +605,14 @@ local function CollectIcons(viewer, trackerKey)
             -- Collect shown icons OR icons we previously hid, but only if they
             -- have an actual spell texture (skip empty Blizzard placeholder frames)
             if (child:IsShown() or child._ncdmHidden) and HasValidTexture(child) then
-                table.insert(icons, child)
+                if formFilter and FormBlocked(child) then
+                    -- left out of the row; kept as "ours to bring back" for when the form changes
+                    child._ncdmHidden = true
+                    pcall(child.SetAlpha, child, 0)
+                    pcall(child.ClearAllPoints, child)
+                else
+                    table.insert(icons, child)
+                end
             else
                 -- Clear our hidden flag on textureless frames so they aren't
                 -- perpetually re-collected; Blizzard will Show() them when ready
@@ -675,6 +705,8 @@ local function LayoutViewer(viewerName, trackerKey)
         local frameLevel = H3z0UICore:GetHUDFrameLevel(layerPriority)
         viewer:SetFrameLevel(frameLevel)
     end
+    -- above the action bars (they are MEDIUM too, so the bar borders were drawn over the icons)
+    if viewer.SetFrameStrata and viewer:GetFrameStrata() ~= "HIGH" then pcall(viewer.SetFrameStrata, viewer, "HIGH") end
 
     -- Check for vertical layout mode
     local layoutDirection = settings.layoutDirection or "HORIZONTAL"
@@ -1104,7 +1136,9 @@ local function HookViewer(viewerName, trackerKey)
         if NCDM.applying[trackerKey] then return end
 
         -- Skip expensive icon collection during combat for CPU efficiency
-        if InCombatLockdown() then return end
+        -- (a form or stance change with "Hide Abilities You Can't Use..." on is the one exception)
+        if InCombatLockdown() and not viewer.__ncdmFormPending then return end
+        viewer.__ncdmFormPending = nil
 
         -- Step 5: Check if Blizzard layout changed or settings changed
         local currentBlizzardCount = viewer.__ncdmBlizzardLayoutCount or 0
@@ -1186,7 +1220,21 @@ local function HookViewer(viewerName, trackerKey)
     layoutEventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
     layoutEventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
     layoutEventFrame:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
-    layoutEventFrame:SetScript("OnEvent", function()
+    layoutEventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+    layoutEventFrame:SetScript("OnEvent", function(_, event)
+        -- a form or stance change is the reason this option exists, so it also runs in combat
+        -- (only moves and fades the game's icons, nothing protected)
+        if event == "UPDATE_SHAPESHIFT_FORM" then
+            local ts = GetTrackerSettings(trackerKey)
+            if ts and ts.hideOutsideForm == true and viewer:IsShown() then
+                C_Timer.After(0.1, function()
+                    NCDM.settingsVersion[trackerKey] = (NCDM.settingsVersion[trackerKey] or 0) + 1
+                    viewer.__ncdmFormPending = true
+                    viewer.__ncdmEventFired = true
+                end)
+            end
+            return
+        end
         -- Skip during combat - layout will catch up when combat ends
         if InCombatLockdown() then return end
         -- Set flag for OnUpdate to check (no timer overhead)

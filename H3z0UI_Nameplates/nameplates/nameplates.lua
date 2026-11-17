@@ -70,14 +70,14 @@ NP.DEFAULT_COLORS = DEFAULT_COLORS
 
 local SETTING_DEFAULTS = {
     enabled = false, width = 150, height = 16, font = "global", nameSize = 11, textSize = 10,
-    showLevel = true, showHealth = true, showPercent = true, questMark = true, limitDistance = true, maxDistance = 40, castbar = true, castHeight = 16, castWidth = 0,
-    mythicColors = "instance", threat = true, arrows = true, friendly = true, rounded = true,
+    showLevel = true, showHealth = true, showPercent = true, questMark = true, limitDistance = true, maxDistance = 60, castbar = true, castHeight = 16, castWidth = 0,
+    mythicColors = "instance", threat = true, arrows = true, friendly = true, npcIcons = true, rounded = true,
     targetScale = 1.1, matchPlayer = false, unitFrameColors = true,
     instClassColors = true, instNamesOnly = true, mythicNamesOnly = true, interruptReady = true,
     friendlyNamesOnly = true, showAbsorbs = true,
     -- 0.27.5 extras (all off or neutral by default)
     castOffsetX = 0, castTimeShow = true, castNameShow = true, castGap = 3, castIconSide = "left", castIconSize = 0, castTextSize = 0, nameGap = 3,
-    auras = "off", auraMax = 6, auraSize = 18, auraPandemic = true, auraDispel = false,
+    auras = "off", auraMax = 6, auraSize = 18, auraX = 0, auraY = 0, questX = 0, questY = 0, questSize = 0, npcTitles = true, npcTitleSize = 0, auraPandemic = true, auraDispel = false,
     focusScale = 1, nonTargetAlpha = 1, castScale = 1, classScale = false,
 }
 local cachedS     -- 0.24.2: the settings table once its defaults are filled in
@@ -175,6 +175,9 @@ local function MythicColorsOn()
     if not s then return false end
     if s.mythicColors == "always" then return true end
     if s.mythicColors == "off" then return false end
+    -- WoW: Forever and Classic have no Mythic dungeons: enemies keep the same colours inside
+    -- dungeons as outside (choose Always to have the mob-type colours everywhere)
+    if ns.Client and ns.Client.isLegacy then return false end
     return InGroupContent()
 end
 
@@ -575,6 +578,9 @@ end
 
 local function Create(namePlate)
     local p = CreateFrame("Frame", nil, namePlate)
+    -- the lowest layer: nameplates are drawn behind the interface (action bars, spells, windows)
+    -- and not over it when a mob stands at the bottom of the screen
+    p:SetFrameStrata("BACKGROUND")
     p:SetAllPoints(namePlate)
     p:EnableMouse(false)
     p.h3zNPOwn = true
@@ -1072,6 +1078,28 @@ end
 
 -- Quest marker: a gold "!" at the left of the bar for units you need for a quest.
 -- true / false when the game can tell; nil when it cannot (then nothing is shown).
+-- The hidden scan tooltip (SetUnit on our own GameTooltip) makes the game fill its health bar from
+-- inside our code, which is tainted and meets secret health values: that threw hundreds of errors.
+-- Clients that have C_TooltipInfo never need it, so it is only used on clients without it.
+local USE_SCAN_TIP = not (_G.C_TooltipInfo and _G.C_TooltipInfo.GetUnit)
+
+-- A hidden scan tooltip still has the game's health bar. SetUnit fills it from our (tainted) code and
+-- the game's bar script then compares a secret health value: "attempt to compare local 'value'".
+-- The bar of a scan tooltip is never seen, so its scripts are taken off.
+local function QuietScanTip(tip)
+    if not tip or tip.h3zQuiet then return end
+    tip.h3zQuiet = true
+    local name = tip.GetName and tip:GetName()
+    local bar = tip.StatusBar or (name and _G[name .. "StatusBar"])
+    if bar then
+        pcall(bar.SetScript, bar, "OnValueChanged", nil)
+        pcall(bar.SetScript, bar, "OnEvent", nil)
+        pcall(bar.SetScript, bar, "OnUpdate", nil)
+        if bar.UnregisterAllEvents then pcall(bar.UnregisterAllEvents, bar) end
+        pcall(bar.Hide, bar)
+    end
+end
+
 local function IsQuestUnit(unit)
     -- a yes from any source is final; a no is not (a client can know the call but not fill it
     -- in), so every source is asked before the answer is no
@@ -1100,12 +1128,13 @@ local function IsQuestUnit(unit)
         end
     end
     -- older client: read the unit's tooltip for quest progress lines (3/8, 40%)
-    if _G.CreateFrame then
+    if USE_SCAN_TIP and _G.CreateFrame then
         local tip = _G.H3z0UIQuestScan
         if not tip then
             local ok, t = pcall(CreateFrame, "GameTooltip", "H3z0UIQuestScan", UIParent, "GameTooltipTemplate")
             if ok then tip = t end
         end
+        QuietScanTip(tip)
         if tip and tip.SetUnit then
             tip:SetOwner(UIParent, "ANCHOR_NONE")
             local ok = pcall(tip.SetUnit, tip, unit)
@@ -1151,7 +1180,7 @@ local function QuestDone(unit)
             end
         end
     end
-    if not seen then
+    if not seen and USE_SCAN_TIP then
         local tip = _G.H3z0UIQuestScan
         if tip and tip.NumLines and tip.SetUnit then
             tip:SetOwner(UIParent, "ANCHOR_NONE")
@@ -1208,23 +1237,28 @@ local function UpdateQuestMark(p)
     -- above the name: a gold ! while the quest still needs this unit, a green tick when its
     -- objective is full
     if want then
-        local size = (DB().nameSize or 11) + 7
+        local s = DB()
+        local size = math.max(6, (s.nameSize or 11) + 7 + (tonumber(s.questSize) or 0))
+        local qx, qy = tonumber(s.questX) or 0, tonumber(s.questY) or 0
         if not p.questMark then
             local m = p:CreateFontString(nil, "OVERLAY", nil, 7)
-            m:SetFont(FontPath(DB().font), size, "THICKOUTLINE")
-            m:SetPoint("BOTTOM", p.name, "TOP", 0, 2)
+            m:SetFont(FontPath(s.font), size, "THICKOUTLINE")
             m:SetText("!")
             m:SetTextColor(1, 0.82, 0.1, 1)
             p.questMark = m
         end
-        p.questMark:SetFont(FontPath(DB().font), size, "THICKOUTLINE")
+        p.questMark:SetFont(FontPath(s.font), size, "THICKOUTLINE")
+        -- beside the name by default; the Quest Marker sliders move it from there
+        p.questMark:ClearAllPoints()
+        p.questMark:SetPoint("RIGHT", p.name, "LEFT", -3 + qx, qy)
         if not p.questTick then
             local t = p:CreateTexture(nil, "OVERLAY", nil, 7)
             t:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
             t:SetVertexColor(0.2, 1, 0.3, 1)
-            t:SetPoint("BOTTOM", p.name, "TOP", 0, 0)
             p.questTick = t
         end
+        p.questTick:ClearAllPoints()
+        p.questTick:SetPoint("RIGHT", p.name, "LEFT", -3 + qx, qy)
         p.questTick:SetSize(size + 6, size + 6)
         p.questMark:SetShown(not done)
         p.questTick:SetShown(done)
@@ -1255,6 +1289,12 @@ OnAdded = function(unit)
     local np = C_NamePlate.GetNamePlateForUnit(unit)
     if not np or (np.IsForbidden and np:IsForbidden()) then skipWhy[unit] = "the game locks this plate" return end
     local s = DB()
+    -- Midnight: the NPC title under the game's own friendly name, whatever the friendly settings
+    -- (only where the game's plate is the one shown: names only, or H3z0 friendly plates off)
+    if not (ns.Client and ns.Client.isLegacy) and not Bool(UnitCanAttack("player", unit)) and NP.ShowTitleTag
+        and (s.friendlyNamesOnly or not s.friendly) then
+        pcall(NP.ShowTitleTag, np, unit)
+    end
     if not s.friendly and not Bool(UnitCanAttack("player", unit)) then skipWhy[unit] = "friendly plates are off" return end
     -- friendly units show only their name in their class colour: the game's own names-only
     -- plate (set up in ApplyInstanceFriendly) is left alone. Forever and Classic have no
@@ -1339,13 +1379,27 @@ function NP.ApplyDistance()
     distPending = false
     local s = DB()
     if not s then return end
+    -- 0.28.4: 40 yards was too short; a distance still at the old default moves to the new 60 once
+    if not s.distV2 then
+        s.distV2 = true
+        if s.maxDistance == nil or s.maxDistance == 40 then s.maxDistance = 60 end
+    end
     local function get(n) if C_CVar and C_CVar.GetCVar then return C_CVar.GetCVar(n) end return GetCVar and GetCVar(n) end
     local function set(n, v) if C_CVar and C_CVar.SetCVar then pcall(C_CVar.SetCVar, n, v) else pcall(SetCVar, n, v) end end
+    -- Test builds 48 to 50 changed the game's nameplate size / fade / line-of-sight values and noted the
+    -- originals. Put those originals back once, so plates are not left too small.
+    for _, key in ipairs({ "savedOccluded", "savedFarSize" }) do
+        local saved = s[key]
+        if type(saved) == "table" then
+            for cv, v in pairs(saved) do set(cv, v) end
+            s[key] = nil
+        end
+    end
     local cur = get("nameplateMaxDistance")
     if cur == nil then return end
     if s.limitDistance ~= false then
         if s.savedDistance == nil then s.savedDistance = cur end
-        local want = tostring(math.max(10, math.min(100, tonumber(s.maxDistance) or 40)))
+        local want = tostring(math.max(10, math.min(100, tonumber(s.maxDistance) or 60)))
         if cur ~= want then set("nameplateMaxDistance", want) end
     elseif s.savedDistance ~= nil then
         set("nameplateMaxDistance", s.savedDistance)
@@ -1353,6 +1407,89 @@ function NP.ApplyDistance()
     end
 end
 function NP.DistancePending() return distPending end
+
+-- Icon above the name of a friendly NPC that offers a service (flight master, innkeeper, banker,
+-- auctioneer, trainer, vendor ...). The kind is read from the line under the NPC's name in its tooltip.
+local NPC_ICON_PATH = "Interface\\Minimap\\Tracking\\"
+local NPC_KINDS = {
+    { "flight master", "FlightMaster" }, { "wind rider", "FlightMaster" }, { "gryphon", "FlightMaster" },
+    { "hippogryph", "FlightMaster" }, { "bat handler", "FlightMaster" }, { "flight", "FlightMaster" },
+    { "innkeeper", "Innkeeper" }, { "banker", "Banker" }, { "auctioneer", "Auctioneer" },
+    { "stable master", "StableMaster" }, { "battlemaster", "Battlemaster" },
+    { "reagent", "Reagents" }, { "poison", "Poisons" },
+    { "food", "Food" }, { "drink", "Food" }, { "baker", "Food" }, { "cook", "Food" },
+    { "trainer", "Class" },
+    { "armor", "Repair" }, { "weapon", "Repair" }, { "smith", "Repair" }, { "merchant", "Repair" },
+    { "vendor", "Repair" }, { "supplies", "Repair" }, { "goods", "Repair" },
+}
+local npcKindCache = {}
+local scanTip
+-- the NPC's title is the line under its name ("Wind Rider Master", "Reagents and Herbs"), unless
+-- that line is the level line (NPCs without a title)
+local levelPattern
+local function IsLevelLine(text)
+    if not levelPattern then
+        local fmt = type(_G.TOOLTIP_UNIT_LEVEL) == "string" and _G.TOOLTIP_UNIT_LEVEL or "Level %s"
+        local p = fmt:gsub("([%(%)%.%+%-%*%?%[%]%^%$])", "%%%1")
+        p = p:gsub("%%s", ".*")
+        p = p:gsub("%%d", "%%d+")
+        levelPattern = "^" .. p
+    end
+    return text:find(levelPattern) ~= nil or text:lower():find("^level") ~= nil
+end
+local function ReadLines(unit)
+    local out = {}
+    if _G.C_TooltipInfo and _G.C_TooltipInfo.GetUnit then
+        local ok, data = pcall(_G.C_TooltipInfo.GetUnit, unit)
+        if ok and type(data) == "table" and type(data.lines) == "table" then
+            for i = 2, 3 do
+                local line = data.lines[i]
+                local text = line and line.leftText
+                out[i] = (type(text) == "string" and not S(text)) and text or false
+            end
+            return out
+        end
+    end
+    if not scanTip then
+        scanTip = CreateFrame("GameTooltip", "H3z0NPCScanTip", UIParent, "GameTooltipTemplate")
+        scanTip:SetOwner(UIParent, "ANCHOR_NONE")
+        QuietScanTip(scanTip)
+    end
+    scanTip:ClearLines()
+    scanTip:SetOwner(UIParent, "ANCHOR_NONE")
+    if not pcall(scanTip.SetUnit, scanTip, unit) then return nil end
+    for i = 2, 3 do
+        local fs = _G["H3z0NPCScanTipTextLeft" .. i]
+        local text = fs and fs:GetText()
+        out[i] = (type(text) == "string" and not S(text)) and text or false
+    end
+    return out
+end
+-- returns the service kind (for the icon) and the title, both cached by NPC name
+local function NPCInfo(unit)
+    local name = UnitName(unit)
+    if not name or S(name) then return nil end
+    local cached = npcKindCache[name]
+    if cached then return cached.kind, cached.title end
+    local lines = ReadLines(unit)
+    if not lines then return nil end
+    local kind, title
+    for i = 2, 3 do
+        local text = lines[i]
+        if text then
+            local low = text:lower()
+            for _, k in ipairs(NPC_KINDS) do
+                if low:find(k[1], 1, true) then kind = k[2] break end
+            end
+            if kind then break end
+        end
+    end
+    local t2 = lines[2]
+    if t2 and not IsLevelLine(t2) and not t2:find("|", 1, true) then title = t2 end
+    npcKindCache[name] = { kind = kind, title = title }
+    return kind, title
+end
+local function NPCKind(unit) return (NPCInfo(unit)) end
 
 -- Forever / Classic friendly name tag: only the name (players in their class colour, NPCs in the
 -- friendly green), in the H3z0 nameplate font, in place of the game's own friendly plate
@@ -1382,10 +1519,80 @@ function NP.ShowNameTag(np, unit)
     end
     tag.text:SetTextColor(r, g, b, 1)
     pcall(tag.text.SetText, tag.text, UnitName(unit))
+    -- service icon above the name, and the NPC's title under it (NPCs only)
+    local kind, title
+    if not Bool(UnitIsPlayer(unit)) and (s.npcIcons ~= false or s.npcTitles ~= false) then
+        kind, title = NPCInfo(unit)
+        if s.npcIcons == false then kind = nil end
+        if s.npcTitles == false then title = nil end
+    end
+    if title then
+        if not tag.title then
+            tag.title = tag:CreateFontString(nil, "OVERLAY")
+            tag.title:SetPoint("TOP", tag.text, "BOTTOM", 0, -1)
+            tag.title:SetJustifyH("CENTER")
+            tag.title:SetWordWrap(false)
+        end
+        tag.title:SetFont(FontPath(s.font), math.max(6, (s.nameSize or 11) - 2 + (tonumber(s.npcTitleSize) or 0)), "OUTLINE")
+        tag.title:SetTextColor(0.92, 0.92, 0.92, 1)
+        tag.title:SetText(title)
+        tag.title:Show()
+    elseif tag.title then
+        tag.title:Hide()
+    end
+    if kind then
+        if not tag.icon then
+            tag.icon = tag:CreateTexture(nil, "OVERLAY")
+            tag.icon:SetSize(20, 20)
+            tag.icon:SetPoint("BOTTOM", tag.text, "TOP", 0, 2)
+        end
+        tag.icon:SetTexture(NPC_ICON_PATH .. kind)
+        tag.icon:Show()
+    elseif tag.icon then
+        tag.icon:Hide()
+    end
     HideBlizzard(np.UnitFrame, true, false)
     tag.unit = unit
     tag:Show()
     nameTags[unit] = np
+end
+
+-- Midnight: friendly plates are the game's own names-only plates. Out in the world they are open
+-- to addons, so the NPC's title is added under the game's name (in dungeons and raids the game
+-- locks friendly plates, so no title there).
+local titleTags = {}
+function NP.ShowTitleTag(np, unit)
+    local s = DB()
+    if s.npcTitles == false or Bool(UnitIsPlayer(unit)) then return end
+    if np.IsForbidden and np:IsForbidden() then return end
+    local _, title = NPCInfo(unit)
+    if not title then return end
+    local fs = np.h3zTitle
+    if not fs then
+        fs = np:CreateFontString(nil, "OVERLAY")
+        fs:SetJustifyH("CENTER")
+        fs:SetWordWrap(false)
+        np.h3zTitle = fs
+    end
+    local uf = np.UnitFrame
+    local name = uf and (uf.name or uf.Name)
+    fs:ClearAllPoints()
+    if name and name.GetObjectType and name:GetObjectType() == "FontString" then
+        fs:SetPoint("TOP", name, "BOTTOM", 0, -1)
+    else
+        fs:SetPoint("TOP", np, "CENTER", 0, -6)
+    end
+    fs:SetFont(FontPath(s.font), math.max(6, (s.nameSize or 11) - 2 + (tonumber(s.npcTitleSize) or 0)), "OUTLINE")
+    fs:SetTextColor(0.92, 0.92, 0.92, 1)
+    fs:SetText(title)
+    fs:Show()
+    titleTags[unit] = np
+end
+local function HideTitleTag(unit)
+    local np = titleTags[unit]
+    if not np then return end
+    titleTags[unit] = nil
+    if np.h3zTitle then np.h3zTitle:Hide() end
 end
 
 local function HideNameTag(unit)
@@ -1401,6 +1608,7 @@ end
 
 local function OnRemoved(unit)
     HideNameTag(unit)
+    HideTitleTag(unit)
     local p = plates[unit]
     if not p then return end
     plates[unit] = nil
@@ -1413,6 +1621,7 @@ end
 
 local function RestoreAll()
     for unit in pairs(nameTags) do HideNameTag(unit) end
+    for unit in pairs(titleTags) do HideTitleTag(unit) end
     for unit in pairs(plates) do OnRemoved(unit) end
     for np in pairs(pool) do
         if np.UnitFrame then HideBlizzard(np.UnitFrame, false, false) end
@@ -1432,6 +1641,9 @@ function NP.Refresh()
     end
 end
 _G.H3z0UI_RefreshPlates = NP.Refresh
+-- the font menu ("used everywhere") and other settings call this name
+_G.H3z0UI_RefreshNameplates = NP.Refresh
+ns.H3z0UI_RefreshNameplates = NP.Refresh
 
 function NP.Toggle()
     local s = DB()
@@ -1457,13 +1669,99 @@ local PREVIEW_UNITS = {
 }
 local PREVIEW_CAST_TIME = 2.5
 
+-- sample debuff icons for the preview (same look as the real ones: dark border, count, timer)
+local PREVIEW_AURAS = { 136207, 132337, 136122 }
+
+local function PreviewHit(p, target, optKey, label)
+    local holder = p.fake:GetParent()
+    local b = CreateFrame("Button", nil, holder)
+    b:SetAllPoints(target)
+    b:SetFrameLevel(p:GetFrameLevel() + 30)
+    b.hl = b:CreateTexture(nil, "OVERLAY")
+    b.hl:SetColorTexture(0.2, 0.8, 1, 0.22)
+    b.hl:SetAllPoints()
+    b.hl:Hide()
+    b.optKey, b.label = optKey, label
+    b:SetScript("OnEnter", function(self)
+        local f = holder:GetParent()
+        if not (f and f.interactive) then return end
+        self.hl:Show()
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(self.label)
+        GameTooltip:AddLine("Click to jump to this setting", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function(self) self.hl:Hide(); GameTooltip:Hide() end)
+    b:SetScript("OnClick", function(self)
+        local f = holder:GetParent()
+        if f and f.interactive and f.onPick then f.onPick(self.optKey) end
+    end)
+    return b
+end
+
 local function PreviewPlate(holder, info)
     local fake = CreateFrame("Frame", nil, holder)
     fake:SetSize(1, 1)
     local p = Create(fake)
     pool[fake] = nil          -- not a real nameplate: the live code never touches it
+    -- the real plates sit on the lowest layer (behind the interface); the preview is part of
+    -- the options window and has to be drawn with it
+    p:SetFrameStrata(holder:GetFrameStrata())
     p.info = info
     p.fake = fake
+
+    -- debuff icons above the name, as on a real plate
+    p.pvAuras = CreateFrame("Frame", nil, p)
+    p.pvAuras:SetFrameLevel(p:GetFrameLevel() + 10)
+    p.pvAuras.icons = {}
+    for i, tex in ipairs(PREVIEW_AURAS) do
+        local ic = CreateFrame("Frame", nil, p.pvAuras)
+        ic.bg = ic:CreateTexture(nil, "BACKGROUND")
+        ic.bg:SetPoint("TOPLEFT", -1, 1); ic.bg:SetPoint("BOTTOMRIGHT", 1, -1)
+        ic.bg:SetColorTexture(0, 0, 0, 1)
+        ic.tex = ic:CreateTexture(nil, "ARTWORK")
+        ic.tex:SetAllPoints()
+        ic.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        ic.tex:SetTexture(tex)
+        ic.time = ic:CreateFontString(nil, "OVERLAY")
+        ic.time:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+        ic.time:SetPoint("CENTER", 0, 0)
+        ic.time:SetText(i == 1 and "24" or (i == 2 and "9" or "15"))
+        if i == 2 then
+            ic.count = ic:CreateFontString(nil, "OVERLAY")
+            ic.count:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+            ic.count:SetPoint("BOTTOMRIGHT", 1, 0)
+            ic.count:SetText("3")
+        end
+        p.pvAuras.icons[i] = ic
+    end
+
+    -- gold quest mark beside the name
+    p.pvQuest = p:CreateFontString(nil, "OVERLAY", nil, 7)
+    p.pvQuest:SetFont(STANDARD_TEXT_FONT, 16, "THICKOUTLINE")
+    p.pvQuest:SetText("!")
+    p.pvQuest:SetTextColor(1, 0.82, 0.1, 1)
+
+    -- click areas: every part of the plate jumps to its setting
+    p.hits = {}
+    for _, h in ipairs({
+        { "name", "nameSize", "Name" },
+        { "border", "height", "Health bar (width, height)" },
+        { "hpText", "textSize", "Health text" },
+        { "pctText", "showPercent", "Health percent" },
+        { "pvAuras", "auraSize", "Debuff icons" },
+        { "pvQuest", "questMark", "Quest mark" },
+        { "castBorder", "castHeight", "Cast bar" },
+        { "castIcon", "castIconSide", "Cast icon" },
+        { "arrowL", "arrows", "Target arrows" },
+        { "arrowR", "arrows", "Target arrows" },
+    }) do
+        local target = p[h[1]]
+        if target then
+            local ok, hit = pcall(PreviewHit, p, target, h[2], h[3])
+            if ok then p.hits[#p.hits + 1] = hit end
+        end
+    end
     return p
 end
 
@@ -1486,6 +1784,28 @@ local function PreviewApply(p)
     else
         p.name:SetText(info.name)
     end
+    -- debuff icons (only when the Auras setting is on), quest mark (only when it is on)
+    local size = tonumber(s.auraSize) or 18
+    local nAura = math.min(#PREVIEW_AURAS, tonumber(s.auraMax) or 6)
+    local auraOn = s.auras ~= nil and s.auras ~= "off"
+    p.pvAuras:ClearAllPoints()
+    -- same spot as the live row: left edge of the bar, above the name, moved by the two position sliders
+    local nameH = (p.name:IsShown() and p.name.GetStringHeight and p.name:GetStringHeight()) or 12
+    if type(nameH) ~= "number" or nameH <= 0 or nameH > 60 then nameH = 12 end
+    p.pvAuras:SetPoint("BOTTOMLEFT", p.border, "TOPLEFT", tonumber(s.auraX) or 0, nameH + 6 + (tonumber(s.auraY) or 0))
+    p.pvAuras:SetSize(math.max(1, nAura * (size + 2)), size)
+    p.pvAuras:SetShown(auraOn)
+    for i, ic in ipairs(p.pvAuras.icons) do
+        ic:ClearAllPoints()
+        ic:SetSize(size, size)
+        ic:SetPoint("LEFT", p.pvAuras, "LEFT", (i - 1) * (size + 2), 0)
+        ic:SetShown(i <= nAura)
+    end
+    p.pvQuest:SetFont(FontPath(s.font), math.max(6, (s.nameSize or 11) + 7 + (tonumber(s.questSize) or 0)), "THICKOUTLINE")
+    p.pvQuest:ClearAllPoints()
+    p.pvQuest:SetPoint("RIGHT", p.name, "LEFT", -3 + (tonumber(s.questX) or 0), tonumber(s.questY) or 0)
+    p.pvQuest:SetShown(info.target and s.questMark ~= false)
+    p.pvAuraOn = auraOn
     p.isTarget = info.target or false
     p.threat = info.threat
     p.h3zBorderKey = nil
@@ -1507,9 +1827,10 @@ local function PreviewApply(p)
     end
 end
 
-function NP.CreatePreview(parent)
+function NP.CreatePreview(parent, opts)
     local f = CreateFrame("Frame", nil, parent)
-    f:SetHeight(150)
+    f:SetHeight((opts and opts.height) or 150)
+    f.interactive = opts and opts.interactive or false
     local Round = ns.Round
     if Round and Round.Panel then
         f.bg = Round.Panel(f, 8)
@@ -1529,6 +1850,13 @@ function NP.CreatePreview(parent)
     f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -7)
     f.title:SetTextColor(0.75, 0.78, 0.82, 1)
     f.title:SetText("Live Preview")
+    if f.interactive then
+        f.hint = f:CreateFontString(nil, "OVERLAY")
+        f.hint:SetFont(FontPath("global"), 10, "OUTLINE")
+        f.hint:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -8)
+        f.hint:SetTextColor(0.55, 0.75, 0.9, 1)
+        f.hint:SetText("Click any part of a plate to jump to its setting")
+    end
 
     -- the plates sit in a holder that is scaled down when they don't fit
     f.holder = CreateFrame("Frame", nil, f)
@@ -1553,14 +1881,15 @@ function NP.CreatePreview(parent)
         local castW = tonumber(s.castWidth) or 0
         if castW > 0 then need = math.max(need, castW + s.castHeight + 30) end
         local scale = math.min(1, colW / need)
-        local tall = s.nameSize + 6 + s.height * sc + (s.castbar and (s.castHeight + 6) or 0)
-        scale = math.min(scale, 118 / tall)
+        local auraH = (s.auras ~= nil and s.auras ~= "off") and ((tonumber(s.auraSize) or 18) + 4) or 0
+        local tall = s.nameSize + 6 + auraH + s.height * sc + (s.castbar and (s.castHeight + 6) or 0)
+        scale = math.min(scale, (self:GetHeight() - 32) / tall)
         self.holder:SetScale(scale)
         self.holder:ClearAllPoints()
         self.holder:SetPoint("TOPLEFT", self, "TOPLEFT", 0, -18)
         self.holder:SetSize(w / scale, (self:GetHeight() - 18) / scale)
         local hw, hh = w / scale, (self:GetHeight() - 18) / scale
-        local midY = -(s.nameSize + 4 + (s.height * sc) / 2) - (hh - tall) / 2
+        local midY = -(s.nameSize + 4 + auraH + (s.height * sc) / 2) - (hh - tall) / 2
         for i, p in ipairs(self.plates) do
             p.fake:ClearAllPoints()
             p.fake:SetPoint("CENTER", self.holder, "TOPLEFT", hw * (i == 1 and 0.25 or 0.75), midY)

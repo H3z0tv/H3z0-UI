@@ -67,6 +67,33 @@ local function Queue()
     C_Timer.After(0.2, function() queued = false; Apply() end)
 end
 
+-- the game's controller UI (Forever) switched on or off: bars follow
+do
+    local gp = CreateFrame("Frame")
+    for _, e in ipairs({ "GAME_PAD_ACTIVE_CHANGED", "GAME_PAD_CONNECTED", "GAME_PAD_DISCONNECTED", "CVAR_UPDATE" }) do
+        pcall(gp.RegisterEvent, gp, e)
+    end
+    gp:SetScript("OnEvent", function(_, event, name)
+        if event == "CVAR_UPDATE" and not (type(name) == "string" and name:lower():find("gamepad", 1, true)) then return end
+        Queue()
+    end)
+end
+
+C_Timer.After(3, function()
+    local sp = _G.SettingsPanel
+    if sp and sp.HookScript then sp:HookScript("OnHide", Queue) end
+    -- the setting itself can change without an event: check now and then (cheap, out of combat only)
+    local t = CreateFrame("Frame")
+    local acc, last = 0, nil
+    t:SetScript("OnUpdate", function(_, el)
+        acc = acc + el
+        if acc < 1 then return end
+        acc = 0
+        local v = ShouldHide()
+        if v ~= last then last = v; Queue() end
+    end)
+end)
+
 -- after H3z0 UI rebuilds its bars, and when Layout Mode closes
 do
     local owned = Owned()

@@ -28,11 +28,14 @@ local DEFAULTS = {
     fitOptionsWindow = true,  -- Shrink the settings window so it fits the screen
     setupPrompted = false,    -- Steam Deck setup popup: answered (Apply / Don't ask again)
     deckUnitFrames = true,    -- Use the Steam Deck unit frame layout (handheld_layout.lua) while enabled
-    pcController = false,     -- PC Controller: PC layout, but ConsolePort on / True Reticle off
+    pcController = false,     -- PC Controller: PC layout, but ConsolePort on / Crosshair Z off
     pcHandheld = false,       -- PC Handheld: Steam Deck HUD + Deck layout + ConsolePort, but your PC UI scale
     deckChoice = false,       -- menu mirror: Steam Deck (Handheld Mode with the handheld scale) is on
     targetRing = true,        -- keep the game's ring under the target on in the controller modes
     hideBarsWithConsolePort = true, -- controller modes + ConsolePort bars: H3z0 UI action bars 1-3 hidden
+    gamepadUI = false,        -- 0.28.5 (Forever): Controller mode with the game's own controller UI (no ConsolePort)
+    hideBarsWithGamepadUI = true, -- game's controller UI active: H3z0 UI action bars 1-3 hidden
+    gamepadAsked = false,     -- the "controller found" popup was answered
 }
 
 local Handheld = {}
@@ -550,7 +553,7 @@ function Handheld.ShowSetupPopup()
 end
 
 ---------------------------------------------------------------------------
--- Deck switch: True Reticle off, ConsolePort on, Edit Mode layout "H3z0 Deck"
+-- Deck switch: Crosshair Z off, ConsolePort on, Edit Mode layout "H3z0 Deck"
 -- What was active before is saved in c.deckSwap and put back when Handheld
 -- Mode is turned off again.
 ---------------------------------------------------------------------------
@@ -562,8 +565,10 @@ local function Clean(str)
     return str:lower():gsub("[%s_%-%.]", "")
 end
 
--- True Reticle (folder "TrueReticle") is the action-camera addon H3z0 UI works with
-local TRUE_RETICLE_KEYS = { truereticle = true }
+-- Crosshair Z (folder "CrosshairZ") is the action-camera addon H3z0 UI works with
+local function IsActionCombatKey(k)
+    return k:sub(1, 10) == "crosshairz" or k == "truereticle"
+end
 
 -- Folder names of installed addons matching a key ("actioncombat", "consoleport")
 local function FindAddOns(key, exactOnly)
@@ -575,7 +580,7 @@ local function FindAddOns(key, exactOnly)
             if C_AddOns and C_AddOns.GetAddOnInfo then name, title = C_AddOns.GetAddOnInfo(i) else name, title = GetAddOnInfo(i) end
             if name then
                 local n, t = Clean(name), Clean(title)
-                if TRUE_RETICLE_KEYS[n] or TRUE_RETICLE_KEYS[t] then
+                if IsActionCombatKey(n) or IsActionCombatKey(t) then
                     found[#found + 1] = name
                 end
             end
@@ -693,8 +698,8 @@ end
 
 local function Say(msg) print("|cff34D399H3z0 UI:|r " .. msg) end
 
--- Controller addons: ConsolePort on + True Reticle off (controller = true),
--- or the mouse / keyboard set (True Reticle on + ConsolePort off).
+-- Controller addons: ConsolePort on + Crosshair Z off (controller = true),
+-- or the mouse / keyboard set (Crosshair Z on + ConsolePort off).
 -- Returns true when an addon was switched (needs a reload).
 local function ApplyAddonSet(controller)
     local changed, switched = false, {}
@@ -835,7 +840,10 @@ end
 -- action bars 1-3 step aside (ConsolePort's bar replaces them)
 _G.H3z0UI_ShouldHideBarsForConsole = function()
     local c = Cfg()
-    if not c or c.hideBarsWithConsolePort == false then return false end
+    if not c then return false end
+    -- Forever: the game's own controller UI brings its own action bars
+    if Handheld.IsForever() and c.hideBarsWithGamepadUI ~= false and Handheld.GamepadUIActive() then return true end
+    if c.hideBarsWithConsolePort == false then return false end
     if not (c.enabled or c.pcHandheld or c.pcController) then return false end
     return Handheld.ConsolePortBarsActive()
 end
@@ -849,6 +857,241 @@ function Handheld.ApplyDataOnly()
     if not ok then geterrorhandler()(err) end
 end
 
+---------------------------------------------------------------------------
+-- 0.28.5 (WoW: Forever): Controller mode with the game's own controller UI.
+-- The game draws its own controller action bars, so H3z0 UI's bars 1-3 step aside
+-- while it is active. ConsolePort and Crosshair Z are switched off for this mode.
+---------------------------------------------------------------------------
+function Handheld.IsForever()
+    return (ns.Client and ns.Client.isForever) and true or false
+end
+
+local function GetCVarSafe(name)
+    if not (C_CVar and C_CVar.GetCVar) then return nil end
+    local ok, v = pcall(C_CVar.GetCVar, name)
+    if ok then return v end
+end
+
+-- The game's own "Enable Gamepad UI (Beta)" checkbox (Options > Gameplay > Gamepad). Its variable name
+-- is not documented, so it is found by its label in the game's options and used through that setting.
+local gpSetting
+local function FindGamepadUISetting()
+    if gpSetting then return gpSetting end
+    local panel = _G.SettingsPanel
+    if not (panel and panel.GetAllCategories and panel.GetLayout) then return nil end
+    local okc, cats = pcall(panel.GetAllCategories, panel)
+    if not okc or type(cats) ~= "table" then return nil end
+    local function Check(cat, depth)
+        if depth > 3 or not cat then return false end
+        local okl, layout = pcall(panel.GetLayout, panel, cat)
+        if okl and layout and layout.GetInitializers then
+            local oki, inits = pcall(layout.GetInitializers, layout)
+            if oki and type(inits) == "table" then
+                for _, init in ipairs(inits) do
+                    local st
+                    if init.GetSetting then
+                        local ok, v = pcall(init.GetSetting, init)
+                        if ok then st = v end
+                    end
+                    st = st or (type(init.data) == "table" and init.data.setting) or nil
+                    local name
+                    if st and st.GetName then
+                        local ok, v = pcall(st.GetName, st)
+                        if ok then name = v end
+                    end
+                    name = name or (type(init.data) == "table" and init.data.name) or nil
+                    if st and type(name) == "string" then
+                        local n = name:lower()
+                        if n:find("gamepad", 1, true) and n:find("ui", 1, true) and n:find("enable", 1, true) then
+                            gpSetting = st
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+        if cat.GetSubcategories then
+            local oks, subs = pcall(cat.GetSubcategories, cat)
+            if oks and type(subs) == "table" then
+                for _, sub in ipairs(subs) do
+                    if Check(sub, depth + 1) then return true end
+                end
+            end
+        end
+        return false
+    end
+    for _, cat in ipairs(cats) do
+        if Check(cat, 1) then break end
+    end
+    return gpSetting
+end
+Handheld.FindGamepadUISetting = FindGamepadUISetting
+
+function Handheld.GamepadUISettingInfo()
+    local st = FindGamepadUISetting()
+    if not st then return nil end
+    local name, var, value
+    pcall(function() name = st:GetName() end)
+    pcall(function() var = st.GetVariable and st:GetVariable() end)
+    pcall(function() value = st:GetValue() end)
+    return name, var, value
+end
+
+-- the game's controller UI is switched on right now
+function Handheld.GamepadUIActive()
+    local st = FindGamepadUISetting()
+    if not st then return false end
+    local ok, v = pcall(st.GetValue, st)
+    return ok and (v == true or v == 1 or v == "1") or false
+end
+
+-- tick or untick the game's "Enable Gamepad UI" box; false when it could not be found
+function Handheld.SetGameGamepadUI(on)
+    local st = FindGamepadUISetting()
+    if not st then return false end
+    local ok = pcall(st.SetValue, st, on and true or false)
+    return ok
+end
+
+-- a controller is plugged in
+function Handheld.ControllerConnected()
+    if C_GamePad and C_GamePad.GetAllDeviceIDs then
+        local ok, ids = pcall(C_GamePad.GetAllDeviceIDs)
+        if ok and type(ids) == "table" and #ids > 0 then return true end
+    end
+    if C_GamePad and C_GamePad.GetActiveDeviceID then
+        local ok, id = pcall(C_GamePad.GetActiveDeviceID)
+        if ok and id ~= nil then return true end
+    end
+    return false
+end
+
+local function ApplyGamepadAddonSet(on)
+    local changed = false
+    local function Want(name, want)
+        SetAddOn(name, want)
+        if IsLoaded(name) ~= want then changed = true end
+    end
+    for _, name in ipairs(Handheld.FindReticleAddOns()) do Want(name, not on) end
+    if on then
+        for _, name in ipairs(FindAddOns("consoleport")) do Want(name, false) end
+    end
+    return changed
+end
+
+function Handheld.SetGamepadUI(on, silent)
+    local c = Cfg()
+    if not c then return end
+    if not Handheld.IsForever() then
+        if on and not silent then Say("Controller (game UI) is only for WoW: Forever.") end
+        return
+    end
+    if InCombatLockdown() then
+        Say("Leave combat to switch the UI mode.")
+        return
+    end
+    on = on and true or false
+    if on then
+        -- only one controller mode at a time
+        c.pcController = false
+        if c.enabled then Handheld.SetEnabled(false, true) end
+        if not c.gamepadUI then c.gamepadPrevCVar = GetCVarSafe("GamePadEnable") end
+        c.gamepadUI = true
+        c.gamepadAsked = true
+        if GetCVarSafe("GamePadEnable") ~= "1" then pcall(C_CVar.SetCVar, "GamePadEnable", "1") end
+        if not Handheld.SetGameGamepadUI(true) then
+            Say("Could not find the game's Enable Gamepad UI option. Tick it yourself: Options > Gameplay > Gamepad (Beta) > Enable Gamepad UI (Beta).")
+        end
+    else
+        Handheld.SetGameGamepadUI(false)
+        if not c.gamepadUI then return end
+        c.gamepadUI = false
+        local prev = c.gamepadPrevCVar
+        c.gamepadPrevCVar = nil
+        if prev ~= nil and prev ~= "1" then pcall(C_CVar.SetCVar, "GamePadEnable", prev) end
+    end
+    local changed = ApplyGamepadAddonSet(on)
+    if _G.H3z0UI_ApplyConsoleBarHide then pcall(_G.H3z0UI_ApplyConsoleBarHide) end
+    if not silent then
+        Say("Controller (game UI) " .. (on and "|cff00ff00ON|r - the game's controller UI is used, action bars 1-3 are hidden while it is active." or "|cffff5555OFF|r - back to mouse and keyboard."))
+    end
+    return changed
+end
+
+-- Reload that works on Forever too: H3z0 UI's own reload (SafeReload), and if the game still did not
+-- reload, a Reload button made the Forever-safe way (it reloads on mouse-up, like the Reload UI button
+-- of the options window)
+function Handheld.ShowReloadConfirm(message)
+    local addon = _G.H3z0UI
+    if addon and addon.EnsureOptionsLoaded then pcall(addon.EnsureOptionsLoaded, addon) end
+    local GUI = addon and addon.GUI
+    if GUI and GUI.ShowConfirmation then
+        GUI:ShowConfirmation({
+            title = "UI Mode",
+            message = message or "The UI mode was switched. Reload the UI to finish.",
+            acceptText = "Reload UI",
+            cancelText = "Later",
+            reload = true,
+            onAccept = function()
+                if addon.SafeReload then addon:SafeReload() else ReloadUI() end
+            end,
+        })
+    else
+        print("|cff34D399H3z0 UI:|r type |cffffff00/reload|r to finish switching the UI mode.")
+    end
+end
+
+function Handheld.Reload()
+    local addon = _G.H3z0UI
+    if InCombatLockdown() then return end
+    if addon and addon.SafeReload then pcall(addon.SafeReload, addon) else pcall(ReloadUI) end
+    -- still here a moment later: the game did not allow it from this click
+    C_Timer.After(1, function() Handheld.ShowReloadConfirm() end)
+end
+
+-- "a controller was found" popup (Forever, asked once)
+ns.Popups["H3Z0UI_GAMEPAD_FOUND"] = {
+    text = "A controller was found.\n\nSwitch H3z0 UI to Controller mode? The game's own controller UI is used and H3z0 UI's action bars 1-3 are hidden while it is active. You can switch back from the UI Mode button on the bottom bar.\n\nThe UI reloads.",
+    button1 = "Switch",
+    button2 = "Not now",
+    OnAccept = function()
+        Handheld.SetGamepadUI(true, true)
+        Handheld.Reload()
+    end,
+    OnCancel = function()
+        local c = Cfg()
+        if c then c.gamepadAsked = true end
+    end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+}
+
+function Handheld.CheckControllerFound()
+    if not Handheld.IsForever() then return end
+    local c = Cfg()
+    if not c or c.gamepadUI or c.gamepadAsked or c.enabled or c.pcController then return end
+    if InCombatLockdown() then return end
+    if Handheld.ControllerConnected() or Handheld.GamepadUIActive() then
+        ns.ShowPopup("H3Z0UI_GAMEPAD_FOUND")
+    end
+end
+
+do
+    local gp = CreateFrame("Frame")
+    for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "GAME_PAD_CONNECTED", "GAME_PAD_ACTIVE_CHANGED", "GAME_PAD_DISCONNECTED", "CVAR_UPDATE" }) do
+        pcall(gp.RegisterEvent, gp, e)
+    end
+    gp:SetScript("OnEvent", function(_, event, name)
+        if event == "CVAR_UPDATE" and not (type(name) == "string" and name:lower():find("gamepad", 1, true)) then return end
+        if event == "PLAYER_ENTERING_WORLD" then
+            C_Timer.After(4, Handheld.CheckControllerFound)
+        elseif event == "GAME_PAD_CONNECTED" then
+            C_Timer.After(1, Handheld.CheckControllerFound)
+        end
+        -- the bars follow the game's controller UI right away (after combat if needed)
+        if _G.H3z0UI_ApplyConsoleBarHide then C_Timer.After(0.2, function() pcall(_G.H3z0UI_ApplyConsoleBarHide) end) end
+    end)
+end
+
 function Handheld.SetEnabled(on, silent, auto)
     local c = Cfg()
     if not c then return end
@@ -857,12 +1100,16 @@ function Handheld.SetEnabled(on, silent, auto)
         c.pcController = false
         if not silent then Say((c.pcHandheld and "PC Handheld" or "Steam Deck") .. " on - PC Controller turned off.") end
     end
+    if on and c.gamepadUI then
+        c.gamepadUI = false
+        ApplyGamepadAddonSet(false)
+    end
     if not on then c.pcHandheld = false end
     c.deckChoice = (on and not c.pcHandheld) and true or false
     local was = c.enabled and true or false
     c.enabled = on and true or false
 
-    -- Action Combat / ConsolePort / Edit Mode layout first: if that needs a
+    -- Crosshair Z / ConsolePort / Edit Mode layout first: if that needs a
     -- reload, only save the settings (no live rescale or frame refreshes,
     -- the reload applies everything) - this is what made the toggle freeze.
     -- PC / Deck positions of the H3z0 UI frames: remember the ones of the mode we leave
@@ -911,12 +1158,13 @@ function Handheld.SetEnabled(on, silent, auto)
 end
 
 -- PC Controller: keeps the PC layout, only swaps the addons (ConsolePort on,
--- True Reticle off) and reloads. While Handheld Mode is on the controller
+-- Crosshair Z off) and reloads. While Handheld Mode is on the controller
 -- addons are used anyway; the choice applies when Handheld Mode goes off.
 function Handheld.SetPCController(on, silent)
     local c = Cfg()
     if not c then return end
     c.pcController = on and true or false
+    if on and c.gamepadUI then c.gamepadUI = false end
     -- PC Controller, PC Handheld and Steam Deck can't be on together: PC Controller
     -- on turns Handheld Mode off (back to the PC layout, ConsolePort stays on) and reloads
     if c.enabled then
@@ -932,7 +1180,7 @@ function Handheld.SetPCController(on, silent)
     end
     local changed = ApplyAddonSet(c.pcController)
     if not silent then
-        Say("PC Controller " .. (c.pcController and "|cff00ff00ON|r - ConsolePort on, True Reticle off." or "|cffff5555OFF|r - True Reticle on, ConsolePort off."))
+        Say("PC Controller " .. (c.pcController and "|cff00ff00ON|r - ConsolePort on, Crosshair Z off." or "|cffff5555OFF|r - Crosshair Z on, ConsolePort off."))
         if changed then ReloadUI() end
     end
     return changed
